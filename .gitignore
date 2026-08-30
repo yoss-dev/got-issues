@@ -1,0 +1,13 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Local environment / secrets (never commit — see project-os/standards/SECURITY.md)
+.env
+.env.*
+!.env.example
+
+# Extended per stack during bootstrap-project:
+# build outputs, dependency directories, caches, coverage reports

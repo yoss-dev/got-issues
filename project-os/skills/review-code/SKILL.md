@@ -1,0 +1,65 @@
+---
+name: review-code
+description: Independently review a ticket's change-set before merge - correctness, tests, scope fidelity, standards and ADR compliance - and record an approve/request-changes verdict.
+---
+
+# Skill: review-code
+
+## Purpose
+
+Give every merge to the trunk an independent engineering check: the change does what the ticket asks, to standard, without scope drift or undocumented decisions — before it becomes part of `main`.
+
+## When to Use
+
+A ticket's PR is open and awaiting review (the handover sequence in `standards/GIT.md`: Work Log → PR → **review** → merge → status commit). Review MUST be performed by a session other than the implementer's (identity per `standards/GIT.md`); self-review does not satisfy WoW §10.
+
+## Active Persona(s)
+
+Software Engineer; add the Architect perspective for changes touching system boundaries, data models, dependencies, or cross-cutting structure.
+
+## Inputs
+
+- The ticket ID and its branch/PR (recorded in the ticket's Work Log at handover).
+
+## Preconditions
+
+- Ticket is `in-progress` with an open PR noted in the Work Log; you did not implement this change.
+- The branch is current with the trunk (or the diff against trunk is otherwise clean to read).
+
+## Context to Load
+
+1. The ticket — requirements sections first (Scope, Acceptance Criteria, Examples), then the Work Log
+2. The full diff of the branch against the trunk
+3. `standards/ENGINEERING.md`, `standards/TESTING.md`, `standards/GIT.md`; `standards/SECURITY.md` when the change touches auth, input handling, secrets, or dependencies
+4. ADRs referenced by the ticket, plus any ADR covering the touched components (scan the [ADR index](../../architecture/adr/README.md))
+
+## Procedure
+
+1. **Scope fidelity first:** walk the diff against In Scope / Out of Scope. Anything outside scope, or any acceptance criterion with no corresponding change, is a finding — regardless of code quality.
+2. **Correctness:** read the change for logic errors, unhandled edge cases (compare against the ticket's Examples/Scenarios), error handling, and concurrency/state hazards. Run the test suite yourself if the environment allows.
+3. **Tests:** do the new tests genuinely encode the acceptance criteria, or pass vacuously? Is every fixed bug covered by a regression test? Is test code held to production standards?
+4. **Standards & ADR compliance:** lint/static analysis clean; naming and structure per `ENGINEERING.md`; no undocumented architectural decision in the diff (a decision meeting the [ADR bar](../../architecture/adr/README.md) without an ADR is a blocking finding); commit messages per `GIT.md`.
+5. **Record findings** where the implementer will see them (PR comments where a platform exists, otherwise the ticket Work Log), each one concrete: file, issue, why it matters. Distinguish **blocking** (violates criteria, standards, scope, or ADRs) from **suggestions** (take or leave, no re-review needed).
+6. **Findings outside the ticket's scope** (pre-existing issues the diff merely reveals) become tickets via `create-ticket` — never review-time scope creep.
+7. **Verdict, recorded in the Work Log** (persona + your id): **Approve** (merge may proceed) or **Request changes** (blocking findings listed; the implementer addresses them on the branch and re-requests review). Do not fix the code yourself — that would make you a co-implementer and void your independence for this ticket.
+
+## Validation
+
+- Every acceptance criterion was checked against the diff, not assumed; verdict + findings recorded in the Work Log with your identity; no blocking finding left only in chat or PR state.
+
+## Outputs
+
+An Approve / Request-changes verdict with recorded findings; possibly new tickets for out-of-scope discoveries.
+
+## State Changes
+
+May modify: the ticket's Work Log, PR review state, new tickets via `create-ticket`. MUST NOT modify: the implementation code, acceptance criteria, ticket status (the implementer merges and performs the handover status commit after approval).
+
+## Failure / Escalation
+
+- Implementer disputes a blocking finding → both positions in the Work Log; the relevant standard/ADR text arbitrates; unresolved → escalate per WoW §13.
+- The change is unreviewable (giant diff, unrelated changes mixed in) → request changes on that basis alone; splitting is the fix, not a longer review.
+
+## Example
+
+Reviewing T-0031's PR: the diff matches scope, but AC2's invalid-range test asserts only the 422 status code, not the required error body — blocking finding recorded on the PR. A pre-existing N+1 query in the adjacent list endpoint (revealed, not caused, by the diff) becomes T-0039. Verdict: Request changes. The implementer adds the body assertion, re-requests; second pass: Approve, recorded in the Work Log as `ENG (claude-eng-9c1b)`.
