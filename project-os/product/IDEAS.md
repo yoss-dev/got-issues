@@ -8,7 +8,7 @@ Raw product and engineering ideas, captured via [`capture-idea`](../skills/captu
 
 ## IDEA-004: Authenticate users and machine clients, and authorise their access
 
-- **Status:** captured
+- **Status:** captured — deliberately not promoted while `PROJECT.md` Q7 (the global role set) is unanswered; a ticket for it could not reach Ready
 - **Date / Source:** 2026-08-30 — maintainer, during `bootstrap-project` (primary use case 4, `PROJECT.md` §2)
 - **Idea:** A user or a machine client can authenticate, and the API decides what they are allowed to do based on their global role.
 - **Motivation:** An internal tool holding the company's work needs to know who is calling. Machine clients are first-class here, not an afterthought — internal automation is half the point of an API-first tracker.
@@ -17,7 +17,7 @@ Raw product and engineering ideas, captured via [`capture-idea`](../skills/captu
 
 ## IDEA-003: Discuss an issue through comments
 
-- **Status:** captured
+- **Status:** promoted → [T-0008](tickets/T-0008-comment-on-an-issue.md)
 - **Date / Source:** 2026-08-30 — maintainer, during `bootstrap-project` (primary use case 3, `PROJECT.md` §2)
 - **Idea:** A user can comment on an issue, forming its discussion thread.
 - **Motivation:** The conversation around a piece of work is usually where the reasoning lives; losing it means losing why something was decided.
@@ -26,7 +26,7 @@ Raw product and engineering ideas, captured via [`capture-idea`](../skills/captu
 
 ## IDEA-002: Track an issue's lifecycle — type, status, priority, assignee
 
-- **Status:** captured
+- **Status:** promoted → [T-0006](tickets/T-0006-issue-lifecycle-fields.md), [T-0007](tickets/T-0007-list-and-filter-issues.md)
 - **Date / Source:** 2026-08-30 — maintainer, during `bootstrap-project` (primary use case 2, `PROJECT.md` §2)
 - **Idea:** An issue carries a type, a status, a priority, and an assignee, and these change as work progresses.
 - **Motivation:** This is what separates a tracker from a list: knowing what state work is in and who holds it.
@@ -35,7 +35,7 @@ Raw product and engineering ideas, captured via [`capture-idea`](../skills/captu
 
 ## IDEA-001: Organise work as projects containing issues
 
-- **Status:** captured
+- **Status:** promoted → [T-0004](tickets/T-0004-create-and-list-projects.md), [T-0005](tickets/T-0005-create-and-read-issues.md)
 - **Date / Source:** 2026-08-30 — maintainer, during `bootstrap-project` (primary use case 1, `PROJECT.md` §2)
 - **Idea:** Create and organise projects, and create issues within them.
 - **Motivation:** The foundational structure of the product — everything else hangs off projects and issues. Without it there is nothing to track.
