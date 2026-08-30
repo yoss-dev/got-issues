@@ -28,6 +28,7 @@ The YAML frontmatter (`name`, `description`) makes these skills directly loadabl
 | [`create-ticket`](create-ticket/SKILL.md) | Turn an understood need into a backlog ticket | PO |
 | [`refine-ticket`](refine-ticket/SKILL.md) | Multi-perspective refinement toward Ready | BA |
 | [`plan-sprint`](plan-sprint/SKILL.md) | Set a goal and commit ready work | PO |
+| [`run-sprint`](run-sprint/SKILL.md) | Orchestrate the loop: drain the sprint, stop only for human decisions | SM |
 | [`pick-up-ticket`](pick-up-ticket/SKILL.md) | Safely claim a ticket and plan the work | ENG |
 | [`implement-ticket`](implement-ticket/SKILL.md) | Build within scope and standards | ENG |
 | [`review-code`](review-code/SKILL.md) | Independent pre-merge engineering review | ENG |

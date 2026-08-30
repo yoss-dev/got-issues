@@ -94,6 +94,7 @@ Owns independent verification.
 | `create-ticket` | PO | BA |
 | `refine-ticket` | BA | PO, ENG, QA, ARCH, UX/SEC as applicable |
 | `plan-sprint` | PO | SM, ENG |
+| `run-sprint` | SM | delegates each activity to its own persona/session |
 | `pick-up-ticket` | ENG | — |
 | `implement-ticket` | ENG | ARCH on demand |
 | `review-code` | ENG | ARCH for structural changes |

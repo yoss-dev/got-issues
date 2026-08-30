@@ -22,6 +22,7 @@ Agents execute the process; a few decisions are structurally yours. This guide i
 Name the activity and the artifact; the skills do the rest:
 
 - *"Refine T-0012"* / *"Plan the next sprint"* / *"Pick up the next ticket"* — clean skill invocations.
+- *"Drain the sprint"* (`/run-sprint`) — the autonomous loop: it processes committed tickets end to end, parks anything needing you as `blocked` with a recorded escalation, keeps working everything else, and exits with one batched decision digest instead of interrupting you per question.
 - *"There's a bug: pasting a URL with spaces 500s"* — expect a bug ticket + sprint recording, not a silent hotfix.
 - *"Capture this idea: …"* — the cheapest way to get a thought out of your head and into the system.
 - Avoid *"just quickly add X to what you're doing"* — that's the silent-scope-expansion anti-pattern; ask for a ticket instead. If it's genuinely urgent, say so: the DoR has an urgent-bug lane.
