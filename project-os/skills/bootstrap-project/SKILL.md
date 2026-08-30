@@ -11,7 +11,9 @@ Turn the framework's placeholder documents into a project-specific operating sys
 
 ## When to Use
 
-Once, when adopting this framework for a new (or newly onboarded existing) project. Re-run partially when a major pivot invalidates recorded facts.
+Once, when adopting this framework for a new (or newly onboarded existing) project. Re-run partially when a major pivot invalidates recorded facts, when a human requests it, or when a foundation upgrade adds a step this project's bootstrap predates.
+
+**Re-runs are additive, never a do-over:** existing `[confirmed]` and `[default]` facts stand unless the human explicitly revises them; a re-run only fills gaps, executes missing or newly added steps, and re-reports. Before touching anything on a re-run, confirm with the human which steps are in scope.
 
 ## Active Persona(s)
 
@@ -45,21 +47,26 @@ Scrum Master (process), with Product Owner (product sections) and Architect (tec
 5. **Populate the artifacts:** `PROJECT.md` (all sections; remove the banner only when §1–§6 have no `[open]` items that block starting work); `product/PRODUCT_VISION.md`; `product/USER_PERSONAS.md` (at least one persona or an explicit `[open]`); `architecture/ARCHITECTURE.md` (what is known; `[open]` elsewhere); project-specific sections of each `standards/*.md`; domain terms into `GLOSSARY.md`.
 6. **Record technology decisions that were genuinely *decided* now** (not inherited) and meet the ADR bar as ADRs via `create-adr` — typically one "initial technology stack" ADR rather than ten small ones.
 7. **List remaining `[open]` questions** in `PROJECT.md` §7 with blocking status.
-8. **Report back** to the human: what was confirmed, what was defaulted, what was assumed, and which open questions need answers first.
+8. **Seed the delivery pipeline** — bootstrap must not leave its own follow-up work as prose:
+   - Every setup task this skill prescribed but did not perform becomes a `chore`/`technical` ticket via `create-ticket`: configuring the remote and trunk/governance-path protection, wiring `tools/validate-project-os/validate.py` and the test suite into CI, scaffolding the initial app/test harness per the chosen stack.
+   - Blocking `[open]` questions that need *investigation* (not just a human's answer) become `spike` tickets, linked from `PROJECT.md` §7; questions awaiting a plain human decision stay in §7 only.
+   - The primary use cases from the interview are captured as entries in `IDEAS.md` via `capture-idea`; promote to feature tickets only those the human explicitly prioritizes now — bootstrap does not pre-empt the Product Owner's value judgment.
+9. **Report back** to the human: what was confirmed, what was defaulted, what was assumed, which open questions need answers first, and what the seeded backlog contains.
 
 ## Validation
 
 - No `*TBD*` remains without an explicit `[open]` tag and, if blocking, a §7 entry.
 - Every technical-profile row is tagged; nothing silently promoted to `[confirmed]`.
 - Standards' "project-specific" sections are either filled or explicitly marked open — not left as template text that looks authoritative.
+- No prescribed-but-unperformed setup work exists only in the report — each item has a ticket; `python3 tools/validate-project-os/validate.py` passes on the seeded state.
 
 ## Outputs
 
-Populated `PROJECT.md`, vision, user personas, architecture overview, standards; optional stack ADR; open-questions list.
+Populated `PROJECT.md`, vision, user personas, architecture overview, standards; optional stack ADR; open-questions list; a seeded backlog (setup chores, spikes for investigable questions) and seeded `IDEAS.md` (primary use cases).
 
 ## State Changes
 
-May modify: `PROJECT.md`, `product/PRODUCT_VISION.md`, `product/USER_PERSONAS.md`, `architecture/ARCHITECTURE.md`, `standards/*.md`, `governance/GLOSSARY.md`, plus ADR files via `create-adr`. MUST NOT modify: governance rules, DoR/DoD, templates, skills.
+May modify: `PROJECT.md`, `product/PRODUCT_VISION.md`, `product/USER_PERSONAS.md`, `architecture/ARCHITECTURE.md`, `standards/*.md`, `governance/GLOSSARY.md`, plus ADR files via `create-adr`, tickets and `product/BACKLOG.md` via `create-ticket`, and `product/IDEAS.md` via `capture-idea`. MUST NOT modify: governance rules, DoR/DoD, templates, skills.
 
 ## Failure / Escalation
 

@@ -21,15 +21,15 @@ Key discipline: capture faithfully, **don't refine here**. No priority, no desig
 
 ## 2. Promote to a ticket (a Product Owner decision)
 
-When the PO persona judges it worth pursuing, `/create-ticket` creates `product/tickets/T-0001-create-short-link.md` from the [ticket template](../templates/TICKET_TEMPLATE.md) and registers it in [`BACKLOG.md`](../product/BACKLOG.md). What matters at this stage:
+When the PO persona judges it worth pursuing, `/create-ticket` creates `product/tickets/T-0005-create-short-link.md` from the [ticket template](../templates/TICKET_TEMPLATE.md) and registers it in [`BACKLOG.md`](../product/BACKLOG.md). What matters at this stage:
 
 - **Outcome, not implementation:** "an employee can claim `go/<name>` pointing at a URL and the link redirects" — not "build a POST /links endpoint".
 - **Honest gaps:** the namespace question goes into *Risks / Unknowns*, not quietly resolved by the agent. An imperfect ticket that admits its gaps beats a polished fiction.
-- The idea's status line becomes `promoted → T-0001`.
+- The idea's status line becomes `promoted → T-0005`.
 
 ## 3. Refine until Ready — or say why not
 
-`/refine-ticket T-0001`. The agent rotates through five perspectives (see [the skill](../skills/refine-ticket/SKILL.md)) and this is where the ticket earns its quality:
+`/refine-ticket T-0005`. The agent rotates through five perspectives (see [the skill](../skills/refine-ticket/SKILL.md)) and this is where the ticket earns its quality:
 
 - **Product:** is this still valuable? Would the PO recognize "done" from the criteria alone?
 - **Analysis:** the ambiguity hunt. The test for every criterion: *could two reasonable implementers build different things and both claim compliance?* Before: "short links work". After: `Given go/payroll → https://intranet/x, GET /payroll responds 302 with Location: https://intranet/x; unknown names respond 404 with a "claim this link" page.` Edge cases become *Examples / Scenarios*: name collisions, reserved names, malformed targets, 100-character names.

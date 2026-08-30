@@ -45,10 +45,12 @@ Open your agent in the repo (for Claude Code: `claude`, then `/bootstrap-project
 - Project-specific sections of `project-os/standards/*.md` — including `GIT.md`: platform, trunk protection, **governance path protection (CODEOWNERS)**, merge strategy.
 - Tailored skeleton — for go-links, `libs/` is pruned (single app), recorded in `PROJECT.md`.
 - Root `README.md` — placeholders replaced with the product's name and setup.
+- **A seeded backlog** — bootstrap's own follow-up work as tickets, not prose: for go-links, `T-0001` (chore: remote + trunk/governance protection), `T-0002` (chore: CI running the validator and test suite), `T-0003` (technical: scaffold the Node service and test harness). Investigable `[open]` questions become spikes — pat's namespace question becomes `T-0004` (spike, time-boxed) since it needs a look at how teams actually share links, not just a yes/no.
+- **Seeded ideas** — the interview's primary use cases land in `IDEAS.md` (create-a-link, redirect, list-my-links); only what pat explicitly wants first is promoted to a feature ticket. The PO value-gate applies even on day one.
 
 ## 5. Wire the platform gates
 
-The agent prescribes these; a human with admin rights applies them on the hosting platform:
+These are tracked as the setup tickets from step 4; a human with admin rights performs the platform side (agents must not hold admin credentials), closing the tickets through the normal flow:
 
 - shared remote configured (`git remote add origin …`) — without one you are in [solo mode](../standards/GIT.md): one agent at a time;
 - trunk protection with the validator and tests as required checks;
