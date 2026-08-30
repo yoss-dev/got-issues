@@ -57,7 +57,7 @@ Hard constraints that override ticket-level convenience:
 - **Everything must run under Docker Compose** — API, PostgreSQL, and the identity provider; no component may require host-installed infrastructure to run `[confirmed]`
 - **Contract-driven development is mandatory**: the OpenAPI specification is authored first; controllers and clients are generated from it by a source generator, automated as far as the toolchain allows. Hand-writing anything the generator owns is a defect `[confirmed]` — see [ADR-0004](architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)
 - **Solo delivery**: one maintainer, therefore one agent at a time on the repository (solo mode, §6) `[confirmed]`
-- **Duende IdentityServer licensing**: development and testing are free; the Community Edition's free tier is bounded by *company* revenue, so **an internal company deployment most likely requires a paid commercial licence** even though it is internal-only and single-tenant. Terms recalled, not verified `[assumption]` — this is now a cost question for the company, not just a footnote (see Q1)
+- **Duende IdentityServer licensing**: the maintainer knows the terms and has decided **Got Issues runs Duende unlicensed for the duration of the proof of concept** — an informed, deliberate choice, not an oversight `[confirmed]`. Expect licence warnings at startup; they are expected behaviour, not defects. Licensing becomes a live question again only if the PoC turns into something the company actually runs, which is a separate decision
 - No deadline, budget ceiling, or regulatory compliance regime stated `[assumption]` (absence of a stated constraint, not a confirmed absence)
 
 ## 5. Technical profile
@@ -105,10 +105,9 @@ Questions that block or shape work. Remove entries only when answered (record th
 
 | # | Question | Blocking? | Raised by / date |
 | --- | --- | --- | --- |
-| Q1 | Duende IdentityServer licensing: does the intended use stay inside the free Community Edition terms? Current terms unverified. Blocks nothing locally; blocks any production/public deployment | No (Yes before any non-local deployment) | bootstrap / 2026-08-30 |
 | Q4 | Are the proposed success criteria (§3) the right ones? | No | bootstrap / 2026-08-30 |
 | Q6 | CI: stay local-only, or add a remote (e.g. GitHub) with a pipeline running the validator, build, tests, and a spec-drift check? | No | bootstrap / 2026-08-30 |
 | Q7 | Which **global roles** exist, and what may each do? The model is settled (global, not per-project); the role set is not | No (Yes before the first authorised endpoint ticket) | maintainer / 2026-08-30 |
 | Q8 | Employee personal data (names, email addresses from the identity provider) in an internal tool — does the company's data-protection regime (e.g. GDPR) apply, and does a PoC get an exemption? | No (Yes before real employee data is loaded) | bootstrap / 2026-08-30 |
 
-**Answered 2026-08-30 (maintainer):** ~~Q2~~ internal company tool, a PoC — target users are the company's own engineers (§2). ~~Q3~~ single-tenant, multi-tenancy permanently out of scope (§3). ~~Q5~~ authorization uses **global roles**, superseded by Q7 for the role set (§5).
+**Answered 2026-08-30 (maintainer):** ~~Q1~~ Duende licensing is understood and accepted — running unlicensed for the PoC (§4). ~~Q2~~ internal company tool, a PoC — target users are the company's own engineers (§2). ~~Q3~~ single-tenant, multi-tenancy permanently out of scope (§3). ~~Q5~~ authorization uses **global roles**, superseded by Q7 for the role set (§5).

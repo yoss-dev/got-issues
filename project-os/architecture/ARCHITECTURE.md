@@ -75,4 +75,4 @@ Gathered for convenience; [`PROJECT.md`](../PROJECT.md) §4–5 and the ADRs rem
 | Employee personal data in an internal tool | Names and email addresses of real employees; the company's data-protection obligations are unconfirmed | `PROJECT.md` Q8 |
 | Shared PostgreSQL instance for API + identity | Simple for local development; couples two components' availability and backup story. Acceptable while local-only, revisit before any deployment | this file |
 | Generated code committed to the repository | Makes drift reviewable, but produces large diffs and merge noise. Revisit if it becomes painful | [ADR-0004](adr/ADR-0004-contract-first-openapi-code-generation.md) |
-| Duende licensing beyond local use | Free tier terms unverified; a paid licence may be required before any deployment | `PROJECT.md` Q1 |
+| Duende runs unlicensed | A deliberate, informed PoC-scoped decision by the maintainer — not a risk to track, recorded here so nobody re-raises it | `PROJECT.md` §4 |
