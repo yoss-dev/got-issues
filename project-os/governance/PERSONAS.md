@@ -93,6 +93,7 @@ Owns independent verification.
 | `capture-idea` | PO | BA |
 | `create-ticket` | PO | BA |
 | `refine-ticket` | BA | PO, ENG, QA, ARCH, UX/SEC as applicable |
+| `refinement-session` | PO | SM facilitation; delegates per ticket to `refine-ticket` |
 | `plan-sprint` | PO | SM, ENG |
 | `run-sprint` | SM | delegates each activity to its own persona/session |
 | `pick-up-ticket` | ENG | — |

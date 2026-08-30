@@ -27,6 +27,7 @@ The YAML frontmatter (`name`, `description`) makes these skills directly loadabl
 | [`capture-idea`](capture-idea/SKILL.md) | Record a raw idea without commitment | PO |
 | [`create-ticket`](create-ticket/SKILL.md) | Turn an understood need into a backlog ticket | PO |
 | [`refine-ticket`](refine-ticket/SKILL.md) | Multi-perspective refinement toward Ready | BA |
+| [`refinement-session`](refinement-session/SKILL.md) | Interactive batch refinement: rank, select, refine one at a time | PO |
 | [`plan-sprint`](plan-sprint/SKILL.md) | Set a goal and commit ready work | PO |
 | [`run-sprint`](run-sprint/SKILL.md) | Orchestrate the loop: drain the sprint, stop only for human decisions | SM |
 | [`pick-up-ticket`](pick-up-ticket/SKILL.md) | Safely claim a ticket and plan the work | ENG |
