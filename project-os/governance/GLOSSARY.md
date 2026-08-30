@@ -36,7 +36,9 @@ Seeded at bootstrap 2026-08-30 and extended during refinement. Add any term two 
 - **Comment** — a text entry attached to an issue by a user, forming its discussion thread.
 - **Assignee** — the single user currently responsible for an issue. Distinct from the framework's **Owner**, which is the agent or human responsible for a *delivery ticket*.
 - **User** — a person or machine client authenticated by the identity host. The API stores a local projection (subject, display name) and never credentials.
-- **Global role** — a user's authorisation level across the whole deployment. Roles are **company-wide, never per project** — there is no project membership or per-project permission concept. Saying "role" without qualification means this.
+- **Global role** — a user's authorisation level across the whole deployment: **`admin`** or **`member`**. Roles are **company-wide, never per project** — there is no project membership or per-project permission concept. The role travels as a claim in the Duende token and is never stored by the API. Saying "role" without qualification means this.
+- **Admin act** — an operation restricted to the `admin` role: creating and archiving projects, and deleting issues and comments. Everything else is open to any `member`.
+- **User projection** — the API's thin local record of a user (subject, display name), upserted from token claims so issues can be assigned and comments attributed. It holds no credentials and no role; it is a projection of Duende's truth, not a user store.
 - **Machine client** — a non-human API consumer authenticating via OAuth client credentials; the *Priya the integrator* persona's programs.
 - **The spec / the contract** — `spec/openapi.yaml`, the hand-authored OpenAPI 3.1 document. The single place the API surface is designed ([ADR-0004](../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)).
 - **Generated code** — server contracts and clients produced from the spec by OpenAPI Generator, committed under `libs/` and **never hand-edited**.

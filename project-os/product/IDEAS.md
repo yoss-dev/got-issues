@@ -8,12 +8,12 @@ Raw product and engineering ideas, captured via [`capture-idea`](../skills/captu
 
 ## IDEA-004: Authenticate users and machine clients, and authorise their access
 
-- **Status:** captured — deliberately not promoted while `PROJECT.md` Q7 (the global role set) is unanswered; a ticket for it could not reach Ready
+- **Status:** promoted → [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md)
 - **Date / Source:** 2026-08-30 — maintainer, during `bootstrap-project` (primary use case 4, `PROJECT.md` §2)
 - **Idea:** A user or a machine client can authenticate, and the API decides what they are allowed to do based on their global role.
 - **Motivation:** An internal tool holding the company's work needs to know who is calling. Machine clients are first-class here, not an afterthought — internal automation is half the point of an API-first tracker.
 - **Possible value:** Priya's automation can act against the API without a human in the loop; the company's own work stays visible only to the company.
-- **Unresolved questions:** Which global roles exist and what may each do (`PROJECT.md` Q7)? How do users get into the system in the first place — self-service, seeded, or synced from an existing company directory? Do machine clients get roles, or only scopes?
+- **Unresolved questions:** ~~Which global roles exist and what may each do?~~ Answered 2026-08-30: `admin` and `member`, carried as a claim in the Duende token (`PROJECT.md` §5). ~~How do users get into the system?~~ They do not — the API keeps a thin projection built from token claims; user administration happens in Duende. Still open: do machine clients get roles, or only scopes? How does someone become an `admin` in Duende in the first place?
 
 ## IDEA-003: Discuss an issue through comments
 

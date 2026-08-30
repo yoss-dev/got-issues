@@ -43,7 +43,7 @@ Everything in the dashed box starts with `docker compose up`; nothing depends on
 ## Data
 
 - **Store:** one PostgreSQL instance; the API and the identity host own separate schemas and never read each other's tables.
-- **Ownership:** the API owns projects, issues, comments, and the local projection of users (identity, display name) keyed by the subject claim from the token. Duende owns credentials, clients, grants, and keys — the API never stores a password or secret.
+- **Ownership:** the API owns projects, issues, comments, and the local projection of users (subject, display name) keyed by the subject claim from the token — upserted from the token on authenticated requests, so issues can be assigned and comments attributed. Duende owns credentials, clients, grants, keys, **and roles** — the API never stores a password, a secret, or a role.
 - **Schema source of truth:** EF Core code-first migrations, applied by a dedicated migration step in the compose stack rather than by the API at startup, so schema changes are an explicit, observable action.
 - **Personal data:** user display names and email addresses (from the identity provider) are the only personal data anticipated. Minimise it, never log it, and treat any change touching it under [SECURITY.md](../standards/SECURITY.md). Retention policy is `[open]` — no deletion/export flow is designed yet.
 
@@ -52,7 +52,7 @@ Everything in the dashed box starts with `docker compose up`; nothing depends on
 - **Configuration:** environment variables injected by Compose; local secrets via `.NET` user-secrets or an untracked `.env` (`.env.example` is the committed template). No secret is ever committed ([SECURITY.md](../standards/SECURITY.md)).
 - **Errors:** every failure returns RFC 9457 `application/problem+json`, and the shape is declared in the specification so clients get it generated. Errors are part of the contract, not an implementation detail.
 - **Logging & observability:** structured logs via `ILogger`; OpenTelemetry traces and metrics to the console in local runs. No secrets or personal data in logs.
-- **Authn/authz:** Duende IdentityServer issues OIDC/OAuth 2.1 tokens; the API is a resource server validating JWT bearer tokens. Machine clients are scoped via client credentials. **User authorization uses global roles** — a user's role is company-wide, not per project (`PROJECT.md` §5) `[confirmed]`. This keeps authorization checks out of the data model: no membership tables, no per-project permission joins. The specific role set is not yet designed (`PROJECT.md` Q7); the first ticket that needs it settles it. Introducing per-project permissions later would be a material change requiring an ADR.
+- **Authn/authz:** Duende IdentityServer issues OIDC/OAuth 2.1 tokens; the API is a resource server validating JWT bearer tokens. Machine clients are scoped via client credentials. **User authorization uses two global roles, `admin` and `member`, carried as a claim in the token** (`PROJECT.md` §5) `[confirmed]`. The API reads the claim per request and **never persists a role** — Duende is the source of truth, and role assignment is administrative work performed there, not through this API. This keeps authorization out of the data model entirely: no membership tables, no per-project permission joins, no role table. `admin` additionally covers creating and archiving projects and deleting issues and comments; everything else is open to `member`. A missing or unrecognised role claim is refused, never defaulted upward. Introducing per-project permissions later would be a material change requiring an ADR. Implemented by [T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md).
 - **Background work:** none. Introducing any requires an ADR.
 
 ## Technical constraints
@@ -71,7 +71,7 @@ Gathered for convenience; [`PROJECT.md`](../PROJECT.md) §4–5 and the ADRs rem
 
 | Concern | Why it matters | Tracked as |
 | --- | --- | --- |
-| Global role set not yet designed | The *model* is settled (global roles, no per-project permissions); the roles themselves are not, and the first authorised endpoint needs them | `PROJECT.md` Q7 |
+| Authorisation concentrated in token issuance | The API trusts Duende's role claim completely — correct for this model, but it means an issuance mistake is an authorisation hole with nothing behind it | [T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md) |
 | Employee personal data in an internal tool | Names and email addresses of real employees; the company's data-protection obligations are unconfirmed | `PROJECT.md` Q8 |
 | Shared PostgreSQL instance for API + identity | Simple for local development; couples two components' availability and backup story. Acceptable while local-only, revisit before any deployment | this file |
 | Generated code committed to the repository | Makes drift reviewable, but produces large diffs and merge noise. Revisit if it becomes painful | [ADR-0004](adr/ADR-0004-contract-first-openapi-code-generation.md) |

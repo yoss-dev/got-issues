@@ -7,7 +7,7 @@ priority: normal
 owner: none
 implemented_by: none
 accepted_by: none
-depends_on: [T-0005]
+depends_on: [T-0005, T-0009]
 adrs: [ADR-0004]
 created: 2026-08-30
 updated: 2026-08-30
@@ -69,12 +69,13 @@ AC2 is the security-relevant criterion here: taking authorship from the token ra
 ## Dependencies
 
 - **T-0005** — comments attach to issues.
-- Author identity needs a user concept; as with T-0006, how users exist in the system is unresolved ([IDEA-004](../IDEAS.md)) and refinement must confirm what is available.
+- **T-0009** — comment authorship references the user projection built from token claims.
 
 ## Risks / Unknowns
 
 - **Editing and deleting are deferred, and that is a product decision, not an oversight.** A comment thread that cannot be corrected is annoying; one that can be silently rewritten undermines the history the feature exists to preserve. Refinement should record which behaviour is wanted before someone implements the easy version.
 - Comment bodies are free text typed by employees and must be treated as potentially containing personal data — never logged, minimised ([SECURITY.md](../../standards/SECURITY.md)). The DoR's security conditional applies.
+- Authorship depends on T-0009's user projection; if it slips, there is nothing to attribute a comment to.
 - Maximum comment length is unspecified; unbounded text columns invite abuse and awkward responses.
 - Ordering is stated as "defined" but not defined — creation time is the obvious choice, and refinement should say so rather than leave it to the implementer.
 
@@ -104,6 +105,15 @@ Integration tests against real PostgreSQL. AC2 needs a test that deliberately fo
 - **Did:** Created by promoting IDEA-003 during backlog seeding.
 - **Decided:** Kept edit/delete out of scope but recorded *why* in Risks, so the deferral is a decision refinement can revisit rather than a gap someone fills by accident.
 - **Remaining:** Refinement to Ready; edit/delete behaviour and comment length are the decisions to settle.
-- **Open questions / blockers:** none blocking creation; depends on the same user-concept gap as T-0006.
+- **Open questions / blockers:** none blocking creation. The user-concept gap flagged at creation is now resolved by T-0009 (added as a dependency, 2026-08-30).
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-30 — Product Owner (claude-sm-9d4e)
+
+- **Did:** Added T-0009 as a dependency — comment authorship resolves against its user projection rather than a bare token subject.
+- **Decided:** none beyond the dependency.
+- **Remaining:** Refinement to Ready; edit/delete behaviour is still the open decision. Note that deleting comments is an `admin` act when it arrives (maintainer, 2026-08-30).
+- **Open questions / blockers:** none.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

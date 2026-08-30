@@ -72,7 +72,7 @@ Hard constraints that override ticket-level convenience:
 | API style | REST over HTTP/JSON, specified in OpenAPI 3.1 | `[confirmed]` |
 | API contract & codegen | Spec-first; [OpenAPI Generator](https://openapi-generator.tech) CLI (`aspnetcore` server stubs + `csharp` client) — [ADR-0004](architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) | `[confirmed]` |
 | Authentication | Duende IdentityServer (OpenID Connect / OAuth 2.1), self-hosted in compose; API validates JWT bearer tokens | `[confirmed]` |
-| Authorization model | **Global roles** — a user's role is company-wide, not per project; scope-based access for machine clients | `[confirmed]` (role set itself still to be designed) |
+| Authorization model | **Global roles `admin` and `member`**, carried as a claim in the Duende token — the API reads the claim per request and never stores roles. `admin` additionally performs administrative acts: creating and archiving projects, deleting issues and comments. Role *assignment* happens in Duende, not through this API. Scope-based access for machine clients | `[confirmed]` |
 | Package / build tooling | .NET SDK (`dotnet build/test`), NuGet with a lock file; OpenAPI Generator CLI runs on the JDK (25 verified locally) | `[confirmed]` |
 | Testing frameworks | xUnit; `WebApplicationFactory` for API-level tests; Testcontainers for PostgreSQL | `[default]` |
 | CI/CD system | None yet — no remote (solo mode). The validator and test suite are run locally before every merge | `[open]` (Q6) |
@@ -107,7 +107,6 @@ Questions that block or shape work. Remove entries only when answered (record th
 | --- | --- | --- | --- |
 | Q4 | Are the proposed success criteria (§3) the right ones? | No | bootstrap / 2026-08-30 |
 | Q6 | CI: stay local-only, or add a remote (e.g. GitHub) with a pipeline running the validator, build, tests, and a spec-drift check? | No | bootstrap / 2026-08-30 |
-| Q7 | Which **global roles** exist, and what may each do? The model is settled (global, not per-project); the role set is not | No (Yes before the first authorised endpoint ticket) | maintainer / 2026-08-30 |
 | Q8 | Employee personal data (names, email addresses from the identity provider) in an internal tool — does the company's data-protection regime (e.g. GDPR) apply, and does a PoC get an exemption? | No (Yes before real employee data is loaded) | bootstrap / 2026-08-30 |
 
-**Answered 2026-08-30 (maintainer):** ~~Q1~~ Duende licensing is understood and accepted — running unlicensed for the PoC (§4). ~~Q2~~ internal company tool, a PoC — target users are the company's own engineers (§2). ~~Q3~~ single-tenant, multi-tenancy permanently out of scope (§3). ~~Q5~~ authorization uses **global roles**, superseded by Q7 for the role set (§5).
+**Answered 2026-08-30 (maintainer):** ~~Q1~~ Duende licensing is understood and accepted — running unlicensed for the PoC (§4). ~~Q2~~ internal company tool, a PoC — target users are the company's own engineers (§2). ~~Q3~~ single-tenant, multi-tenancy permanently out of scope (§3). ~~Q5~~/~~Q7~~ authorization uses **global roles `admin` and `member`**, carried as a Duende token claim; admin acts are project creation/archival and deleting issues/comments (§5, implemented by [T-0009](product/tickets/T-0009-role-authorisation-and-user-projection.md)).
