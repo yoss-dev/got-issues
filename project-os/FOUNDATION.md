@@ -6,10 +6,10 @@ This directory structure originates from the team's **foundation repository** (`
 
 | Field | Value |
 | --- | --- |
-| Copied from | *link/path to the foundation repository* |
-| Foundation version | *e.g., 1.0.0* |
-| Copied on | *YYYY-MM-DD* |
-| Local divergences | *none yet — list governance changes that deliberately differ from the foundation* |
+| Copied from | `prj-foundation` (team foundation repository; no URL recorded at adoption — `[open]`) |
+| Foundation version | 1.6.1 (adopted at 1.5.0; upgraded 2026-08-30) |
+| Copied on | 2026-08-30 |
+| Local divergences | **Solo mode.** `standards/GIT.md` records no remote, no PR platform, and no CODEOWNERS-based governance-path protection — the foundation assumes a shared remote. Lane rules, review independence, and the pre-merge gates are unchanged; only the platform enforcement is absent, replaced by locally-run gates. Revisit if a remote is added (`PROJECT.md` Q6). Bootstrap also populated the project-specific sections of all four standards and the glossary — expected instance state, not divergence. |
 
 ## Contributing back
 
@@ -22,6 +22,8 @@ When a retrospective or `evolve-governance` change fixes something **project-agn
 
 *Maintained in the foundation repository only; project copies keep the version they copied and consult the foundation for updates. Adopting a newer foundation version into a running project is itself an `evolve-governance` change (diff, assess impact on in-flight work, apply deliberately — never blind-overwrite instance state like tickets, sprints, or ADRs).*
 
+- **1.6.1** — 2026-08-30 — Bootstrap re-run semantics hardened: re-runs are additive (existing `[confirmed]`/`[default]` facts stand; only gaps and missing/new steps execute), scoped by explicit human confirmation; foundation upgrades adding steps are a named re-run trigger.
+- **1.6.0** — 2026-08-30 — Bootstrap seeds the pipeline: prescribed-but-unperformed setup work becomes chore/technical tickets, investigable open questions become spikes, interview use cases land as ideas (promoted only on explicit human priority); bootstrap validation requires a green validator on the seeded state. *(Adopted into this copy 2026-08-30 — this project's bootstrap ran under 1.5.0, so the seeding step applies retroactively: see the upgrade note in the report/backlog.)*
 - **1.5.0** — 2026-08-30 — Help documentation (`project-os/docs/`): mental-model index, three tutorials on a shared running example (bootstrap, idea→Ready, implement-feature), one-page cheatsheet, the human's-role guide, troubleshooting; wired into both READMEs.
 - **1.4.0** — 2026-08-30 — Full gate closure: validator now enforces sprint membership (sprint-only statuses require an active sprint + table row), DoR/DoD checkbox evidence, acceptance-criteria presence, and implementer≠acceptor independence via new `implemented_by`/`accepted_by` ticket frontmatter; governance paths reclassified to lane 2 (reviewed PRs + CODEOWNERS prescription); discovered work must join the Committed Work table.
 - **1.3.0** — 2026-08-30 — Enforcement & recovery: state-consistency validator (`tools/validate-project-os/`, wired into GIT.md and skill execution); stale-claim release protocol (WoW §7); remote/solo-mode rules (GIT.md); `review-code` skill (13th skill — independent pre-merge review); actor identity convention (GIT.md); escalation answers must be recorded in-repo (WoW §13); Work Log gains a Branch/PR line.

@@ -32,9 +32,12 @@ The Security persona escalates to a human more readily than any other persona: u
 
 ## Project-specific rules
 
-> ⚠ **Replace during `bootstrap-project`.**
+Set at bootstrap 2026-08-30.
 
-- **Secret management mechanism:** *TBD* `[open]`
-- **Compliance/regulatory requirements:** *TBD — GDPR, HIPAA, SOC 2, none, …* `[open]`
-- **Dependency scanning tooling:** *TBD* `[open]`
-- **Data classification & retention:** *TBD* `[open]`
+- **Secret management mechanism** `[default]`: local development uses .NET user-secrets or an untracked `.env` consumed by Compose; a committed `.env.example` documents every required variable with placeholder values. Container configuration arrives as environment variables. No secret — including Duende signing keys, client secrets, and database passwords — is ever committed. Development signing keys are generated locally, never checked in. A production secret store is `[open]`: nothing is deployed yet, and this must be settled before anything is.
+- **Authentication & authorization** `[confirmed]`: Duende IdentityServer is the only issuer of tokens; the API is a resource server that validates JWT bearer tokens and **never** handles or stores credentials. Authorization uses **global roles** — company-wide, never per project. Any change touching token validation, scopes, or roles gets Security-persona review during both refinement and acceptance (universal rule above), and never ships without tests that prove the *negative* case — that an unauthorised caller is refused. Global roles mean a single check guards each endpoint: get it wrong and there is no second layer behind it.
+- **Never disable authentication to make a test or a local run work.** Use a test authentication handler scoped to the test host ([TESTING.md](TESTING.md)) `[default]`.
+- **Compliance/regulatory requirements: `[open]` (`PROJECT.md` Q8).** No regime was stated, but this is an **internal company tool holding real employees' names and email addresses** — that is personal data belonging to identifiable people, and a PoC label does not by itself exempt it. Before real employee data is loaded, confirm with the company what applies (GDPR or equivalent) and whether a PoC is covered by an existing assessment. Until then: minimise what is stored, never log it, and do not treat "nobody mentioned compliance" as clearance.
+- **Dependency scanning tooling** `[default]`: `dotnet list package --vulnerable --include-transitive` run before adding a dependency and periodically; findings are fixed, upgraded, or ticketed with severity — never muted. NuGet lock files pin versions. No automated scanning service exists (no CI — `PROJECT.md` Q6).
+- **Data classification & retention** `[default]` / `[open]`: the only personal data anticipated is user display names and email addresses from the identity provider, plus whatever users type into issue titles, descriptions, and comments — treat free-text fields as potentially containing personal data and never log their contents. Retention, deletion, and export flows are **`[open]`** — none are designed. A ticket introducing user-data deletion or export must settle this first.
+- **Input validation** `[confirmed]`: request validation is declared in the OpenAPI specification and enforced by generated model binding plus explicit checks in controllers. A validation rule that exists only in code and not in the spec is a contract defect. All database access goes through EF Core's parameterised queries; any raw SQL must be parameterised and justified in the ticket's Work Log.

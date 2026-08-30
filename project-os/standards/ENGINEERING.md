@@ -31,10 +31,51 @@ Default engineering rules for implementation work, applied by the Software Engin
 
 ## Project-specific rules
 
-> ⚠ **Replace during `bootstrap-project`** with the project's language/framework conventions.
+Set at bootstrap 2026-08-30 for a C# / .NET 10 API ([`PROJECT.md`](../PROJECT.md) §5).
 
-- **Language & style guide:** *TBD — name the authoritative style guide and formatter; formatting disputes are settled by the formatter, not review comments.* `[open]`
-- **Linting / static analysis:** *TBD — name the tools and the rule that CI must be clean.* `[open]`
-- **Project structure:** *TBD — where code, tests, and assets live; how modules are organized.* `[open]`
-- **Branching & review:** see [`GIT.md`](GIT.md); confirm its project-specific section during bootstrap.
-- **Performance expectations:** *TBD — budgets or "no specific budget; avoid obvious waste".* `[open]`
+### The contract-first rule (overrides convenience)
+
+This project is contract-driven ([ADR-0004](../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)) `[confirmed]`:
+
+- **The OpenAPI specification at `spec/openapi.yaml` is the only place the API surface is designed.** No endpoint, field, status code, or error shape exists unless the spec says so.
+- **Generated code is never hand-edited.** It lives in its own directory under `libs/` and is reproduced by the generation script in `tools/`. An edit to generated output is a defect, not a shortcut — change the spec and regenerate.
+- **A spec change and its regenerated output belong in the same commit.** Regenerating must produce no diff on a clean tree; a diff means drift and fails review.
+- Controllers **implement** generated interfaces. Hand-written routing attributes on a controller are a review rejection.
+
+### Language & style
+
+- **C# 14 on .NET 10** `[confirmed]`. Formatting is settled by `dotnet format` against a committed root `.editorconfig` — formatting is never a review comment `[default]`.
+- Nullable reference types and implicit usings **on**; treat warnings as errors in project files `[default]`.
+- `async`/`await` all the way down for I/O; no `.Result`/`.Wait()`. Pass `CancellationToken` through to EF Core and HTTP calls `[default]`.
+- Public API DTOs are generated — do not write hand-rolled request/response models beside them `[confirmed]`.
+
+### Linting / static analysis
+
+- .NET analyzers enabled at `AnalysisLevel: latest-recommended`; the build must be warning-clean `[default]`.
+- The validator (`python3 tools/validate-project-os/validate.py`) must pass before any process-lane commit ([GIT.md](GIT.md)) `[default]`.
+- Generated directories are excluded from analyzers and formatting checks — they are not ours to fix `[default]`.
+
+### Project structure
+
+Monorepo layout per [ADR-0002](../architecture/adr/ADR-0002-monorepo-with-self-contained-project-os.md); all four scaffold directories are in use `[confirmed]`:
+
+| Path | Contents |
+| --- | --- |
+| `spec/` | The hand-authored OpenAPI 3.1 specification — the contract |
+| `apps/` | The API service and the Duende identity host |
+| `libs/` | Generated server contracts and the generated C# client — **never hand-edited** |
+| `tools/` | The framework validator and the code-generation script |
+| `infra/` | Compose support files, database initialisation |
+| `compose.yaml` (root) | The single supported way to run the system |
+
+Tests live in their own projects alongside what they test — see [TESTING.md](TESTING.md).
+
+### Data access
+
+- EF Core 10 with code-first migrations; migrations are applied by an explicit migration step in Compose, never silently at API startup `[confirmed]`.
+- **Pagination is mandatory on every collection endpoint.** Unbounded `ToListAsync()` over a user-controlled set fails review `[default]`.
+- Watch for N+1 queries: EF Core makes them easy to write and invisible until they hurt `[default]`.
+
+### Performance expectations
+
+No numeric budget `[default]`. Avoid obvious waste: no unbounded result sets, no N+1 queries, no synchronous I/O on request paths. A measured problem gets a ticket, not a micro-optimisation in passing.

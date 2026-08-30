@@ -27,8 +27,11 @@ Duplicate a fact into a second home only with a link back to the authoritative o
 
 ## Project-specific rules
 
-> ⚠ **Replace during `bootstrap-project`.**
+Set at bootstrap 2026-08-30.
 
-- **User-facing documentation:** *TBD — what exists (user guide? API portal?), where, and who updates it.* `[open]`
-- **Operational runbooks:** *TBD — required for deployables; location and format.* `[open]`
-- **Doc review expectations:** documentation changes reviewed like code `[default]` — confirm or replace.
+- **User-facing documentation is the OpenAPI specification** `[confirmed]`. `spec/openapi.yaml` is authored first and is the contract, so it is also the reference documentation: every operation, schema, error, and scope carries a `summary`/`description` written for a reader who has never seen the code. Documentation quality in the spec is reviewed like any other contract change — an endpoint with no description is incomplete, not merely undocumented. There is no separate API guide to drift out of date, and no UI to document ([`PROJECT.md`](../PROJECT.md) §3).
+- **The root README must work from a clean clone** `[confirmed]`: prerequisites (Docker, .NET SDK, JDK for code generation), `docker compose up`, how to obtain a token, how to run the tests, and how to regenerate from the spec. A ticket that changes any of those steps fixes the README in the same change.
+- **Operational runbooks:** none required yet `[confirmed]` — nothing is deployed; Compose is the only way the system runs. A runbook becomes mandatory with the first deployment target (`PROJECT.md` Q6 territory).
+- **Generated code carries no hand-written documentation** `[confirmed]`: comments in generated output would be overwritten on the next regeneration. Document the *behaviour behind* the contract in the implementing code, and the contract itself in the spec.
+- **Doc review expectations:** documentation changes are reviewed like code `[default]`.
+- **Decisions live in the Work Log, rationale in ADRs** — see the routing table above. Chat is not a project record ([WoW](../governance/WAY_OF_WORKING.md)).

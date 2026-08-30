@@ -9,5 +9,27 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Extended per stack during bootstrap-project:
-# build outputs, dependency directories, caches, coverage reports
+# .NET build outputs and caches
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+project.lock.json
+artifacts/
+
+# Test and coverage output
+TestResults/
+coverage*.json
+coverage*.xml
+*.coverage
+*.trx
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# NOTE: generated OpenAPI output under libs/ is committed ON PURPOSE so that
+# spec/code drift is visible in review — see ADR-0004. Do not ignore it.

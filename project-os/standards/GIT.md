@@ -72,11 +72,23 @@ The two lanes assume the ability to commit to two branches at once — never sat
 
 ## Project-specific rules
 
-> ⚠ **Replace during `bootstrap-project`.**
+Set at bootstrap 2026-08-30.
 
-- **Hosting platform & PR tooling:** *TBD — GitHub/GitLab/other; how PRs are opened and reviewed.* `[open]`
-- **Trunk protection rules:** *TBD — required checks, review counts.* `[open]`
-- **Governance path protection:** *TBD — CODEOWNERS/protected paths requiring human review on `project-os/{governance,standards,templates,skills}`.* `[open]`
-- **Merge strategy:** squash `[default]` — confirm or replace.
-- **Release & tagging scheme:** *TBD.* `[open]`
-- **CI gates on merge:** *TBD — see also TESTING.md.* `[open]`
+- **Hosting platform & PR tooling: none — this repository is in SOLO MODE** `[confirmed]`. No remote is configured. Per *Remotes and solo mode* above: both commit lanes and every convention still apply, push-based collision detection is void, and **the repository is safe for one agent at a time**. Starting a second concurrent agent requires configuring a remote first. Recorded in [`PROJECT.md`](../PROJECT.md) §6.
+- **Review without a PR platform** `[confirmed]`: keep the ticket branch, have an **independent session** run [`review-code`](../skills/review-code/SKILL.md) against the branch diff, record the verdict in the ticket's Work Log, then merge locally. The Work Log verdict *is* the review record. Self-merging without that recorded verdict is the anti-pattern — where genuinely unavoidable, the deviation is stated in the Work Log.
+- **Trunk protection rules:** not enforceable by a platform in solo mode `[confirmed]`. The trunk is protected by discipline: `main` stays releasable, no force-push ever, and the gates below are run locally before every merge.
+- **Governance path protection:** no CODEOWNERS without a platform `[confirmed]`. Changes to `project-os/{governance,standards,templates,skills}` still travel **lane 2** (branch + reviewed merge) and still require the approval [`evolve-governance`](../skills/evolve-governance/SKILL.md) specifies — human approval, recorded in the change. Revisit when a remote is added (`PROJECT.md` Q6).
+- **Merge strategy:** squash-merge `[default]` — one trunk commit per reviewed change, titled `T-NNNN: <summary>`.
+- **Release & tagging scheme:** `vX.Y.Z` on the trunk `[default]`. Nothing is released until a deployment target exists, so no tag is expected during the first slice.
+- **Gates before every merge to `main`** (run locally; there is no CI to catch a miss) `[default]`:
+
+  ```bash
+  python3 tools/validate-project-os/validate.py   # framework state consistency
+  dotnet build                                     # warning-clean
+  dotnet test                                      # unit + integration (Docker running)
+  ./tools/generate.sh && git diff --exit-code       # OpenAPI codegen drift check
+  ```
+
+  The drift check is a merge gate, not a nicety: it is what makes the contract-first rule real ([ADR-0004](../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)).
+- **Ignored paths:** build outputs (`bin/`, `obj/`), NuGet caches, coverage reports, and `.env` files are never committed; **generated OpenAPI output is committed on purpose** so drift shows up in review (ADR-0004) `[confirmed]`.
+- **Actor identity:** the maintainer commits as `yoss`; agent sessions mint `<model>-<persona>-<suffix>` ids per the identity convention above `[default]`.

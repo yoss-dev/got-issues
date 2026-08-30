@@ -26,10 +26,45 @@ What "tested" means on this project. Applied by the Software Engineer persona du
 
 ## Project-specific rules
 
-> ⚠ **Replace during `bootstrap-project`.**
+Set at bootstrap 2026-08-30. Frameworks are `[default]` (agent-proposed, nobody objected); the *policies* below follow from confirmed constraints.
 
-- **Test frameworks & runners:** *TBD* `[open]`
-- **Test tiers & where they live:** *TBD — e.g., unit next to code, integration in `tests/`, E2E in `e2e/`.* `[open]`
-- **How to run the suite(s):** *TBD — exact commands agents must run before claiming green.* `[open]`
-- **Coverage expectations:** *TBD or "no numeric target"* `[open]`
-- **Test data & fixtures policy:** *TBD — no production data in tests `[default]`.*
+### Test frameworks & runners
+
+- **xUnit** as the test framework and runner (`dotnet test`) `[default]`.
+- **`WebApplicationFactory`** for API-level tests through the real ASP.NET Core pipeline `[default]`.
+- **Testcontainers** for PostgreSQL: integration tests run against a real database in a container, never an in-memory provider `[default]`. The EF Core in-memory provider does not enforce constraints or translate real SQL — a test that passes on it proves little.
+
+### Test tiers & where they live
+
+| Tier | Location | Runs against |
+| --- | --- | --- |
+| Unit | `<project>.UnitTests` beside the project under test | Pure logic, no I/O |
+| Integration / API | `<project>.IntegrationTests` | `WebApplicationFactory` + PostgreSQL in Testcontainers |
+| Contract | with the integration tests | The OpenAPI spec: responses validated against the declared schemas |
+
+- **Generated code is not unit-tested** — testing a generator's output tests the generator. Test the behaviour *behind* the generated contract `[default]`.
+- **Every endpoint in the specification has at least one integration test** against real PostgreSQL. This is a stated success criterion ([`PROJECT.md`](../PROJECT.md) §3) `[default]`.
+
+### How to run the suite
+
+Agents MUST run these before claiming green — "passes on my machine" with anything red is red:
+
+```bash
+dotnet build                          # must be warning-clean
+dotnet test                           # unit + integration (Docker must be running)
+./tools/generate.sh && git diff --exit-code   # spec/codegen drift check — must be empty
+```
+
+The drift check is part of the suite, not an extra: a non-empty diff means the committed code no longer matches the contract ([ADR-0004](../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)) `[confirmed]`.
+
+*(Exact script paths are established by the first implementation ticket; until then, run the equivalent commands and correct this section in that ticket.)*
+
+### Coverage expectations
+
+No numeric target `[default]`. The bar is behavioural: every acceptance criterion maps to a test, every endpoint has an integration test, every fixed bug has a regression test that fails without the fix.
+
+### Test data & fixtures policy
+
+- No production data in tests; no real personal data in fixtures `[default]`.
+- Each integration test owns its data and cleans up or runs against a fresh container — tests never depend on another test's leftovers `[default]`.
+- Auth in tests: obtain real tokens from the identity host where the test is about authorisation; otherwise use a test authentication handler. Never disable authentication globally to make a test pass `[default]`.
