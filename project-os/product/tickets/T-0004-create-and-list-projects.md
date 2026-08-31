@@ -101,6 +101,7 @@ Integration tests through `WebApplicationFactory` against PostgreSQL in Testcont
 ## Relevant ADRs & Documentation
 
 - [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) — contract-first pipeline
+- [T-0020](T-0020-correlate-a-500-with-its-cause.md) — **the one item deferred from this ticket**: the 500 this ticket added carries no correlation identifier, and neither does its log line
 - [ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md) — **raised by this ticket**: role restrictions are enforced by policy attributes and declared in the contract as a description plus a 403
 - [ENGINEERING.md](../../standards/ENGINEERING.md) — the contract-first rule and mandatory pagination
 - [TESTING.md](../../standards/TESTING.md), [SECURITY.md](../../standards/SECURITY.md)

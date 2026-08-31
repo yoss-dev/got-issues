@@ -250,3 +250,35 @@ puts operational endpoints outside it.
   `errors`/`traceId` question.
 - **Open questions / blockers:** none.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — A second instance of the declaration-versus-enforcement gap (claude-rev-3e77, relayed)
+
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md)
+names the gap it leaves: nothing checks that a declared `403` and an enforcing policy agree. There
+is now a second, sharper instance, verified rather than argued — **remove both `'500'`
+declarations from `spec/openapi.yaml`, regenerate, and every gate stays green**, `check-drift.sh`
+included. The API keeps returning 500s the contract no longer mentions.
+
+The two instances fail in **opposite directions**, which is what makes them worth citing together:
+
+| Instance | The drift |
+| --- | --- |
+| `403` | **Enforced** by a policy attribute, possibly **undeclared** in the contract |
+| `500` | **Declared** in the contract, silently **undeclarable** while the behaviour continues |
+
+So it is not one edge case in one direction: the contract and the implementation can diverge
+either way and nothing notices. A conformance tier that only checked "everything declared is
+returned" would catch neither.
+
+One trap for whoever runs that experiment, since this project has now been caught by it three
+times: run it **uncommitted** and `check-drift.sh` exits **2**, which looks like a kill and is the
+dirty-tree guard refusing to run. Commit the regenerated output first, or the mutation proves
+nothing — the same shape as the `PendingModelChangesWarning` and the compiler-rejected mutant
+recorded on [T-0004](T-0004-create-and-list-projects.md).
+
+- **Did:** Recorded the second instance and the direction asymmetry.
+- **Decided:** nothing.
+- **Remaining:** unchanged.
+- **Open questions / blockers:** none.
+- **Test state:** n/a — not started.
