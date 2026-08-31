@@ -2,9 +2,9 @@
 id: T-0004
 title: Create and list projects
 type: feature
-status: committed
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: none
 accepted_by: none
 depends_on: [T-0002, T-0003, T-0009]
