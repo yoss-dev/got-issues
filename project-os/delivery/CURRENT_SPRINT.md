@@ -84,6 +84,39 @@ Nine other tickets are `ready` and none is committed: T-0008, T-0012, T-0013, T-
 T-0017, T-0018, T-0019 and T-0007. That is a healthy buffer, and the reason none of them is
 here is that they do not serve this goal.
 
+### Governance change — mutation narrowed, exploration strengthened (2026-08-31)
+
+**Approved by the maintainer (human) on 2026-08-31**, raised by them mid-sprint: *"our current
+mutation approach to testing is wasting a lot of time and resources"*. Applied via
+[`evolve-governance`](../skills/evolve-governance/SKILL.md) in one commit. Owning personas: QA/Test
+Engineer for [TESTING.md](../standards/TESTING.md), Scrum Master for the three skills. To be
+folded into RETRO-SPRINT-003.
+
+**The evidence, counted rather than argued.** ~80 recorded mutants across seven tickets (T-0009
+alone: 33; T-0015: 19), **nine explicitly recorded as invalid**, and blocking review findings on
+both T-0004 and T-0005 that were about *mutation records* rather than about defects. Meanwhile the
+sprint's two most serious defects — an undeclared 500 with an empty body, and a migration that
+would have made every existing project's first issue unreadable — were found by **driving real
+infrastructure into a state the code was not built for**, and neither came from mutation.
+
+| Change | Artifact |
+| --- | --- |
+| Mutation required only where a test is the sole evidence for a load-bearing claim, or where a reviewer challenges one; exempt where a compiler, constraint or framework enforces it; one mutant per claim; no re-mutation of unchanged claims; cheapest tier | [TESTING.md](../standards/TESTING.md), [implement-ticket](../skills/implement-ticket/SKILL.md) |
+| New: *Exercise the system in a state it was not built in* — unanticipated input, **a database that already holds rows**, a dependency removed underneath a live service | [TESTING.md](../standards/TESTING.md) |
+| Acceptance's existing adversarial step sharpened with those three techniques and the evidence for them | [acceptance-test](../skills/acceptance-test/SKILL.md) |
+| Reviewers may demand a mutant when they doubt a claim — and may not demand re-mutation of a claim whose code has not changed | [review-code](../skills/review-code/SKILL.md) |
+
+**What is deliberately unchanged:** the principle that a test is not shown to guard a behaviour
+until seen to fail, and the rule that a mutant only counts if it reaches the assertion. The
+narrowing is about when a demonstration is *required*, not about what counts as one.
+
+**Precondition checked:** T-0005 is the only in-flight ticket; its mutation evidence is complete
+and valid, and nothing here lets it newly pass a gate.
+
+**How we would notice this was wrong:** a coverage claim reaching acceptance unchallenged and
+proving false. That is the SPRINT-001 failure the original mandate was built for, and it is the
+signal that this narrowing went too far.
+
 **Process changes now in force** from [RETRO-SPRINT-002](retrospectives/RETRO-SPRINT-002.md),
 applying to every ticket in this sprint: a mutant only counts if the build accepts it; a
 mutation record must state what its mutant proves; the testing standards bind the test

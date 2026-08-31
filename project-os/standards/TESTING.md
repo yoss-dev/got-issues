@@ -21,17 +21,43 @@ What "tested" means on this project. Applied by the Software Engineer persona du
 
 ### Claims about coverage must be falsifiable
 
-**A test is not shown to guard a behaviour until it has been seen to fail when that behaviour breaks.** Whenever a ticket claims that a test covers X — especially when another ticket's Definition of Done depends on it — the claim is verified by *mutation*: break X deliberately, observe the test go red, restore it, and record both in the Work Log.
+**A test is not shown to guard a behaviour until it has been seen to fail when that behaviour breaks.** That principle stands. What follows is when the repository requires you to *demonstrate* it, because demonstrating it everywhere proved to cost more than it returned.
 
-The reason is empirical rather than theoretical. In SPRINT-001 every blocking review finding was a coverage or correctness claim that read as true and was not ([RETRO-SPRINT-001](../delivery/retrospectives/RETRO-SPRINT-001.md)): tests that all migrated first and so could not detect a startup migration; a health check that reported healthy on a host that could issue no tokens. Neither would have failed a build. Mutation found both in minutes.
+**Mutation is required when the test is the only thing standing between a claim and nothing:**
 
-The habit generalises: **take the claim, ask what would have to be true for it to be false, then try to make it false.**
+- the claim is one another ticket's Definition of Done depends on;
+- or a reviewer or acceptor challenges a coverage claim — then the answer is a mutant, not an argument.
 
-**A mutant only counts if the build accepts it.** A mutation the compiler or an analyser rejects was killed by the *build*, not by a test — that is a stronger guarantee than a test, and a different claim. Record it as what it is ("this invariant is enforced by the compiler"), then run a mutant the build accepts, because only that one can tell you whether anything is asserting the behaviour. SPRINT-002 produced two: `if (false)` rejected under CS0162, and a deleted call site rejected under CA1822 — both briefly read as coverage.
+**Mutation is not required — and should not be performed for its own sake — when:**
 
-**The mutation record states what the mutant proves, not what you hoped it proved.** A mutant killed by both the old and the new code shows the new code works; it does not show the new code is *stronger*. Demonstrating strength needs a mutant the old code survives. Under this standard the record is the evidence, so a record that overstates its mutant is the same defect as an assertion that overstates its subject — SPRINT-002 produced one of those too, in the document written to prove the defect had stopped.
+- the property is enforced by the compiler, an analyser, a database constraint or a framework invariant. **Record the enforcement instead**: it is a stronger guarantee than a test, and a mutant the build rejects is evidence about the build (see below).
+- the claim is already evidenced by a test that has been observed failing during development. Say so; a green test you watched go red is the same evidence.
 
-**When a finding says an assertion is satisfied by anything, a narrower assertion is not the fix.** Ask what else could satisfy the replacement. SPRINT-002 replaced "asserts that something threw" with "asserts a word the tool being tested also prints" — the same defect, one size smaller. Prefer markers only the assertion itself can emit.
+**Proportionality, once you are mutating:**
+
+- **One mutant per claim, not per assertion.** A claim with five assertions needs one mutant that reaches them, not five.
+- **Do not re-mutate an unchanged claim.** Re-run only when the code under it changed shape, and say which change made the old evidence stale.
+- **Use the cheapest tier that can host the mutant.** A mutant the integration tier can see must not be run against the smoke tier.
+
+#### A mutant only counts if it reaches the assertion
+
+The build accepting it is necessary and not sufficient. A mutant can be stopped by the compiler, by an analyser, by a test fixture's own guard, or by an unrelated failure — and a **red suite is not proof the mutant caused it**. Before believing a red or a green, confirm the thing you changed is the thing that caused it.
+
+SPRINT-003 produced four invalid mutants inside two tickets: one rejected by the compiler (CS0534), one stopped by EF's `PendingModelChangesWarning` before a single assertion ran, one whose failure was an unrelated 401, and one that silently did nothing because it was registered before the call it meant to override. Two came from reviewers rather than implementers. Each expectation was reasonable, which is what made the check feel unnecessary.
+
+A mutant the build rejects is **mis-filed, not worthless**: record it as a compiler- or constraint-enforced invariant, then run one the build accepts.
+
+#### The mutation record states what the mutant proves
+
+A mutant killed by both the old and the new code shows the new code works, not that it is stronger; showing strength needs a mutant the old code survives. Under this standard the record *is* the evidence, so a record that overstates its mutant is the same defect as an assertion that overstates its subject.
+
+#### Why the mandate is narrow
+
+Both parts of this section are empirical. In SPRINT-001 every blocking review finding was a coverage claim that read as true and was not, which is why mutation became mandatory. By SPRINT-003 the practice had produced roughly eighty recorded mutants, nine of them invalid, and had begun generating review rounds about mutation records rather than about defects.
+
+Where it earned its place, it did so decisively — a mutant that **passed** revealed that a stack check could not detect a missing migration step at all ([T-0015](../product/tickets/T-0015-compose-stack-smoke-test.md)), and another showed that twelve of thirteen tests could not distinguish a correct issue-number allocator from one that duplicates under concurrency ([T-0005](../product/tickets/T-0005-create-and-read-issues.md)). Both fit the narrowed rule above.
+
+Where the sprint's two most serious defects came from was somewhere else entirely: **exercising the running system in a state it was not built in.** See the next section.
 
 ### Verification must be attributable
 
@@ -46,6 +72,16 @@ Any verification against a running service therefore:
 The same principle applies to tool output: **read the exit status of the tool you are checking, not of a pipeline it feeds.** `dotnet format … | grep …` reports grep's status.
 
 SPRINT-001 recorded seven instances of a green signal measured from the wrong source, including the same port-collision false pass made twice — the second time by the person who had just written up the first as a lesson.
+
+#### Exercise the system in a state it was not built in
+
+The highest-yield verification this project has done is not a test and not a mutant. It is putting the running system into a state nobody wrote it for, and watching:
+
+- a request carrying input nobody anticipated — a `U+0000` in a name produced an HTTP 500 with a zero-length body, a response the contract never declared ([T-0004](../product/tickets/T-0004-create-and-list-projects.md));
+- a **database that already holds rows** — reverting a stack to the previous schema and running the real migrator revealed that every existing project's first issue would have been numbered 0, unreadable through the only declared read path ([T-0005](../product/tickets/T-0005-create-and-read-issues.md));
+- a dependency removed underneath a live service — stopping PostgreSQL under an authenticated API.
+
+Each was found by a person driving real infrastructure, and **none would have been found by any test in the suite, because every test starts from a state the code was designed for.** Both of the sprint's two worst defects came from this and neither came from mutation.
 
 **These rules bind the test infrastructure too.** Test code is not where the rules come from; it is somewhere they apply, and it is the place they are most often skipped. Concretely:
 
