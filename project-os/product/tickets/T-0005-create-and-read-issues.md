@@ -169,3 +169,117 @@ Two related notes from the same review, worth having before implementation rathe
 - **Remaining:** unchanged; this ticket stays `ready`.
 - **Open questions / blockers:** none.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — claimed, with the implementation plan
+
+Claimed at `4b66dc6`. Dependency verified in its own file: [T-0004](T-0004-create-and-list-projects.md)
+is `done`.
+
+#### The central problem: allocating a per-project number
+
+The ticket's Risks name the trap — `SELECT MAX(number)+1` duplicates under concurrency and passes
+every single-threaded test. Two candidates were left open for the implementer to measure. I am
+choosing the **counter column on the project row**, and the deciding argument is not the one I
+expected:
+
+| | Counter column | Sequence per project |
+| --- | --- | --- |
+| Allocation | `UPDATE projects SET next_issue_number = next_issue_number + 1 … RETURNING` — the row lock serialises allocations for **that project only** | `nextval()` on a dedicated sequence |
+| Requires DDL at runtime | **No** | **Yes** — `CREATE SEQUENCE` per project |
+| Behaviour on rollback | Number is returned; no gap | **Gap** — sequences are deliberately non-transactional |
+
+**The DDL requirement is what settles it.** [T-0013](T-0013-enforce-migration-boundary-with-db-privileges.md)
+exists to strip DDL rights from the application role so the migration boundary is enforced by the
+database rather than by convention. A design that needs the API to issue `CREATE SEQUENCE` on every
+project creation would make that ticket impossible to implement — I would be spending a decision
+that belongs to another ticket, in a direction it has already chosen against.
+
+The rollback difference is secondary but points the same way: AC1d says *no number is skipped*, and
+a sequence gives that only when nothing rolls back.
+
+**The counter is the allocator, not the guarantee.** A **unique index on `(ProjectId, Number)`**
+goes in alongside it. That is T-0004's lesson applied before the review round rather than after:
+the constraint is the guarantee, the allocator is the mechanism, and the concurrent test is the
+only one that can tell them apart.
+
+**Numbers are never reused** because the counter only moves forward — deleting an issue cannot
+hand its number to another. That is the property the ticket records for whoever adds deletion, and
+`MAX(number)+1` would have quietly broken it.
+
+#### Shape
+
+| Step | What |
+| --- | --- |
+| 1 | `spec/openapi.yaml`: `POST /projects/{projectKey}/issues`, `GET /issues/{issueKey}`, schemas `Issue`, `CreateIssueRequest` |
+| 2 | Generate; implement the generated contract |
+| 3 | Migration: `issues`, unique index on `(ProjectId, Number)`, `next_issue_number` on `projects` |
+| 4 | Tests, including the concurrent allocation |
+
+**Two paths, deliberately.** Creation is scoped to a project (`/projects/{key}/issues`), because an
+issue cannot exist without one and the project is where the number comes from. Reading is by the
+human identifier (`/issues/GOTI-1`), because that string is the thing people paste into chat, and
+requiring them to decompose it into a project and a number to fetch it would waste the identity
+scheme the PO chose. [T-0007](T-0007-list-and-filter-issues.md) will add
+`GET /projects/{key}/issues`, which is why creation lives on that path rather than at `/issues`.
+
+#### The constraint question this ticket inherits — and a trap inside it
+
+[T-0004](T-0004-create-and-list-projects.md) left a recorded hazard: its control-character pattern
+does two jobs, and only `U+0000` (unstorable in any text column) generalises. So `title` takes the
+single-line constraint and `description` must not.
+
+But `description` cannot simply take a NUL-only pattern, and this is worth settling with evidence
+rather than taste. `RegularExpressionAttribute` requires the match to span the **whole** value,
+while `$` in .NET matches *before* a trailing newline — so `^[^\u0000]*$` **rejects a description
+ending in a newline**, which is ordinary text. The options are: accept that (user-hostile in a way
+that shows up daily), anchor with `\A…\z` (correct in .NET, not valid ECMA-262, so the published
+contract would lie to other tooling), or drop the anchors (correct in .NET, meaningless to every
+other reader).
+
+I will measure which of these actually behaves how before choosing, and record the result. What I
+will **not** do is leave `description` unconstrained and let a `U+0000` reach PostgreSQL — that is
+exactly the acceptance failure T-0004 just closed.
+
+#### Test plan
+
+| AC | Test |
+| --- | --- |
+| AC1 | create in a project; `GOTI-1` returned; read back |
+| AC1b | first issue in a fresh project is **1**, not a global counter |
+| AC1c | two projects each start at 1 — `GOTI-1` and `PROJ-1` coexist |
+| AC1d | **ten concurrent creates in one project → ten distinct identifiers, numbers 1–10, none repeated or skipped** |
+| AC2 | read by identifier returns what the contract declares |
+| AC3 | create against an unknown project → 404 problem document, nothing written |
+| AC4 | read an unknown identifier → 404 problem document |
+| AC5 | unauthenticated → 401 on both, nothing written |
+| AC6 | `check-drift.sh` exit 0 |
+
+**Mutate first**, and the mutants must be verified to reach their assertions — this ticket's
+predecessor produced four that did not:
+
+1. Replace the counter with `MAX(number)+1` **and drop the unique index** → the concurrent test
+   must fail and the sequential ones must pass. That is the exact shape of T-0004's read-then-insert
+   mutant, which was the only one that showed the concurrent test earning its place.
+2. Keep the counter, drop the unique index → everything should still pass, which tells me the index
+   is currently untested *by behaviour* and is there as a guarantee against a future change. Worth
+   knowing rather than assuming.
+
+#### Risks I am carrying
+
+- **AC1d is the ticket.** Everything else is a repeat of T-0004's shape.
+- **A ten-way concurrent test against one row will serialise**, so it proves correctness rather than
+  throughput. That is the right trade here and worth stating so nobody reads the test as a
+  benchmark.
+- **The `description` question above** could expand if the honest answer is "the contract cannot
+  express this" — in which case it becomes a recorded decision rather than a silent controller
+  guard.
+
+- **Did:** Claimed; chose the allocation strategy with the argument that decides it; planned the
+  paths, the tests and the mutants.
+- **Decided:** counter column over sequence, on the strength of T-0013's direction; unique index as
+  the guarantee alongside it; two paths, creation scoped to the project and reading by identifier.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none blocking; the `description` constraint is a decision to make
+  with evidence during implementation.
+- **Test state:** not started.
