@@ -15,6 +15,18 @@ security:
 - bearerAuth: []
 tags:
 - description: |
+    A unit of work inside a project.
+
+    Every issue carries a **key** of the form `GOTI-1`: the project's key, a
+    hyphen, and a number allocated within that project. Numbering starts at 1 in
+    each project and is independent between them, so `GOTI-1` and `PROJ-1` both
+    exist and refer to different work.
+
+    A number is never reused. If an issue is ever removed, its number stays
+    retired rather than being handed to something else — `GOTI-7` pointing at
+    different work than it did last week would be worse than a gap.
+  name: Issues
+- description: |
     A project groups related work and owns a **key** — a short uppercase
     identifier such as `GOTI` that becomes the human-quotable half of every
     issue reference (`GOTI-123`).
@@ -123,6 +135,100 @@ paths:
       summary: Create a project.
       tags:
       - Projects
+  /projects/{projectKey}/issues:
+    post:
+      description: |
+        Creates an issue and allocates its number within the given project.
+
+        The number is allocated by the server and cannot be chosen.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        create an issue; a token carrying neither receives 403. Unlike creating a
+        project, this is not an administrative act.
+      operationId: createIssue
+      parameters:
+      - description: "The key of the project the issue belongs to, for example `GOTI`."
+        explode: false
+        in: path
+        name: projectKey
+        required: true
+        schema:
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+          description: The issue was created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Create an issue in a project.
+      tags:
+      - Issues
+  /issues/{issueKey}:
+    get:
+      description: |
+        Returns the issue with the given key, for example `GOTI-1`.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        read an issue; a token carrying neither receives 403. There is no per-project
+        visibility — roles in this system are global.
+
+        Issues are addressed by the key people quote rather than by project and
+        number separately, because that string is the thing written in commit
+        messages and chat.
+      operationId: getIssue
+      parameters:
+      - description: "The issue's key, for example `GOTI-1`."
+        explode: false
+        in: path
+        name: issueKey
+        required: true
+        schema:
+          maxLength: 20
+          minLength: 4
+          pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$"
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+          description: The issue.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Read an issue by its key.
+      tags:
+      - Issues
 components:
   responses:
     BadRequest:
@@ -145,6 +251,14 @@ components:
       description: |
         The credentials were valid, but the caller's role does not permit this
         operation. Distinct from 401: the caller is known, and still refused.
+    NotFound:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The addressed resource does not exist — a project that was never created,
+        or an issue key that corresponds to nothing.
     InternalServerError:
       content:
         application/problem+json:
@@ -188,6 +302,104 @@ components:
         instance:
           description: A URI identifying this specific occurrence.
           type: string
+    Issue:
+      description: A unit of work inside a project.
+      example:
+        number: 1
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        projectKey: projectKey
+        description: description
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        title: title
+        key: key
+      properties:
+        id:
+          description: The issue's identifier.
+          format: uuid
+          type: string
+        key:
+          description: |
+            The issue's key: the project's key, a hyphen, and the number allocated
+            within that project. This is the identifier people quote.
+          pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$"
+          type: string
+        projectKey:
+          description: The key of the project this issue belongs to.
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        number:
+          description: |
+            The issue's number within its project. Allocated by the server, starting
+            at 1 in each project, and never reused.
+          minimum: 1
+          type: integer
+        title:
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded, for the
+            same two reasons a project name excludes them: PostgreSQL cannot store
+            `U+0000` at all, and the ASCII line breaks and tabs in that range have no
+            place in a title.
+
+            Deliberately **not** full Unicode line-break handling: `U+0085` and
+            `U+2028` are accepted. Refinement asked this ticket to decide rather than
+            inherit the limit, and the decision is to keep the constraint the narrow,
+            checkable one — a title carrying an exotic separator is a cosmetic
+            problem, while a title carrying `U+0000` cannot be stored at all.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+        description:
+          description: |
+            Optional free text. Multi-line **by design** — unlike a title, this is
+            where the reasoning goes, so line breaks are permitted and only `U+0000`
+            is excluded, because PostgreSQL cannot store it in any text column.
+
+            That difference is deliberate: the constraint on a title is about being
+            one line, the constraint here is about being storable, and they are not
+            the same rule (recorded on T-0005 from T-0004's review).
+          maxLength: 10000
+          nullable: true
+          pattern: "^[^\\u0000]*$"
+          type: string
+        createdAt:
+          description: "When the issue was created, in UTC."
+          format: date-time
+          type: string
+      required:
+      - createdAt
+      - id
+      - key
+      - number
+      - projectKey
+      - title
+    CreateIssueRequest:
+      example:
+        description: description
+        title: title
+      properties:
+        title:
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded — see
+            `Issue.title` for both reasons and for the limit this constraint
+            deliberately stops at.
+
+            `U+0085` and `U+2028` are accepted: the constraint is the narrow,
+            checkable one.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+        description:
+          description: |
+            Optional free text; multi-line is expected. Explicitly null means the
+            same as omitting it.
+          maxLength: 10000
+          nullable: true
+          pattern: "^[^\\u0000]*$"
+          type: string
+      required:
+      - title
     Project:
       description: "A project, which groups related work and owns the key its issues\
         \ are numbered under."

@@ -283,3 +283,968 @@ predecessor produced four that did not:
 - **Open questions / blockers:** none blocking; the `description` constraint is a decision to make
   with evidence during implementation.
 - **Test state:** not started.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — built; the wrong answer passes twelve of thirteen tests
+
+Branch `t-0005-issues`. **100 tests green** (17 unit, 83 integration), smoke 13/13, all gates
+exit 0.
+
+#### AC1d earned its place, exactly as the ticket predicted
+
+The Risks section said the obvious implementation *"will duplicate identifiers under simultaneous
+creates, and every test written against a single-threaded harness will pass"*. Measured:
+
+| Mutant (build and EF both accept it; migration regenerated so it reaches the tests) | Result |
+| --- | --- |
+| `MAX(number) + 1` and no unique index — the implementation the ticket names as wrong | **12 of 13 pass.** Only `AC1d_ten_concurrent_creates…` fails |
+| Correct allocator, unique index dropped | **All 13 pass** |
+
+The first row is the ticket's own prediction, confirmed rather than assumed. Twelve tests —
+including every other numbering criterion — cannot tell the wrong answer from the right one.
+
+**The second row is worth stating plainly rather than hiding.** The unique index is *not*
+currently proven by behaviour: with the correct allocator in place, dropping it changes nothing
+observable. It is there as a guarantee against a future change to the allocator, which is the
+role T-0004 established for it, and I would rather record that it is untested than let the table
+imply otherwise. Making it fail would mean shipping a deliberately broken allocator to prove a
+constraint, which is not worth it.
+
+#### Why a counter column and not a sequence
+
+Recorded at plan time and unchanged by implementation. A sequence per project needs
+`CREATE SEQUENCE` at runtime, and [T-0013](T-0013-enforce-migration-boundary-with-db-privileges.md)
+exists to take DDL rights away from the application role — choosing a sequence would spend a
+decision that belongs to that ticket, against the direction it has already chosen. Sequences are
+also non-transactional, so a rolled-back create leaves a gap, and AC1d asks for no skipped numbers.
+
+`UPDATE projects SET "NextIssueNumber" = "NextIssueNumber" + 1 … RETURNING` in one statement, inside
+the creating transaction: PostgreSQL's row lock serialises concurrent creates **for that project
+only**, and no row comes back when the project does not exist — which is AC3's 404 without a
+second query or a second race.
+
+#### The `description` question: I predicted a problem that does not exist
+
+The plan said `RegularExpressionAttribute` requires a whole-value match while `$` matches before a
+trailing newline, so `^[^\u0000]*$` would reject a description ending in a newline — and offered
+two uglier alternatives. **Measured, and the prediction was wrong.** All three candidate patterns
+accept plain, multi-line and trailing-newline text and reject `U+0000`, because `[^\u0000]*`
+consumes the newline (unlike `.`), so the match spans the whole value and `$` matches at the end.
+
+Two minutes of measurement removed a decision I had planned to agonise over, and the honest
+version of the ticket's own advice — *the implementer should measure* — applied to a question the
+implementer invented. Recorded because the previous ticket's central lesson was exactly this:
+**a prediction about a tool's behaviour is not an observation of it**, and it is as wrong when it
+predicts a problem as when it predicts safety.
+
+So the constraint split T-0004's review recorded holds cleanly: `title` carries the single-line
+pattern, `description` excludes only `U+0000`, and a test asserts both directions — a title with
+a newline is rejected, a description with paragraph breaks is accepted, and neither may carry NUL.
+
+#### Decisions
+
+- **Two paths.** Creation is scoped to the project (`POST /projects/{projectKey}/issues`) because
+  the project is where the number comes from; reading is by the key people quote
+  (`GET /issues/GOTI-1`). [T-0007](T-0007-list-and-filter-issues.md) will add
+  `GET /projects/{key}/issues`, which is why creation lives there rather than at `/issues`.
+- **Creating an issue is a `member` act.** `PROJECT.md` §5 names three administrative acts and
+  this is not one of them (ADR-0008's shape: the restriction is declared in the contract's
+  description and by a declared 403, and enforced by the policy attribute).
+- **The foreign key is `Restrict`, not `Cascade`.** Nothing deletes projects yet; when deletion
+  arrives it should be a decision someone makes rather than one this line already made.
+- **Numbers are never reused** because the counter only moves forward. `MAX(number)+1` would have
+  broken that quietly as well as duplicating — an issue deleted later would hand its number on.
+
+- **Did:** Specified the issue resource, generated, implemented, migrated, and tested all six
+  criteria; measured the regex question rather than choosing; ran both planned mutants.
+- **Decided:** as above.
+- **Remaining:** review, then acceptance.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0005-issues`.
+- **Test state, measured in this worktree:** `dotnet test` **100/100** · `tools/smoke.sh` **13/13**
+  exit 0 · build **0 warnings** · `dotnet format` exit 0 both · `validate.py` exit 0 ·
+  `check-drift.sh` exit 0 after commit.
+- **For QA to probe:** the unique index is unproven by behaviour (above); and whether anything
+  can produce a gap in numbering — the counter returns numbers on rollback, but I have not tested
+  a rollback path, because no request currently fails between allocation and insert.
+
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-5c14) — review of `t-0005-issues` @ `b472465`
+
+Independent review per [review-code](../../skills/review-code/SKILL.md). Reviewer is not the
+implementer (`claude-sm-9d4e`). Personas: Software Engineer, plus Architect — this change adds the
+entity everything else in the domain hangs off, and a numbering scheme that is expensive to change.
+
+**Verdict: Request changes.** Two blocking findings. Neither is in the allocator: the allocator is
+correct, and I tried hard to break it. B1 is one word in the migration — the counter's *initial*
+value for projects that already exist — and it reproduces this project's signature defect exactly:
+a 201 whose body violates the schema the same document declares, and an issue that can never be
+read back through the only declared read path. B2 is an ADR-0008 half-declaration on `getIssue`.
+
+#### Gates, all run in this worktree (`/Users/yoss/work/got-issues--t-0005`), exit codes read from each tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | 100 passed — 17 unit, 83 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean beforehand, so 0 is a drift pass and not the dirty-tree 2 |
+| `./tools/smoke.sh` | 0 | 13/13, 5m10s |
+| `python3 tools/validate-project-os/validate.py` | 0 | 20 tickets, 8 ADRs |
+
+Scope fidelity: clean. Every In Scope item is present; nothing from Out of Scope appears — no
+lifecycle fields, no listing or filtering, no comments, no edit or delete. Every acceptance
+criterion has a corresponding change and at least one test.
+
+**Method note, so nobody mistakes me for a co-implementer.** I mutated implementation code five
+times to verify coverage claims, ran the suite, and restored with `git checkout -- apps/` each
+time; `git status --porcelain` is empty and `IssuesTests` is 13/13 on the restored tree. I fixed
+nothing. I also stood up a full Compose stack under its own project name (`-p rev5c14`), asserted
+each container healthy before trusting any response, confirmed attribution by stopping the API
+container and seeing the endpoint stop answering (curl exit 7), and tore it down with `down -v`.
+
+---
+
+## Blocking
+
+### B1 — The migration starts the counter at 0 for every project that already exists, so the first issue in such a project is `GOTI-0`
+
+`apps/GotIssues.Api/Data/Migrations/20260831193427_AddIssues.cs:15` (`defaultValue: 0`), against
+`apps/GotIssues.Api/Data/ProjectRecord.cs:37` (`public int NextIssueNumber { get; set; } = 1;`).
+
+The model says the counter starts at 1. The migration backfills existing rows with 0. Those two
+statements disagree, and the allocator — which is otherwise right — faithfully returns what it is
+given:
+
+```text
+UPDATE projects SET "NextIssueNumber" = "NextIssueNumber" + 1 ... RETURNING "NextIssueNumber" - 1
+        counter 0  ->  sets it to 1, returns 1 - 1 = 0
+```
+
+New projects are unaffected: EF writes the CLR default of 1 on insert, so a project created after
+this migration numbers from 1 and every test in the suite passes. The defect is reachable only on
+the upgrade path — which is the normal path. `compose.yaml:119-121` declares `postgres-data` as a
+**named volume**, T-0004 is `done` and shipped project creation, and the migration runs against
+whatever is already there.
+
+**Reproduced end to end on a real stack**, not inferred:
+
+1. Brought the stack up and created project `GOTI` through the API.
+2. Rolled the database back to the pre-T-0005 schema (dropped `issues`, dropped the
+   `NextIssueNumber` column, removed the `AddIssues` row from `__EFMigrationsHistory`) — the state
+   a deployment was in with T-0004 shipped and T-0005 not yet applied. The `GOTI` row survived.
+3. Ran the real migrator, exactly as Compose does on deploy: `docker compose run --rm migrator`.
+   It applied `20260831193427_AddIssues` and left `GOTI."NextIssueNumber" = 0`.
+4. Called the API:
+
+```text
+POST /projects/GOTI/issues   ->  201  {"key":"GOTI-0","number":0,...}
+GET  /issues/GOTI-0          ->  400  application/problem+json
+GET  /issues/GOTI-1          ->  404
+POST /projects/GOTI/issues   ->  201  {"key":"GOTI-1","number":1,...}   (the *second* issue)
+```
+
+What that costs, precisely:
+
+- **AC1b fails.** "Given a project with no issues, when the first issue is created, then it is
+  numbered **1**." It is numbered 0.
+- **The 201 body violates the contract that produced it.** `Issue.key` declares
+  `^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$` and `Issue.number` declares `minimum: 1`
+  (`spec/openapi.yaml:319-336`). `GOTI-0` and `0` satisfy neither. This is T-0004's
+  409-with-the-wrong-media-type and its undeclared 500 in a third costume: the document promising
+  one thing and the system delivering another.
+- **The issue is created and cannot be read.** `GET /issues/{issueKey}` carries the same pattern,
+  so the only declared read path returns 400 for the key the create just handed out. Not a 404 —
+  a 400, telling the caller their own key is malformed.
+- **`GOTI-1` stops meaning the same thing across projects.** Numbering runs 0, 1, 2 in an upgraded
+  project and 1, 2, 3 in a new one, so `GOTI-1` is the second issue in one and the first in the
+  other — a softer version of the reuse the ticket says must never happen.
+
+**Mutation evidence for the API-level claim** (mutant E, below): setting the CLR initialiser to 0 —
+precisely the state the migration leaves a pre-existing row in — turns **5 of 13** tests red,
+including AC1, AC1b, AC1c, AC1d and AC2, with `Expected: "GOTI-1" / Actual: "GOTI-0"`. So the suite
+*would* catch this; nothing in it ever reaches a project row created before the migration.
+
+**The fix is `defaultValue: 1`.** Two things worth doing alongside it, both cheap:
+
+- Consider `HasDefaultValue(1)` on the property so the model and the database agree. Today the
+  column is left as `integer NOT NULL DEFAULT 0` in PostgreSQL (verified against
+  `information_schema.columns`) while the EF model declares no default at all — invisible to EF,
+  and a trap for any future insert path that does not go through the entity.
+- A test that exercises the upgrade path rather than a fresh schema. The whole defect lives in the
+  gap between "migrate an empty database" and "migrate a database with rows in it", and every test
+  in the suite is on the near side of it.
+
+### B2 — `getIssue` declares a 403 and never says who is refused (ADR-0008)
+
+`spec/openapi.yaml:186-193` (the operation description) against
+`apps/GotIssues.Api/Controllers/IssuesController.cs:95`
+(`[Authorize(Policy = AuthorizationPolicies.Member)]`).
+
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md) requires
+**both halves**: "Every operation whose access depends on a role says so in its `description`, and
+declares `403` among its responses." `getIssue` has the second and not the first. Its access does
+depend on a role — a token carrying `role: superuser` is refused, which is exactly what the
+integration test `A_caller_with_an_unrecognised_role_is_refused` demonstrates for the sibling
+operation.
+
+`createIssue` gets this right ("Any caller holding a recognised role may create an issue; unlike
+creating a project, this is not an administrative act"), and so does T-0004's member-level
+`listProjects` ("Any caller holding a recognised role may list projects..."). `getIssue` is the
+outlier. The rule *is* stated — in the controller's XML doc, "Reading an issue is open to any
+recognised role" — which is the precise location ADR-0008 was raised to reject: a caller generating
+a client from the contract sees a 403 with no account of what triggers it.
+
+One sentence in the spec plus a regenerate. Blocking because it is an accepted ADR (precedence
+level 3), not because it is large.
+
+---
+
+## The five things I was asked to judge rather than accept
+
+### 1. Is the allocator correct under concurrency, and does the ten-way test earn its place?
+
+**Yes to both, and the test is doing more work than the record claims.**
+
+The allocation is right, and for the reason the plan gives. `UPDATE ... SET n = n + 1 ...
+RETURNING n - 1` is a single statement, so under PostgreSQL's default READ COMMITTED the second
+writer blocks on the row lock, **re-reads the row after acquiring it**, and increments the value
+the first writer committed. There is no read-then-write window to lose an update in. I measured the
+locking rather than assuming it, in a container of my own:
+
+| Probe | Result |
+| --- | --- |
+| Session A holds an open transaction having allocated in project `AAAA`; session B allocates in `AAAA` | **Blocks** (killed at 3s, exit 124) — the serialisation AC1d depends on |
+| Same, but session B allocates in **`BBBB`** | **Returns immediately, exit 0** — different rows, no contention |
+| Allocate inside a transaction, then `ROLLBACK` | Counter back to its prior value — **the number is returned, not burned** |
+
+So the case the test does not cover — **two concurrent creates in different projects must not block
+each other** — holds, and holds for a structural reason (the lock is on the project row, and there
+is one row per project). Worth a test only if someone later replaces this with a shared counter; I
+would not block on it. And a **create that fails after allocation does not burn a number**, because
+the increment is inside the transaction with the insert. See N1 for what is unproven there.
+
+**Is the ten-way test passing incidentally?** No — and the sharpest evidence is a mutant the
+implementer did not run. With `MAX(number)+1` substituted for the allocator but the unique index
+**kept** (mutant C), **5 of the 10 concurrent requests came back 500** with
+`application/problem+json`. Half the requests genuinely collided. `Task.WhenAll` over ten
+`WebApplicationFactory` clients is producing real overlap, not ten requests that happen to queue.
+
+The one honest limitation, which the plan already states: this proves correctness, not throughput.
+Ten creates against one row serialise by design.
+
+### 2. The recorded mutation evidence
+
+**Both recorded rows reproduce exactly. The negative was the right call to record, and it is
+understated.**
+
+| # | Mutant | Build/EF accept it? | Reaches the assertion? | Result | What it proves |
+| --- | --- | --- | --- | --- | --- |
+| A | `MAX(number)+1`, no explicit transaction, **unique index dropped** (migration `unique: false`; the model snapshot untouched, so no `PendingModelChangesWarning`) | Yes | Yes — fails on `numbers.Distinct().Count()`, downstream of `Assert.All(Created)`, so all 10 returned **201** | **12 of 13 pass.** Only AC1d fails: `Expected: 10 / Actual: 4` — six duplicate numbers, silently | The ticket's own prediction, confirmed. Twelve tests, including every other numbering criterion, cannot tell the wrong answer from the right one |
+| B | Correct allocator, **unique index dropped** | Yes | n/a — nothing fails | **All 13 pass** | The index is not proven by behaviour *while the allocator is correct*. The recorded negative is accurate |
+| C | `MAX(number)+1`, **unique index kept** — my addition | Yes | Yes — fails on `Assert.All(... Created)` with five 500s | **12 of 13 pass**, AC1d fails differently | The index is not inert. Under a broken allocator it is what converts silent duplicates into loud 500s. Also: the concurrent test achieves real overlap (5/10 collided), and the **declared 500 is real and carries `application/problem+json`** on `POST /projects/{key}/issues` |
+| D | Correct allocator, unique index kept, **explicit transaction removed** — my addition | Yes | n/a | **All 13 pass** | See N1: the transaction is as unproven as the index, and it guards a property the ticket states |
+| E | `NextIssueNumber` initialiser `= 1` changed to `= 0` — the state the migration leaves a pre-existing row in | Yes | Yes — `Expected: "GOTI-1" / Actual: "GOTI-0"` | **5 of 13 fail**: AC1, AC1b, AC1c, AC1d, AC2 | B1's API-level consequence, and proof the suite would catch it if any test reached a pre-migration project |
+
+**Was recording the unproven index the right call?** Yes, unambiguously. It is the honest form of a
+claim this project has twice been burned by, and the alternative — shipping a deliberately broken
+allocator to make a constraint fail — buys nothing. But mutant C shows the record is weaker than
+the truth, and the stronger sentence is available for free: *the index is unobservable only while
+the allocator is correct; the moment it is not, the index is the difference between a duplicate
+identifier and a 500.* That is a better argument for keeping it than "guarantee against a future
+change", and it is measured rather than asserted. Not blocking — the record is honest, just
+understated. Worth amending while the branch is open.
+
+### 3. The `description` versus `title` split, and the regex problem that was not there
+
+**The patterns behave exactly as claimed.** I re-measured all three candidates directly against
+`RegularExpressionAttribute.IsValid` rather than trusting either the plan or its correction. In the
+table, `NUL` stands for the literal `U+0000` character:
+
+| Input | `^[^NUL]*$` (shipped) | `\A[^NUL]*\z` | unanchored `[^NUL]*` | `title` pattern |
+| --- | --- | --- | --- | --- |
+| `para one` + blank line + `para two` | accept | accept | accept | REJECT |
+| **ends with a newline** | **accept** | accept | accept | REJECT |
+| ends with CRLF | accept | accept | accept | REJECT |
+| a lone newline | accept | accept | accept | REJECT |
+| empty | accept | accept | accept | REJECT (`+`, and `minLength: 1`) |
+| contains `U+0000` | **REJECT** | REJECT | REJECT | REJECT |
+| **`U+0000` as the last character** | **REJECT** | REJECT | REJECT | REJECT |
+| `U+0000` then a newline | REJECT | REJECT | REJECT | REJECT |
+| tab | accept | accept | accept | REJECT |
+| DEL `U+007F` | accept | accept | accept | REJECT |
+
+The predicted problem genuinely does not exist, and the recorded explanation is the right one:
+`[^NUL]*` consumes the newline (unlike `.`), so the match spans the whole value and `$` matches at
+true end-of-string. The trailing-`U+0000` case — the one where a naive reading of "`$` matches
+before a trailing newline" would have produced a *false accept* rather than a false reject — is
+also correctly rejected. Confirmed live on the stack: a description containing `U+0000` is 400, and
+a description of `line1`-newline-`line2`-newline round-trips through create and read intact.
+
+Choosing the ECMA-262-valid form over `\A...\z` was right for a published contract, and it costs
+nothing here. Recording a wrong prediction as a wrong prediction is the correct disposition; see N2
+for the one question in this area the ticket asked and the branch did not answer.
+
+### 4. Two paths, and `LastIndexOf('-')`
+
+**The split is right, and the parse is safe — verified rather than argued.**
+
+Creation scoped to the project is correct on the merits the plan gives: an issue cannot exist
+without a project, the number comes from the project row, and T-0007 will hang
+`GET /projects/{key}/issues` off the same path. Reading by the quotable key is right for the same
+reason the PO chose the identity scheme at all.
+
+`LastIndexOf('-')` is safe, and safe for a stronger reason than the comment gives. The comment says
+the shape is enforced before the method runs; the *structural* fact is that the project-key pattern
+`^[A-Z][A-Z0-9]{1,9}$` admits no hyphen, so a key matching
+`^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$` contains **exactly one** hyphen and `LastIndexOf` and
+`IndexOf` cannot disagree. `int.Parse` cannot overflow either: nine digits caps at 999,999,999,
+well inside `int`.
+
+I still probed the failure the comment depends on, because "a malformed key never reaches here" is
+the kind of claim this project keeps finding to be false. Against the live stack, every malformed
+shape returned **400 `application/problem+json`**, never a 500:
+
+```text
+/issues/GOTI1            400      /issues/GOTI-01           400
+/issues/goti-1           400      /issues/GOTI-1234567890   400
+/issues/GOTI-0           400      /issues/GOTI--1           400
+/issues/A-1              400
+```
+
+`[ApiController]`'s model-state filter runs at order -2000, ahead of the generated
+`[ValidateModelState]` action filter, which is why these come back as `ValidationProblemDetails`
+with the declared media type rather than the `application/json` `SerializableError` the generated
+filter would have produced. Worth knowing, since the generated filter is effectively dead here.
+See N6 — none of this is covered by a test.
+
+### 5. What the contract declares versus what the API delivers
+
+**Every declared response on both new operations is real.** I checked each against a live Compose
+stack rather than against the suite.
+
+| Declared | `POST /projects/{projectKey}/issues` | `GET /issues/{issueKey}` |
+| --- | --- | --- |
+| 201 / 200 | 201 `application/json`, body round-trips including a multi-line description | 200 `application/json` |
+| 400 | Real, `application/problem+json`: empty title, title with a newline, description with `U+0000`, description at 10 001 chars, malformed `projectKey`, non-JSON body, and a lone surrogate in the description | Real, `application/problem+json`: seven malformed key shapes, all 400 |
+| 401 | Real, `application/problem+json` (no token; garbage token) | Real, `application/problem+json` |
+| 403 | Real — `[Authorize(Policy = Member)]`, tested with `role: superuser` | Real by the same policy; **not tested** (N5) |
+| 404 | Real, `application/problem+json`, `type: https://httpstatuses.io/404`, nothing written | Real, `application/problem+json`, for both an unknown number and an unknown project inside the key |
+| 500 | **Real, `application/problem+json`** — observed under mutant C, five concurrent unique violations | Same handler; T-0004's smoke case covers the shape |
+
+Nothing is declared that the API cannot produce. The converse — something delivered but not
+declared — is where B1 lives: the 201 body itself, when the project predates the migration.
+
+Two smaller notes in the same family. `description` comes back as `null` when omitted, matching the
+nullable schema. And a lone surrogate in a description is rejected at 400 by `System.Text.Json`
+before it can reach Npgsql, so the `U+0000` pattern is not the only thing standing between user
+text and an encoding failure — good, and worth knowing it is the serialiser doing that one.
+
+---
+
+## Non-blocking
+
+- **N1 — The explicit transaction is exactly as unproven as the unique index, and guards more.**
+  Mutant D removed `BeginTransactionAsync`/`CommitAsync` entirely, leaving the bare
+  `UPDATE ... RETURNING`: **all 13 tests pass**. `UPDATE ... RETURNING` is atomic on its own, so
+  concurrency is unaffected; the transaction's only job is that a create failing *after* allocation
+  returns the number instead of burning it — which is half of AC1d's "no number is skipped", and
+  the implementer already flagged it for QA as untested. The record names the index as unproven and
+  is silent on the transaction. Both belong in the same sentence. I verified the underlying
+  property directly (`BEGIN; UPDATE ... RETURNING; ROLLBACK;` leaves the counter untouched), so the
+  design is right — it is the *record* that is asymmetric.
+
+- **N2 — A title may still contain `U+0085` and `U+2028`, and the ticket asked this ticket to
+  decide that.** Verified live: a title of `a`+`U+0085`+`b`+`U+2028`+`c` returns **201** and echoes
+  both characters back. The refinement entry above says plainly: *"`U+0085` and `U+2028` are not
+  excluded ... If a title needs more, decide it here rather than inheriting a rationale that was
+  scoped to a display name."* The branch inherits the pattern and records no decision. Keeping the
+  narrow checkable constraint is a perfectly good answer — but it is an answer the ticket asked for
+  and did not get. Related: the spec's title description reads "tabs and line breaks have no place
+  in a title" (`spec/openapi.yaml:333-334`), which overstates what the pattern does, since `U+0085`
+  and `U+2028` *are* line breaks and are accepted. One recorded sentence closes both.
+
+- **N3 — No test covers cross-project independence under concurrency.** AC1c covers independent
+  *numbering*; nothing covers independent *locking*. I verified it at the database level (above).
+  It is structural, so I would not add a test today — but if the allocator is ever replaced with
+  anything sharing a row, this is the property that disappears silently.
+
+- **N4 — `CreateIssue` re-reads the project row it has just locked.** `IssuesController.cs:68-71`
+  issues a second `SELECT` for `project.Id` and `project.Key` immediately after the `UPDATE`,
+  inside the same transaction. `RETURNING "Id", "NextIssueNumber" - 1` would return both from the
+  statement that already has the row. One round trip on the hot path; take it or leave it.
+
+- **N5 — Nothing asserts the 403's body, and `getIssue`'s 403 has no test at all.**
+  `A_caller_with_an_unrecognised_role_is_refused` asserts the status code only, and covers
+  `createIssue` alone. T-0004's review recorded "the 403's body is asserted nowhere" as a carried
+  gap; this ticket adds two more operations declaring 403 without narrowing it. The 403 body comes
+  from `UseStatusCodePages`, a different mechanism from the controller's `Problem(...)` — so it is
+  not covered by transitivity from the 404 assertions.
+
+- **N6 — The malformed-`issueKey` 400 has no test, and it is the safety property the parse depends
+  on.** `GetIssue`'s comment states the invariant that stops `LastIndexOf` returning -1; nothing
+  enforces it. It holds today (I measured seven shapes), and it holds because of a `pattern` in the
+  spec — one spec edit away from turning that line into an `ArgumentOutOfRangeException` and an
+  undeclared 500. One `[Theory]` over the shapes above makes the contract's role explicit.
+
+- **N7 — No unit tests were added.** Defensible: the allocator is inherently a database behaviour
+  and belongs in the integration tier, and the only pure logic in the diff is the key split, which
+  N6 covers better. Recorded so the 17/83 split reads as a noted choice rather than an oversight.
+
+---
+
+- **Did:** Reviewed the full diff of `t-0005-issues` @ `b472465` against `main`; ran every gate in
+  this worktree; reproduced both recorded mutants and ran three more; measured the allocator's
+  locking, rollback and cross-project behaviour directly in PostgreSQL; measured all candidate
+  regex patterns against `RegularExpressionAttribute`; probed every declared response of both new
+  operations against a live Compose stack; and reproduced the migration defect end to end through
+  the real migrator.
+- **Decided:** **Request changes** — B1 (the migration backfills the counter to 0, so the first
+  issue in any pre-existing project is `GOTI-0`: AC1b fails, the 201 body violates the declared
+  `Issue` schema, and the issue cannot be read back) and B2 (`getIssue` declares a 403 without the
+  description ADR-0008 requires beside it). N1 to N7 are the implementer's to take or leave.
+- **Remaining:** implementer addresses B1 and B2 on the branch and re-requests review.
+- **Open questions / blockers:** none. B1's fix is `defaultValue: 1`; whether to add
+  `HasDefaultValue(1)` and an upgrade-path test is the implementer's call, and I would take both.
+- **Branch / PR:** `t-0005-issues` @ `b472465`.
+- **Test state, measured in this worktree:** `dotnet test` **100/100** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0. Working tree
+  restored and clean after mutation; `IssuesTests` 13/13 on the restored tree.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — B1 was a real upgrade defect, and every test was blind to it
+
+`claude-rev-5c14` found a defect that would have shipped, and found it by doing the one thing no
+test in this repository does: **reverting a live stack to the previous schema and running the real
+migrator against it.**
+
+#### B1 — the first issue in every existing project would have been numbered zero
+
+`NextIssueNumber` was declared with a CLR initialiser (`= 1`) and no database default, so the
+migration backfilled existing rows with **0**. `UPDATE … +1 RETURNING …-1` then returns 0, and the
+first issue in any project created before this ticket gets the key `GOTI-0` — which violates the
+`^…-[1-9][0-9]{0,8}$` pattern and the `minimum: 1` **this same document declares**, and which the
+read path therefore refuses with 400. The issue would exist and be unreachable.
+
+Reproduced by the reviewer end to end: `201 {"key":"GOTI-0","number":0}`, then `GET /issues/GOTI-0`
+→ 400. [T-0004](T-0004-create-and-list-projects.md) is `done` and `compose.yaml` uses a named
+volume, so this is the ordinary upgrade path rather than a hypothetical.
+
+**Why nothing caught it: every test in the suite migrates an empty schema.** Not one depended on
+what a migration does to rows that already exist — so the entire class of upgrade defects was
+invisible, and would have stayed invisible for every future migration too.
+
+Fixed with `HasDefaultValue(1)` in the model, so the default lives in the database rather than only
+in the CLR initialiser, and the migration regenerated to `defaultValue: 1`.
+
+**`UpgradePathTests` closes the instance and part of the class — not the class.** *(Corrected after
+re-review; the original sentence claimed it closed the class, and that overstatement is struck
+here rather than edited away.)* It migrates to the schema as it stood *before* this ticket, inserts
+a project, upgrades, and asserts the first issue is number 1 and readable. Mutation-proved by
+restoring `defaultValue: 0`: `Expected: 1, Actual: 0`, and the mutant fails on the `number`
+assertion *after* the 201, so the whole upgrade path executed.
+
+What it does generalise: `MigrateAsync()` goes to latest, so that seeded project row is carried
+through **every future migration**. What it does not: pre-existing rows in any other table —
+[T-0006](T-0006-issue-lifecycle-fields.md) backfills lifecycle columns onto `issues`, the same
+defect shape one table over, and there are no pre-existing issues here.
+
+**The sharper statement of the class is the reviewer's, and it is what makes this a ticket rather
+than a test:** B1 was a **model-versus-database divergence sitting in the gap between two gates
+that both look elsewhere.** EF's `PendingModelChangesWarning` compares the model to the migration
+*snapshot*; `check-drift.sh` compares the *spec* to generated code. **Nothing compares the model to
+the database.** A gate that did would have caught B1 without anyone thinking about upgrades at all
+— which is what distinguishes closing a class from covering a case.
+
+That gate is now [T-0021](T-0021-prove-migrations-against-populated-databases.md), created by the
+reviewer, carrying both candidate mechanisms and an acceptance criterion requiring the mutant be
+killed *for the schema reason*.
+
+#### B2 — a declared 403 with nothing saying who is refused
+
+`getIssue` declared `403` and its description never said who receives it, which is exactly half of
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md)
+— the ADR raised on T-0004 *because* the rule was recorded only in a controller comment. I put the
+rule in an ADR one ticket ago and then broke it in the next. Both operations now say who may call
+them and what a caller lacking a role receives.
+
+#### N2 — a decision refinement asked this ticket to make, which I had inherited instead
+
+Titles accept `U+0085` and `U+2028`, and the specification said "line breaks have no place in a
+title", which claims more than the pattern delivers. Decided rather than inherited: the constraint
+stays the **narrow, checkable one**, and the document now says so and says what it excludes. A
+title carrying an exotic separator is cosmetic; a title carrying `U+0000` cannot be stored at all,
+and only the second is worth a constraint that has to be got right.
+
+#### On the reviewer's amendment to my own record
+
+I recorded that dropping the unique index changes nothing observable. The reviewer's addition is
+sharper and I am adopting it: **the index is unobservable only while the allocator is correct.**
+Break the allocator and it is the difference between a silent duplicate and a loud 500 — which the
+reviewer measured, seeing 5 of 10 concurrent requests return 500 with `MAX+1` *and the index kept*,
+where the index-dropped variant returned ten 201s and four issues. So the index is not decorative:
+it converts a data-corruption bug into a visible failure. That is worth more than "untested".
+
+- **Did:** Fixed the backfill default and regenerated the migration; added `UpgradePathTests` and
+  mutation-proved it; put the 403 rule in both operations' descriptions; decided the title
+  constraint instead of inheriting it; amended the index record.
+- **Decided:** the database carries the default, not just the CLR initialiser; the title constraint
+  stays narrow and says so.
+- **Remaining:** re-review.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **101/101** (17 unit, 84 integration) · build 0 warnings ·
+  `dotnet format` exit 0 both · `validate.py` exit 0 · drift and smoke below.
+
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-5c14) — re-review of `t-0005-issues` @ `b71d037`
+
+Second pass. Reviewer still not the implementer (`claude-sm-9d4e`).
+
+**Verdict: Request changes.** One blocking finding, and it is a sentence rather than a defect:
+the Work Log claims `UpgradePathTests` "closes the class, not just the instance", and measurement
+does not support that. **B1 and B2 are genuinely closed** — I re-ran the exact live reproduction
+that found B1, against the fixed code, and it now behaves correctly. The code is done. What is left
+is one paragraph, and it matters because it is the paragraph that would stop the next person
+writing upgrade coverage for the next migration.
+
+#### Gates, all run in this worktree, exit codes read from each tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | **101 passed** — 17 unit, 84 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean beforehand, so a drift pass and not the dirty-tree 2 |
+| `./tools/smoke.sh` | 0 | 13/13, 5m09s |
+| `python3 tools/validate-project-os/validate.py` | 0 | 21 tickets, 8 ADRs |
+
+Mutants restored each time; `git status --porcelain` empty, `git diff b71d037 HEAD -- apps/ libs/
+spec/` empty.
+
+---
+
+## B1 — closed, verified by the method that found it
+
+Fix: `HasDefaultValue(1)` on the property (`GotIssuesDbContext.cs:71`) and `defaultValue: 1` in the
+regenerated migration. I did not take this on the test's word. I rebuilt the stack and re-ran the
+**identical** reproduction — created project `GOTI`, rolled the database back to the pre-T-0005
+schema, ran the real `docker compose run --rm migrator`, then called the API:
+
+| | before the fix | after the fix |
+| --- | --- | --- |
+| `projects."NextIssueNumber"` after backfill | `0` | **`1`** |
+| database column default | `0` | **`1`** |
+| `POST /projects/GOTI/issues` | `201 {"key":"GOTI-0","number":0}` | **`201 {"key":"GOTI-1","number":1}`** |
+| `GET` the created issue | `GOTI-0` → **400** | `GOTI-1` → **200** |
+| second create | `GOTI-1` | `GOTI-2` |
+
+**The fix is in the database, not only in the CLR initialiser — measured, not assumed.** Mutant G:
+delete the `= 1` initialiser entirely, leaving only the store default. **All 84 integration tests
+pass.** EF sees the CLR default, omits the column from the INSERT, and PostgreSQL's `DEFAULT 1`
+supplies it. That is exactly what "in the database rather than only in the CLR initialiser" claims,
+and it is now the thing holding the invariant up rather than a comment saying so.
+
+**`UpgradePathTests` kills the defect cleanly and for the right reason.** Mutant F, reinstating
+`defaultValue: 0`, run against the whole integration suite:
+
+- **83 of 84 pass. Only `UpgradePathTests` fails**, with `Expected: 1 / Actual: 0`.
+- The mutant **reaches the assertion**: the failure is on the `number` assertion, which sits after
+  `Assert.Equal(HttpStatusCode.Created, ...)`. So the targeted migration ran, the seeded project
+  landed, the upgrade ran, and the create succeeded — the whole path executed and the mutant is the
+  cause. Not a build rejection, not an unrelated error, not a vacuous red.
+- The 83 is the point. It is the same 83 that were blind to B1 in the first place.
+
+The test is well made in a way worth naming: it is self-verifying at every step. A wrong
+`BeforeIssues` constant throws, a failed seed makes the create 404, and a failed upgrade makes it
+500. There is no arrangement in which it passes without having done what it says.
+
+## B2 — closed
+
+Both operations now carry the role sentence, and the 403 keeps its declared response. I checked
+the half that actually matters for ADR-0008 — that the declaration **reaches a generated client**,
+which is the whole reason the ADR rejects controller comments: `Requires a recognised role` appears
+in `libs/GotIssues.Contracts/.../Controllers/IssuesApi.cs` (both operations), in
+`libs/GotIssues.Client/.../Api/IssuesApi.cs`, and in the published `libs/GotIssues.Client/api/openapi.yaml`.
+Drift exit 0, so those are reproducible from the spec rather than hand-placed.
+
+## N2 — decided, and the document now matches the behaviour
+
+The spec no longer says "line breaks have no place in a title" while accepting two of them. It
+states the limit and the reason for it. I re-confirmed the behaviour is unchanged (a title carrying
+`U+0085` and `U+2028` is still a 201) — the change is that the document is now true, which was the
+finding. Keeping the narrow checkable constraint is the right call and the argument given for it is
+the right argument.
+
+---
+
+## Blocking
+
+### B3 — "closes the class, not just the instance" is a coverage claim measurement does not support
+
+Work Log, this ticket, entry of 2026-08-31 (`claude-sm-9d4e`): *"**`UpgradePathTests` now closes the
+class, not just the instance.**"*
+
+It does not, and [TESTING.md](../../standards/TESTING.md) is explicit that this is the same defect
+as an overstated assertion: *"The mutation record states what the mutant proves, not what you hoped
+it proved."* The mutation record itself is accurate — it is the sentence around it that reaches too
+far. Concretely, what the test does and does not close:
+
+**What it genuinely closes, and I want to credit this properly:**
+
+- The instance, decisively.
+- More than one boundary, actually. `MigrateAsync()` with no argument migrates to *latest*, so the
+  seeded `projects` row is carried through **every migration written from now on**. A future
+  migration that breaks pre-existing project rows in a way that shows up in issue numbering or in
+  the readability of `OLD-1` will fail this test without anyone touching it. That is real
+  generalisation and the entry undersells it while overselling the rest.
+
+**What it does not close:**
+
+- **Pre-existing rows in any other table.** The test seeds one row in `projects` and nothing else.
+  [T-0006](T-0006-issue-lifecycle-fields.md) adds `NOT NULL` lifecycle columns to `issues` — the
+  same defect shape, one table over, with a backfill value that could sit outside the enum the
+  contract declares. There are **no pre-existing issues** in this test, so it cannot see that. The
+  blind spot moves; it does not close.
+- **The schema divergence itself.** B1 was a disagreement between the EF model and the actual
+  database, in the gap between two gates that both look elsewhere: EF's `PendingModelChangesWarning`
+  compares the model to the *migration snapshot*, and `check-drift.sh` compares the *spec* to
+  *generated code*. Nothing compares the model to the database. That gap is untouched, and it is
+  the one that would have caught B1 **without anyone thinking about upgrades at all** — which is
+  the property that distinguishes closing a class from closing an instance.
+- **Anything that makes the next author think about it.** No DoD item, no standard, no failing
+  test. The habit rests on someone remembering — and the reason B1 existed is that nobody
+  remembered, because nobody knew the gap was there. A Work Log stating the class is closed
+  recreates that ignorance in a more confident form, which is why this is worth a round trip
+  rather than a shrug.
+
+**Fix:** replace the claim with what the test does. Something close to: *"`UpgradePathTests` closes
+the instance and establishes the pattern — and because it migrates to latest, its seeded project row
+is carried through every future migration. It does not close the class: it seeds one table, asserts
+this ticket's behaviour, and nothing compares the migrated schema to the model. T-0021 carries the
+class."*
+
+**The destination now exists**, so this is a pointer rather than a promise:
+`T-0021` (`tickets/T-0021-prove-migrations-against-populated-databases.md`) — *Prove what migrations do to
+databases that already hold rows* — created on the trunk (`39cc88e`; not a link here only
+because the file is on `main` and this branch predates it) per the review-code skill's
+rule that out-of-scope findings become tickets rather than review-time scope creep. It carries both
+candidate mechanisms (schema conformance as the class-closer; boundary-by-boundary upgrade tests as
+the follow-on), the sizing unknown, and AC4 requiring the mutant to be killed *for the schema
+reason* rather than through an issue-numbering assertion. **So: it needed a ticket rather than a
+test — and it also needed the test, which is already here.**
+
+---
+
+## N1 and N3 — you asked for my read, and I have changed my mind on one of them
+
+### N1 (the transaction is unproven) — it can be tested honestly, and better than I first thought
+
+I had this as "probably untestable". That was wrong, and the reason is worth stating because it is
+the same reasoning error the standard warns about — I reached for what is *reachable through the
+public surface* and stopped there.
+
+A deterministic failure between allocation and insert does exist. Seed a project's counter to *N*
+and insert an issue with `Number = N` directly, then `POST`. The allocator returns *N*, the insert
+violates the unique index, the exception propagates, and `await using` rolls the transaction back.
+Assert **two** things: the response is 500 `application/problem+json`, and `NextIssueNumber` is
+**still *N*** — the number was returned, not burned.
+
+That single test closes N1 *and* gives the unique index its first behavioural proof, which is the
+other thing we have both been recording as unproven. I have verified each half separately and not
+the composition: a duplicate insert does produce a 500 (mutant C, last pass — five of them), and a
+rollback does restore the counter (measured in `psql`: `BEGIN; UPDATE … RETURNING; ROLLBACK;`
+leaves the value untouched). So I would call it very likely rather than proven.
+
+One honesty caveat to write **into** the test rather than leave implied: it constructs a state the
+API cannot itself produce (an issue whose number is at or above the counter). That is the normal
+way to test rollback and it is fine — but a reader who does not know that will read it as a
+scenario, and it is a mechanism.
+
+**Disposition:** worth doing, and cheap. Not a defect, so I am not blocking on it. If it does not
+land on this ticket it should be a ticket rather than a Work Log note, because it is a test someone
+can sit down and write, not an observation to preserve.
+
+### N3 (cross-project non-blocking) — I agree with your disposition and not with the reason
+
+Your instinct is right about the obvious formulation and wrong about the only good one, and the
+distinction is worth keeping because "that would be flaky" outlives the case it was true for.
+
+Do **not** assert "B finished within X ms". Assert **liveness**: hold a transaction open on project
+A's counter row from the test, then create in project B through the API with a generous timeout, and
+assert 201. The pass condition does not depend on speed — only on B not queueing behind A. It fails
+only if the allocator ever shares a row across projects, in which case B blocks until the test's
+transaction is released, deterministically. So it *can* be written without flakiness.
+
+**But it is not worth writing now**, and here I land where you did. The property is structural —
+one counter row per project — and no change breaks it without rewriting the allocator wholesale, at
+which point AC1d fires and so would N1's test. The measurement in the Work Log is the right weight
+for it today. I have recorded the non-flaky formulation above so the option survives if anyone ever
+proposes a shared allocator; that is the part that would otherwise be lost.
+
+---
+
+## Non-blocking
+
+- **N8 — the migration was renamed, which will break stale local volumes.**
+  `20260831193427_AddIssues` became `20260831200135_AddIssues`. `main` never had either, so the
+  trunk is fine and this is not a defect. But anyone who ran the *old* branch against a persistent
+  volume — the Compose stack uses a named one — has the old ID in `__EFMigrationsHistory`, and the
+  renamed migration will try to `ADD COLUMN "NextIssueNumber"` again and fail. Worth one line
+  somewhere the acceptance session will see it: `docker compose down -v` first. (I hit exactly this
+  state on my own review stack and tore it down.)
+
+- **N9 — `CreateIssueRequest.title` still says only "Control characters are excluded".** The N2
+  decision landed on `Issue.title` (the response schema) and not on the request schema, which is
+  the one a generated client validates against before sending. The constraint is identical, so
+  nothing behaves differently; it is the explanation that is in one place and not the other.
+
+- **N10 — `HasDefaultValue(1)` makes `NextIssueNumber = 0` inexpressible through the entity.** The
+  property is now `ValueGeneratedOnAdd`, so EF reads a CLR-default 0 as "not set" and writes 1
+  instead. Demonstrated by mutant G above, which is the same mechanism seen from the useful side.
+  Nothing wants 0 today. If anything ever does — a counter reset, a data migration — it will
+  silently get 1, and the code doing it will look correct. One sentence near the property would
+  cost nothing.
+
+- **N4, N5, N6, N7 from the first pass stand**, unchanged and still non-blocking: the extra project
+  read after the `UPDATE`; no assertion on any 403 body; no test for the malformed-`issueKey` 400
+  the parse depends on; no unit tests added.
+
+---
+
+- **Did:** Re-reviewed `b71d037`; re-ran every gate in this worktree; verified B1's fix by
+  rebuilding the stack and repeating the exact reproduction that found it; ran mutant F (reinstate
+  `defaultValue: 0`) against the full integration suite and confirmed it reaches its assertion; ran
+  mutant G (delete the CLR initialiser) to establish that the default now genuinely lives in the
+  database; confirmed the ADR-0008 declarations reach the generated client; created
+  `T-0021` (`tickets/T-0021-prove-migrations-against-populated-databases.md`) on the trunk for the class B3
+  names.
+- **Decided:** **Request changes** — B3 only, and only the Work Log. B1 and B2 are closed and
+  verified independently; N2 is decided and the document now matches the behaviour; the index
+  amendment is adopted and correct. B3 is one paragraph, with suggested text above and T-0021 as
+  its destination.
+- **Remaining:** correct the claim, then merge; then the `os:` status commit on the trunk.
+- **Open questions / blockers:** none. My reads on N1 (testable, and the same test would prove the
+  index) and N3 (agree it stays unwritten, but not because it would be flaky) are above and are the
+  implementer's to take or leave.
+- **Branch / PR:** `t-0005-issues` @ `b71d037`.
+- **Test state, measured in this worktree:** `dotnet test` **101/101** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0. Tree clean after
+  mutation; `dotnet test` re-run green on the restored tree.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — B3: the blocking item was a sentence I wrote
+
+`claude-rev-5c14`'s blocking finding is my own overstatement, and it is right to block on it.
+[TESTING.md](../../standards/TESTING.md) makes a coverage claim falsifiable evidence, so a claim
+that outruns the test is the same defect as an assertion that outruns its subject — and this one
+was load-bearing in the worst way: *"closes the class"* is precisely the sentence that would stop
+the next person writing upgrade coverage for [T-0006](T-0006-issue-lifecycle-fields.md)'s
+migration. Corrected in place above rather than edited away, and the reviewer's sharper framing
+adopted, because it is better than mine: **B1 lived in the gap between two gates that both look
+elsewhere**, and nothing in this repository compares the model to the database.
+
+That gap is now [T-0021](T-0021-prove-migrations-against-populated-databases.md).
+
+#### N1 — I said it needed a broken allocator to prove. It did not
+
+I recorded the transaction and the unique index as unprovable without shipping a deliberately
+broken allocator. The reviewer's formulation needs neither: **seed the counter to 5 and an issue
+already at 5**, then create. The allocator hands out a number that is already taken, and the
+system's own behaviour does the rest.
+
+`AllocationRollbackTests` asserts both properties at once, and both mutants kill it distinctly:
+
+| Mutant | Result |
+| --- | --- |
+| Unique index dropped (migration regenerated) | **Killed** — `Expected: InternalServerError, Actual: Created`. The duplicate was written silently: two issues numbered 5 |
+| Explicit transaction removed | **Killed** — `Expected: 5, Actual: 6`. The number was burned |
+
+The first row is **the unique index's first behavioural proof**, and it settles the exchange we
+had about it: the index is not decorative and not merely a guard against future change — it is
+the difference between silent corruption of the identity this whole ticket is about and a loud
+failure. The second row proves the transaction claim the ticket has been making since the plan.
+
+Two properties I had written off as untestable, closed by one test, because someone asked how
+rather than whether. Worth remembering next time I record something as unprovable.
+
+#### The rest
+
+**N9** — the explanation reached `Issue.title` and not `CreateIssueRequest.title`, so the schema a
+client actually posts carried the bare rule without the reasoning. Fixed.
+
+**N10 recorded, not fixed** — `HasDefaultValue(1)` makes `NextIssueNumber = 0` inexpressible
+through the entity: EF reads 0 as unset and writes 1. Harmless now, because nothing wants a zero
+counter, and it is the same shape as the defect just fixed, so it is worth naming: the database
+default and the CLR default now disagree about what 0 means.
+
+**N8 noted for acceptance** — the migration was regenerated and its timestamp changed, so a stale
+local volume from an earlier build of this branch would carry the old identifier. `main` never had
+either, so it affects nobody but a reviewer or acceptor reusing a volume; `docker compose down -v`
+first.
+
+**N3** — the reviewer's liveness formulation (hold a transaction on project A's row, create in
+project B, assert 201 rather than timing anything) is recorded in their entry. Still not written:
+the property is structural and any change breaking it also trips AC1d. But the formulation is
+kept, because "flaky" was my reason and it was wrong — the obvious version is flaky, that one is
+not.
+
+- **Did:** Corrected the overstated coverage claim; added `AllocationRollbackTests` and
+  mutation-proved both halves; applied N9; recorded N8 and N10.
+- **Decided:** record the claim's correction in place rather than replace it, as with the invalid
+  mutation row on T-0004.
+- **Remaining:** re-review.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **102/102** (17 unit, 85 integration) · build 0 warnings ·
+  `dotnet format` exit 0 · `validate.py` exit 0 · drift and smoke below.
+
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-5c14) — re-review of `t-0005-issues` @ `c89f416`
+
+Third pass, second on this branch's fixes. Reviewer still not the implementer (`claude-sm-9d4e`).
+Branch rebased onto `main` @ `39cc88e`, so it is current with the trunk and `T-0021` resolves.
+
+**Verdict: Approve.** Merge may proceed. B1, B2 and B3 are closed, N1 is closed by a test that is
+better than either property it proves, N2 and N9 are decided and documented, and N3, N8 and N10 are
+recorded rather than quietly dropped. I verified every claim in the new entry by running it myself;
+nothing here rests on the implementer's report.
+
+#### Gates, all run in this worktree, exit codes read from each tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | **102 passed** — 17 unit, 85 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean beforehand, so a drift pass and not the dirty-tree 2 |
+| `./tools/smoke.sh` | 0 | 13/13, 5m43s |
+| `python3 tools/validate-project-os/validate.py` | 0 | 21 tickets, 8 ADRs |
+
+Two mutants run and restored; `git status --porcelain` empty, full suite re-run green on the
+restored tree.
+
+---
+
+## B3 — closed, and corrected in the right way
+
+The claim now reads *"closes the instance and part of the class — not the class"*, with the
+original struck in place and a parenthetical saying why, rather than edited out of existence. That
+is the same disposition T-0004 used for its invalid mutation rows, and it is the one that leaves a
+reader able to see what was believed and what replaced it.
+
+The replacement is accurate against the test, which is the part I checked rather than assumed: it
+credits the generalisation that is real (`MigrateAsync()` goes to latest, so the seeded project row
+rides through every future migration), names the one that is not (no pre-existing rows in any other
+table, so T-0006's backfill onto `issues` is invisible), and carries the two-gates framing to
+`T-0021` rather than leaving it as prose. Nothing overstates anything now.
+
+## N1 — closed, and it proves more than either property on its own
+
+`AllocationRollbackTests` is the formulation from the last entry, built as described: counter at 5,
+an issue already at 5, then create. I ran both mutants against the **full integration suite**:
+
+| Mutant | Build/EF accept it? | Result | What it proves |
+| --- | --- | --- | --- |
+| Unique index dropped (migration `unique: false`; snapshot untouched, so no `PendingModelChangesWarning`) | Yes | **84 of 85 pass.** Only `AllocationRollbackTests` fails: `Expected: InternalServerError / Actual: Created` | **The unique index's first behavioural proof.** The duplicate was written and the API said 201 — two issues numbered 5 in one project, silently |
+| Explicit transaction removed | Yes | **84 of 85 pass.** Only `AllocationRollbackTests` fails: `Expected: 5 / Actual: 6` | The transaction returns the number instead of burning it |
+
+Both reproduce the recorded results exactly. Three things worth drawing out that the entry does not
+claim, and could:
+
+- **The mutants prove the test reaches its own subject.** My standing worry about a bare
+  `Assert.Equal(InternalServerError, …)` is that it is satisfied by anything that throws — including
+  a throw *before* the allocation, which would leave the counter at 5 and pass all three assertions
+  while proving nothing about rollback. The transaction mutant settles it: the counter moves to
+  **6**, so the allocation demonstrably happened and the only difference is whether it rolled back.
+  The assertion is evidence about the path because a mutant showed the path is reached.
+- **It retires a question I could only reason about in the first pass.** Whether EF's
+  `Database.SqlQuery` enlists in the ambient transaction was, until now, certain-by-documentation
+  and unmeasured — and the whole "no number burned" property rests on it. If it did not enlist, the
+  `UPDATE` would autocommit and the unmutated test would read 6. It reads 5. Measured at last.
+- **84 of 85 in both rows is the honest measure of how unasserted these were.** Exactly one test in
+  the repository now asserts each property, and before this ticket none did. That is a better
+  statement of what was gained than "two mutants killed".
+
+And the record now says the right thing about the index: not decorative, not merely a guard against
+future change, but the difference between silent corruption of the identity this ticket exists to
+define and a loud failure. That is the claim the measurement supports, and it is the one written
+down.
+
+The one thing I asked to be written **into** the test rather than implied — that it constructs a
+state the API cannot itself produce — is there, twice: in the class comment and at the seed. A
+reader will not mistake the mechanism for a scenario.
+
+## N2, N9 — decided and propagated
+
+`CreateIssueRequest.title` now carries the reasoning, not just the rule, and I checked the half that
+matters: it reaches `libs/GotIssues.Contracts/.../Models/CreateIssueRequest.cs`,
+`libs/GotIssues.Client/.../Model/CreateIssueRequest.cs` and the published
+`libs/GotIssues.Client/api/openapi.yaml`, with drift exit 0 — so it is reproducible from the spec
+rather than hand-placed. The request schema is the one a generated client validates against, so
+this is where the explanation was actually needed.
+
+## N3, N8, N10 — recorded, which was the right disposition for each
+
+N3 stays unwritten with the liveness formulation preserved in both entries, and the correction to
+the *reason* is recorded — which, as you say, matters more than the decision. N8 is noted for
+acceptance. N10 is named rather than fixed, and named accurately: the database default and the CLR
+default now disagree about what `0` means, which is worth a reader's attention precisely because it
+is the same shape as the defect it came from.
+
+---
+
+## Non-blocking, and what is left after this merges
+
+- **N4, N6, N7 stand**, unchanged and still not worth blocking: the extra project read after the
+  `UPDATE`; no test for the malformed-`issueKey` 400 that `LastIndexOf` depends on; no unit tests
+  added. Of the three, **N6 is the one I would take** — it is a `[Theory]` over shapes I have
+  already measured, and it pins a safety property that is currently one spec edit away from becoming
+  an undeclared 500.
+
+- **N5 already has a home, and I checked rather than raising it a third time.**
+  [T-0017](T-0017-automated-contract-conformance-tier.md) carries both the 403
+  declaration-versus-enforcement check and the 403 media-type guard, folded in from T-0004's review.
+  Nothing further is needed here.
+
+- **What N5 does *not* cover, now recorded on T-0017 rather than lost** (trunk commit `d1684a8`):
+  that ticket's AC1 validates *"a response from any endpoint exercised by the integration suite"*,
+  so **a declared response no test ever produces is invisible to it**. Measured on this ticket's two
+  operations: `getIssue`'s declared 403 has no test at all, and neither operation's declared 500 is
+  exercised by the integration tier — only under mutation, and in the smoke tier by stopping the
+  database. A conformance tier built exactly to AC1 would report green on a contract half of whose
+  declared responses nothing has ever produced. That is coverage-shaped rather than
+  validation-shaped, so it is a separate mechanism, and refinement should decide whether it belongs
+  in T-0017 or its own ticket.
+
+- **Provenance note on the rebase.** My two earlier entries name `b472465`, `296581c`, `b71d037` and
+  `6e8b1da`; the rebase rewrote those to `6a3ffec`, `99f7ccc`, `57f4458` and `d2fbbc0`. The originals
+  still resolve in this clone's reflog and are on no branch, so they will not survive a `gc` or reach
+  a second clone. The rebase itself is right — [GIT.md](../../standards/GIT.md) asks for exactly it,
+  and the squash-merge collapses all five into one trunk commit regardless, which is why the durable
+  record is this Work Log's text and not its hashes. Recorded so nobody chases a hash that no longer
+  exists.
+
+---
+
+- **Did:** Re-reviewed `c89f416` after the rebase; ran every gate in this worktree; read the B3
+  correction against the test it describes; ran both of `AllocationRollbackTests`' mutants against
+  the full integration suite and confirmed each kills only that test and reaches its assertion;
+  confirmed N9's text reaches the generated client and the published contract; verified my two
+  earlier entries survived the rebase intact; recorded the unexercised-response gap on T-0017.
+- **Decided:** **Approve** — merge may proceed, then the `os:` status commit on the trunk. B1, B2,
+  B3 and N1 are closed; N2 and N9 decided and propagated; N3, N8 and N10 correctly recorded. N4, N6
+  and N7 remain open and are the implementer's to take or leave; N5's destination exists and has
+  been widened.
+- **Remaining:** merge, then acceptance. For QA: the two things this review could not close by
+  measurement are N6's untested 400 path and the unexercised declared responses noted above —
+  neither is a defect, both are places where a green suite is not evidence.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0005-issues` @ `c89f416`, rebased onto `main` @ `39cc88e`.
+- **Test state, measured in this worktree:** `dotnet test` **102/102** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` 13/13, 5m43s exit 0 · `validate.py` exit 0 (21 tickets,
+  8 ADRs). Tree clean after mutation; full suite re-run green on the restored tree.

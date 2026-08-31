@@ -43,13 +43,16 @@ namespace GotIssues.Client.Client
             _jsonOptions.Converters.Add(new DateTimeNullableJsonConverter());
             _jsonOptions.Converters.Add(new DateOnlyJsonConverter());
             _jsonOptions.Converters.Add(new DateOnlyNullableJsonConverter());
+            _jsonOptions.Converters.Add(new CreateIssueRequestJsonConverter());
             _jsonOptions.Converters.Add(new CreateProjectRequestJsonConverter());
+            _jsonOptions.Converters.Add(new IssueJsonConverter());
             _jsonOptions.Converters.Add(new ProblemJsonConverter());
             _jsonOptions.Converters.Add(new ProjectJsonConverter());
             _jsonOptions.Converters.Add(new ProjectPageJsonConverter());
             JsonSerializerOptionsProvider jsonSerializerOptionsProvider = new(_jsonOptions);
             _services.AddSingleton(jsonSerializerOptionsProvider);
             _services.AddSingleton<IApiFactory, ApiFactory>();
+            _services.AddSingleton<IssuesApiEvents>();
             _services.AddSingleton<ProjectsApiEvents>();
         }
 
@@ -68,6 +71,7 @@ namespace GotIssues.Client.Client
 
             List<IHttpClientBuilder> builders = new List<IHttpClientBuilder>();
 
+            builders.Add(_services.AddHttpClient<IIssuesApi, IssuesApi>(client));
             builders.Add(_services.AddHttpClient<IProjectsApi, ProjectsApi>(client));
             
             if (builder != null)

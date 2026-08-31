@@ -6,12 +6,15 @@ build.sh
 src/GotIssues.Contracts/.gitignore
 src/GotIssues.Contracts/Attributes/ValidateModelStateAttribute.cs
 src/GotIssues.Contracts/Authentication/ApiAuthentication.cs
+src/GotIssues.Contracts/Controllers/IssuesApi.cs
 src/GotIssues.Contracts/Controllers/ProjectsApi.cs
 src/GotIssues.Contracts/Converters/CustomEnumConverter.cs
 src/GotIssues.Contracts/Formatters/InputFormatterStream.cs
 src/GotIssues.Contracts/GotIssues.Contracts.csproj
 src/GotIssues.Contracts/GotIssues.Contracts.nuspec
+src/GotIssues.Contracts/Models/CreateIssueRequest.cs
 src/GotIssues.Contracts/Models/CreateProjectRequest.cs
+src/GotIssues.Contracts/Models/Issue.cs
 src/GotIssues.Contracts/Models/Problem.cs
 src/GotIssues.Contracts/Models/Project.cs
 src/GotIssues.Contracts/Models/ProjectPage.cs

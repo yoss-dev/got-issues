@@ -24,6 +24,18 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: Issues
+    description: |
+      A unit of work inside a project.
+
+      Every issue carries a **key** of the form `GOTI-1`: the project's key, a
+      hyphen, and a number allocated within that project. Numbering starts at 1 in
+      each project and is independent between them, so `GOTI-1` and `PROJ-1` both
+      exist and refer to different work.
+
+      A number is never reused. If an issue is ever removed, its number stays
+      retired rather than being handed to something else — `GOTI-7` pointing at
+      different work than it did last week would be worse than a gap.
   - name: Projects
     description: |
       A project groups related work and owns a **key** — a short uppercase
@@ -129,6 +141,96 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /projects/{projectKey}/issues:
+    post:
+      operationId: createIssue
+      tags: [Issues]
+      summary: Create an issue in a project.
+      description: |
+        Creates an issue and allocates its number within the given project.
+
+        The number is allocated by the server and cannot be chosen.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        create an issue; a token carrying neither receives 403. Unlike creating a
+        project, this is not an administrative act.
+      parameters:
+        - name: projectKey
+          in: path
+          required: true
+          description: The key of the project the issue belongs to, for example `GOTI`.
+          schema:
+            type: string
+            pattern: '^[A-Z][A-Z0-9]{1,9}$'
+            minLength: 2
+            maxLength: 10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIssueRequest'
+      responses:
+        '201':
+          description: The issue was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /issues/{issueKey}:
+    get:
+      operationId: getIssue
+      tags: [Issues]
+      summary: Read an issue by its key.
+      description: |
+        Returns the issue with the given key, for example `GOTI-1`.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        read an issue; a token carrying neither receives 403. There is no per-project
+        visibility — roles in this system are global.
+
+        Issues are addressed by the key people quote rather than by project and
+        number separately, because that string is the thing written in commit
+        messages and chat.
+      parameters:
+        - name: issueKey
+          in: path
+          required: true
+          description: The issue's key, for example `GOTI-1`.
+          schema:
+            type: string
+            pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$'
+            minLength: 4
+            maxLength: 20
+      responses:
+        '200':
+          description: The issue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -157,6 +259,14 @@ components:
       description: |
         The credentials were valid, but the caller's role does not permit this
         operation. Distinct from 401: the caller is known, and still refused.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: |
+        The addressed resource does not exist — a project that was never created,
+        or an issue key that corresponds to nothing.
       content:
         application/problem+json:
           schema:
@@ -206,6 +316,88 @@ components:
         instance:
           type: string
           description: A URI identifying this specific occurrence.
+
+    Issue:
+      type: object
+      description: A unit of work inside a project.
+      required: [id, key, projectKey, number, title, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The issue's identifier.
+        key:
+          type: string
+          pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$'
+          description: |
+            The issue's key: the project's key, a hyphen, and the number allocated
+            within that project. This is the identifier people quote.
+        projectKey:
+          type: string
+          pattern: '^[A-Z][A-Z0-9]{1,9}$'
+          description: The key of the project this issue belongs to.
+        number:
+          type: integer
+          minimum: 1
+          description: |
+            The issue's number within its project. Allocated by the server, starting
+            at 1 in each project, and never reused.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: '^[^\u0000-\u001F\u007F]+$'
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded, for the
+            same two reasons a project name excludes them: PostgreSQL cannot store
+            `U+0000` at all, and the ASCII line breaks and tabs in that range have no
+            place in a title.
+
+            Deliberately **not** full Unicode line-break handling: `U+0085` and
+            `U+2028` are accepted. Refinement asked this ticket to decide rather than
+            inherit the limit, and the decision is to keep the constraint the narrow,
+            checkable one — a title carrying an exotic separator is a cosmetic
+            problem, while a title carrying `U+0000` cannot be stored at all.
+        description:
+          type: [string, 'null']
+          maxLength: 10000
+          pattern: '^[^\u0000]*$'
+          description: |
+            Optional free text. Multi-line **by design** — unlike a title, this is
+            where the reasoning goes, so line breaks are permitted and only `U+0000`
+            is excluded, because PostgreSQL cannot store it in any text column.
+
+            That difference is deliberate: the constraint on a title is about being
+            one line, the constraint here is about being storable, and they are not
+            the same rule (recorded on T-0005 from T-0004's review).
+        createdAt:
+          type: string
+          format: date-time
+          description: When the issue was created, in UTC.
+
+    CreateIssueRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: '^[^\u0000-\u001F\u007F]+$'
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded — see
+            `Issue.title` for both reasons and for the limit this constraint
+            deliberately stops at.
+
+            `U+0085` and `U+2028` are accepted: the constraint is the narrow,
+            checkable one.
+        description:
+          type: [string, 'null']
+          maxLength: 10000
+          pattern: '^[^\u0000]*$'
+          description: |
+            Optional free text; multi-line is expected. Explicitly null means the
+            same as omitting it.
 
     Project:
       type: object

@@ -22,4 +22,18 @@ public sealed class ProjectRecord
     public required string Name { get; set; }
 
     public DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>
+    /// The next issue number to allocate in this project.
+    ///
+    /// <para>
+    /// Allocation is <c>UPDATE … SET NextIssueNumber = NextIssueNumber + 1 …
+    /// RETURNING</c> inside the creating transaction, so PostgreSQL's row lock
+    /// serialises concurrent creates <em>for this project only</em>, and a rollback
+    /// returns the number rather than burning it. A sequence would do neither: it
+    /// needs DDL at runtime, which T-0013 exists to take away from this role, and it
+    /// is deliberately non-transactional, so a rollback leaves a gap.
+    /// </para>
+    /// </summary>
+    public int NextIssueNumber { get; set; } = 1;
 }

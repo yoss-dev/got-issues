@@ -7,11 +7,38 @@ public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> opti
 {
     public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
 
+    public DbSet<IssueRecord> Issues => Set<IssueRecord>();
+
     public DbSet<UserRecord> Users => Set<UserRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<IssueRecord>(entity =>
+        {
+            entity.ToTable("issues");
+            entity.HasKey(e => e.Id);
+
+            // The guarantee, not the mechanism. The project's counter is what
+            // allocates a number; this is what makes a duplicate impossible even if
+            // the allocator is ever replaced by something that looks equivalent and
+            // is not. T-0004 paid for this distinction: a read-then-insert check
+            // passes every sequential test and fails only under concurrency.
+            entity.HasIndex(e => new { e.ProjectId, e.Number }).IsUnique();
+
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(10000);
+            entity.Property(e => e.CreatedAt).IsRequired();
+
+            // An issue cannot outlive its project, but nothing deletes projects yet;
+            // Restrict rather than Cascade so that when deletion arrives it is a
+            // decision someone makes rather than one this line already made.
+            entity.HasOne(e => e.Project)
+                .WithMany()
+                .HasForeignKey(e => e.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
 
         modelBuilder.Entity<UserRecord>(entity =>
         {
@@ -41,6 +68,14 @@ public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> opti
             entity.HasIndex(e => e.Key).IsUnique();
 
             entity.Property(e => e.Key).HasMaxLength(10);
+
+            // Default 1, in the database and not only in the CLR initialiser. Without
+            // it the migration backfills existing projects with 0, and the first issue
+            // in any project created before this migration gets number 0 — a key like
+            // GOTI-0, which violates the pattern and the `minimum: 1` the contract
+            // itself declares, and which the read path then rejects with 400. Every
+            // test migrates an empty schema, so nothing saw it.
+            entity.Property(e => e.NextIssueNumber).HasDefaultValue(1);
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.CreatedAt).IsRequired();
         });
