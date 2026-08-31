@@ -80,3 +80,38 @@ Every blocking finding this sprint, by what was actually wrong:
 | 3 | **Add the narrowing rule to `review-code`.** When a finding is *"X is satisfied by anything"*, the fix must enumerate what else could satisfy the replacement; a narrower predicate is not evidence that the gap is closed. Both the implementer and the reviewer walked into this in the same sprint, which makes it a checklist item rather than a lesson. | maintainer (approval) + agent (drafting) | `evolve-governance` proposal — **project-agnostic, worth upstreaming** |
 
 *Three actions, all governance, all requiring human approval. Deliberately no tooling ticket: the two questions this sprint raised already exist as [T-0018](../../product/tickets/T-0018-user-subject-tokens.md) and [T-0019](../../product/tickets/T-0019-token-clock-skew.md), and adding a fourth aspirational action would dilute three that are ready to land.*
+
+---
+
+## Governance changes applied — 2026-08-31
+
+All three improvement actions were **approved by the maintainer (human) on 2026-08-31** and
+applied via [`evolve-governance`](../../skills/evolve-governance/SKILL.md) in a single commit,
+so the rulebook is never self-contradictory between commits. Owning personas: QA/Test Engineer
+for [TESTING.md](../../standards/TESTING.md), Scrum Master for the skills.
+
+None of these makes any in-flight ticket newly pass a gate — the precondition
+[`evolve-governance`](../../skills/evolve-governance/SKILL.md) flags. There is no in-flight
+ticket at all: SPRINT-002 was drained before the retro ran. Each change makes verification
+*stricter*, not looser.
+
+| # | Change | Artifacts touched |
+| --- | --- | --- |
+| 1 | **A mutant only counts if the build accepts it**, and **a mutation record states what its mutant proves** — a mutant the compiler or an analyser rejects is a compiler-enforced invariant recorded as such, then followed by one the build accepts; a mutant killed by both old and new code shows correctness, not strength. Plus: when a finding says an assertion is satisfied by anything, a narrower assertion is not the fix. | [TESTING.md](../../standards/TESTING.md) (falsifiable-coverage section), [implement-ticket](../../skills/implement-ticket/SKILL.md) (step 5) |
+| 2 | **The standards bind the test infrastructure too** — every command result read including teardown; identifiers that must be unique are never truncated; gates run in the working copy under test. | [TESTING.md](../../standards/TESTING.md) (attribution section), [implement-ticket](../../skills/implement-ticket/SKILL.md) (step 5) |
+| 3 | **`review-code` asks what input reaches the code under test**, and on a re-review of a "satisfied by anything" fix, requires enumerating what else satisfies the replacement. | [review-code](../../skills/review-code/SKILL.md) (step 3) |
+
+**Post-change check.** Grepped every skill, standard and governance document for the rules
+touched: only [TESTING.md](../../standards/TESTING.md) and
+[implement-ticket](../../skills/implement-ticket/SKILL.md) described them, and both were
+updated. Precedence order unaffected — these are standards and skills, below
+[WAY_OF_WORKING.md](../../governance/WAY_OF_WORKING.md), and none contradicts anything above
+them. Validator green.
+
+**One observation deliberately left unapplied.** [`acceptance-test`](../../skills/acceptance-test/SKILL.md)
+mentions neither mutation nor attribution, yet every acceptor this sprint used mutation
+heavily and to great effect — `claude-qa-9b3e` ran nine mutants and re-derived AC6 with its
+own keypair rather than the shipped one. Whether the skill should require what its
+practitioners already do is a real question, but it is a **fourth** change and was not among
+the three approved. Recorded here for SPRINT-003's retro rather than slipped in alongside
+them.

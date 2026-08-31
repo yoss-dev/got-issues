@@ -37,7 +37,9 @@ Software Engineer; add the Architect perspective for changes touching system bou
 
 1. **Scope fidelity first:** walk the diff against In Scope / Out of Scope. Anything outside scope, or any acceptance criterion with no corresponding change, is a finding — regardless of code quality.
 2. **Correctness:** read the change for logic errors, unhandled edge cases (compare against the ticket's Examples/Scenarios), error handling, and concurrency/state hazards. Run the test suite yourself if the environment allows.
-3. **Tests:** do the new tests genuinely encode the acceptance criteria, or pass vacuously? Is every fixed bug covered by a regression test? Is test code held to production standards?
+3. **Tests:** do the new tests genuinely encode the acceptance criteria, or pass vacuously? Is every fixed bug covered by a regression test? Is test code held to production standards (`standards/TESTING.md` binds the harness too)?
+   - **Ask what input reaches the code under test.** An assertion is evidence about a path only if the input gets there; a green run does not tell you whether it did.
+   - **When re-reviewing a fix for "this is satisfied by anything", enumerate what else satisfies the replacement.** A narrower predicate looks like progress while the deciding question goes unasked. In SPRINT-002 the implementer *and* the reviewer both walked into this on the same ticket, one round apart.
 4. **Standards & ADR compliance:** lint/static analysis clean; naming and structure per `ENGINEERING.md`; no undocumented architectural decision in the diff (a decision meeting the [ADR bar](../../architecture/adr/README.md) without an ADR is a blocking finding); commit messages per `GIT.md`.
 5. **Record findings** where the implementer will see them (PR comments where a platform exists, otherwise the ticket Work Log), each one concrete: file, issue, why it matters. Distinguish **blocking** (violates criteria, standards, scope, or ADRs) from **suggestions** (take or leave, no re-review needed).
 6. **Findings outside the ticket's scope** (pre-existing issues the diff merely reveals) become tickets via `create-ticket` — never review-time scope creep.

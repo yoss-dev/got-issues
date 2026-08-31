@@ -27,6 +27,12 @@ The reason is empirical rather than theoretical. In SPRINT-001 every blocking re
 
 The habit generalises: **take the claim, ask what would have to be true for it to be false, then try to make it false.**
 
+**A mutant only counts if the build accepts it.** A mutation the compiler or an analyser rejects was killed by the *build*, not by a test — that is a stronger guarantee than a test, and a different claim. Record it as what it is ("this invariant is enforced by the compiler"), then run a mutant the build accepts, because only that one can tell you whether anything is asserting the behaviour. SPRINT-002 produced two: `if (false)` rejected under CS0162, and a deleted call site rejected under CA1822 — both briefly read as coverage.
+
+**The mutation record states what the mutant proves, not what you hoped it proved.** A mutant killed by both the old and the new code shows the new code works; it does not show the new code is *stronger*. Demonstrating strength needs a mutant the old code survives. Under this standard the record is the evidence, so a record that overstates its mutant is the same defect as an assertion that overstates its subject — SPRINT-002 produced one of those too, in the document written to prove the defect had stopped.
+
+**When a finding says an assertion is satisfied by anything, a narrower assertion is not the fix.** Ask what else could satisfy the replacement. SPRINT-002 replaced "asserts that something threw" with "asserts a word the tool being tested also prints" — the same defect, one size smaller. Prefer markers only the assertion itself can emit.
+
 ### Verification must be attributable
 
 A check against a locally-served endpoint proves nothing unless the response is bound to the process under test. On a machine running more than one stack — which is normal — a `curl` to `localhost` can be answered by something else entirely while the thing you are testing has failed to start.
@@ -40,6 +46,12 @@ Any verification against a running service therefore:
 The same principle applies to tool output: **read the exit status of the tool you are checking, not of a pipeline it feeds.** `dotnet format … | grep …` reports grep's status.
 
 SPRINT-001 recorded seven instances of a green signal measured from the wrong source, including the same port-collision false pass made twice — the second time by the person who had just written up the first as a lesson.
+
+**These rules bind the test infrastructure too.** Test code is not where the rules come from; it is somewhere they apply, and it is the place they are most often skipped. Concretely:
+
+- **Every command result is read, including teardown.** SPRINT-002's smoke harness enforced exit-code discipline on the stack it checked and discarded the result in the one place nothing checked — its own `DisposeAsync` — leaking containers and volumes on every run, invisibly ([RETRO-SPRINT-002](../delivery/retrospectives/RETRO-SPRINT-002.md)).
+- **Identifiers that must be unique are not truncated.** A name shortened to a "long enough" width silently dropped the random component and made two runs share one namespace. A cap chosen to be big enough is the same defect with a larger number.
+- **Gates are run in the working copy under test.** With work split across a trunk checkout and a ticket worktree, a gate run in the wrong one measures the wrong tree. SPRINT-002 recorded a validator result as green that was red on the branch it described.
 
 ### The gate
 
