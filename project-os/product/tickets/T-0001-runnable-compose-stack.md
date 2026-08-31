@@ -714,3 +714,74 @@ I did not re-run the stack, deliberately: `git diff cd8a1a7..HEAD -- README.md` 
 **Clear to merge.** Squash-merge titled `T-0001: <summary>`, `os:` status commit on the trunk, then remove the worktree and delete the branch.
 
 Closing note on the sweep, since it is the reusable part: D1, D2 and S1 were three instances of one failure — documentation written when something did not exist, not revisited when it did. They were found by grepping for the shape of the claim ("first implementation ticket", "not yet built", "does not exist yet") rather than by rereading prose, and by running every documented command on a virgin clone rather than a warm one. Both are cheap enough to repeat whenever a ticket makes something real for the first time.
+
+### 2026-08-30 — QA / Test Engineer (claude-qa-3f7c) — AC9 re-check after D1/D2 documentation fixes
+
+Scoped re-check at the coordinator's request, on `e125246`. **AC9 only.** AC1–AC8 stand as accepted and were not re-run: the change-set since my acceptance (`7110b05..e125246`) is three lines of prose in `README.md`, one added command, and two other Markdown files — no code, no `compose.yaml`, no behaviour. Re-running the stack over prose would be ceremony, not evidence. I did re-prove the endpoint attribution anyway, because it costs one command.
+
+#### First, a correction to my own record — my AC9 pass failed for a subtler reason than "didn't run it"
+
+The coordinator's note says neither the reviewer nor I ran the scaffold command. That is not quite right for me, and the true mechanism is worth recording because it is the more dangerous one.
+
+**I did run it, and it passed — because I ran it out of document order.** My first pass executed `dotnet build` (README's *Build* section) *before* `dotnet dotnet-ef migrations add …` (README's *Migrations* section, which appears **earlier** in the document). `dotnet build` restores the project, so `obj/project.assets.json` already existed by the time I ran the scaffold command, and `NETSDK1004` could not fire. I then spent effort verifying that the command resolved the repository's own tool manifest rather than the machine's global `dotnet-ef` — a real check, on a command whose more basic precondition I had already destroyed.
+
+**Reproduced the defect to confirm this diagnosis rather than assert it.** Fresh clone checked out at `7110b05` (my accepted tip), scaffold command run as the *first* `dotnet` command:
+
+```
+error NETSDK1004: Assets file '…/apps/GotIssues.Api/obj/project.assets.json' not found.
+Run a NuGet package restore to generate this file.
+Unable to retrieve project metadata. Ensure it's an SDK-style project.
+```
+
+So D2 was real and present at the moment I passed AC9. **My AC9 verdict was wrong**, and the flaw was not that I skipped a command but that I ran the section's commands in an order the document does not prescribe. This is the same shape as the port-attribution trap recorded earlier in this ticket: a check that passes for a reason unrelated to what it claims to establish. The discipline that follows is narrow and worth keeping — **"followed literally" includes the order the document presents them in**, and for a setup document the earlier command must be assumed to run on a machine where no later command has yet run.
+
+#### AC9 re-verified — every command, in document order, on a fresh clone
+
+Fresh `git clone` at `e125246` into a scratch directory. Verified the starting state was genuinely cold before touching anything: **no `.env`**, and **no `apps/GotIssues.Api/obj/`** — the project was unrestored, so the restore step below is a real first restore rather than a no-op. Run under my own Compose project name `claudeqa3f7c` on the README's own port 8080. I extracted every fenced command from the README mechanically rather than by eye, and ran all seven in the order printed.
+
+| # | Command (as written) | Result |
+| --- | --- | --- |
+| 1 | `cp .env.example .env` + supply a local password | works |
+| 2 | `docker compose up --build` | `postgres Up (healthy)`, `migrator Exited (0)`, `api Up (healthy)`. Container `c11675e9c3ce`: `running=true health=healthy restarts=0`, host port 8080 bound |
+| 3 | `curl -s localhost:8080/health` | **byte-identical to the body the README prints on the next line** — `{"status":"Healthy","checks":{"database":{"status":"Healthy","description":"database reachable"}}}` |
+| 4 | `docker compose run --rm migrator` | `No migrations were applied. The database is already up to date.`, exit 0 |
+| 5 | **`dotnet restore`** *(the new line)* | `Restored …/GotIssues.Api.csproj (in 165 ms)`. Confirmed immediately beforehand that `obj/` did not exist, so this genuinely performed the restore |
+| 6 | `dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations` | `Build started… Build succeeded. Done.` — **no `NETSDK1004`**. The added restore line is what makes this work |
+| 7 | `dotnet build` | **0 Warning(s), 0 Error(s)** |
+
+**Attribution re-proved on the new container id:** stopped `c11675e9c3ce` → host `curl` **exit 7**, `http_code=000`; restarted → **200**. The 200s above belong to the container under test.
+
+**AC9: PASS** — and this time on the complete *Getting started* section, in the order it is written, from a cold clone.
+
+**Scratch artifacts removed.** The scaffold command generated `20260831015253_QaRecheckProbe.cs` and its `.Designer.cs`; both existed only inside the scratch clone, which has been deleted. The primary checkout is clean and **nothing generated was committed** — verified with `git status` on this repository. Compose stack torn down with `down -v`, images removed: 0 containers, 0 volumes, 0 images, port 8080 free.
+
+#### The two other stale-documentation fixes — checked against the tree, not read
+
+**`spec/README.md` — accurate.** Now reads *"it arrives with `T-0002`, which builds the generation pipeline around it"* (as a working relative link). Verified: `spec/` contains only `README.md` (no `openapi.yaml`), and `T-0002` is titled *"Contract-first pipeline — OpenAPI spec, code generation, and drift check"*, so it is genuinely the ticket that delivers it. The link resolves. Naming the ticket instead of "the first implementation ticket" also removes the failure mode that produced D1 — a relative phrase that silently expires.
+
+**`project-os/architecture/ARCHITECTURE.md` banner (`4bd351a`) — accurate.** Every claim checked against the repository:
+
+| Banner claim | Verified |
+| --- | --- |
+| *Compose stack*, *API service*, *Database* rows describe code that exists | All three rows exist (lines 40, 37, 39) and their artifacts exist: `compose.yaml`, `apps/GotIssues.Api`, the PostgreSQL container |
+| No API specification or generated contracts (T-0002) | `spec/` and `libs/` each contain only `README.md` |
+| No identity host (T-0010) | `apps/` contains only `GotIssues.Api` and a README. T-0010 is the Duende host ticket |
+| No roles or user projection (T-0009) | T-0009 is titled *"Role-based authorisation and the user projection from token claims"* — the reference is correct |
+| No product endpoints | Probed `/projects`, `/issues`, `/comments`, `/users`, `/` → **all 404**; `/health` is still the only 200 |
+
+Two residual imprecisions I noticed and am **not** raising as defects, so the record is complete rather than tidy: the *API service* row still says it "implements the generated controller interfaces" and "contains no route or model definitions of its own", which is the target state — today's API defines `/health` directly under the ADR-0005 exemption and implements nothing generated; and the *Compose stack* row lists "database initialisation" among its contents while `infra/` holds only a README. Both are boundary rules describing the intended end state, both predate this ticket's documentation sweep, and the banner's own next sentence tells the reader the generated contracts do not exist — so nobody is misled. Not worth holding T-0001 open for.
+
+**D1 confirmed fixed.** The README banner now reads *"Status: the stack runs… the commands below work as written. There are no product endpoints yet"* — each clause of which I verified above, including the negative one.
+
+#### Does my overall verdict still stand?
+
+**Yes. PASS stands**, now on firmer ground than when I gave it: AC9 was the one criterion whose evidence was defective, it has been re-verified in full, and AC1–AC8 were never in question — no code changed.
+
+Two things I want on the record rather than smoothed over:
+
+1. **The process worked, but only because someone swept instead of spot-checking.** I found D1 and the reviewer was sent to fix that one paragraph; sweeping the surrounding documents instead turned up D2, a *functional* defect in a documented command that three prior verification passes — two of the implementer's, one review, and mine — had all reported as working. A fix scoped to exactly the finding would have left it in place. That is a general lesson about scoping remediation to the reported symptom.
+2. **This sharpens, but does not change, my position on DoD item 3.** A documented command was broken across three manual verification passes and was caught on the fourth by luck of scope. Manual verification is what this ticket was permitted to rely on, and it did catch it eventually — but the miss is exactly the class of regression an automated check does not have moods about. It strengthens the case for [T-0003](T-0003-automated-test-harness.md) covering the documented setup path, not merely the HTTP surface. My acceptance of the item 3 deviation is unchanged and still **conditional on it being recorded explicitly at completion**.
+
+`complete-ticket` still owes one thing before `done`: the **DoD item 3 deviation** (or T-0003 landing first). D1 and D2 are both resolved and verified, so DoD item 4 is now clear on that front.
+
+Status left at `in-acceptance`; `accepted_by` deliberately still not set.
