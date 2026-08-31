@@ -46,3 +46,24 @@ Sequenced: T-0001 first — everything except the spike depends on it.
 **Deliberately not committed:** T-0002 (gated on T-0011's verdict — committing it would be planning around an unanswered question) and T-0009 (its dependencies T-0003 and T-0010 are both in this sprint; committing it too would mean three dependent tickets stacked behind an unproven estimate).
 
 **Solo mode.** Per [GIT.md](../standards/GIT.md), one agent at a time on this repository, and review before merge means an independent session running `review-code` against the branch diff with the verdict recorded in the ticket's Work Log.
+
+---
+
+## `run-sprint` exit report — 2026-08-30 (claude-sm-9d4e)
+
+**Loop stopped: no eligible work remains.** T-0003 and T-0010 both require T-0001 to be `done`, and T-0001 is blocked. Two decisions are batched below; both are recorded in full in their tickets.
+
+**Progressed**
+
+- **T-0001** — implemented, independently reviewed by `claude-rev-2c8d` (request-changes), all findings resolved except one. Now `blocked` on a PO decision. Branch `t-0001-runnable-compose-stack`, 5 commits, not merged.
+- **T-0011** — spike complete, verdict delivered, `in-acceptance`. Awaiting an independent acceptance session.
+
+**Gates honoured.** Review ran as a separate session with its own identity and re-verified every criterion against its own clean clone rather than trusting the implementer — which is how the AC1 false pass was caught. Nothing was merged; nothing reached `done`.
+
+**Artifacts created:** ADR-0005 (Accepted, during refinement), ADR-0006 (**Proposed**, from the spike). No discovered work; no deferred defects.
+
+**Consequence to note:** T-0002 is `ready` but **stale** — it was refined against ADR-0004, which ADR-0006 would supersede. It must be re-refined before it is planned, whichever way the decision goes.
+
+**Validator:** OK (11 tickets, 6 ADRs). Working tree clean, trunk and branch both consistent.
+
+**Not run:** acceptance for T-0011, and the re-review of T-0001 after its fixes. Both are waiting on the decisions, not on capacity.
