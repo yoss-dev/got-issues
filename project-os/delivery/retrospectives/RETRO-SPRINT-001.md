@@ -84,3 +84,26 @@ Three actions, each owned and each landing somewhere concrete.
 **Deliberately not actions.** The four review rounds on T-0001 are not a problem to fix — every round found something real, and the alternative was shipping those defects. The three DoD deviations are a sequencing consequence (the harness necessarily follows the stack it tests), already bounded by T-0015. Neither becomes an action.
 
 **Note on scope:** all three actions are governance changes requiring human approval and lane-2 review. None is an implementation ticket, because none of this sprint's friction was implementation friction — the code that shipped was sound. The friction was in what the repository *claimed* about it.
+
+---
+
+## Governance changes applied — 2026-08-31
+
+All four are **rule-content changes**, so per [WoW §15](../../governance/WAY_OF_WORKING.md) each needs the owning persona's and a human's approval.
+
+**Approved by:** the human maintainer (Product Owner), 2026-08-31, instructing *"update the framework with your recommendation"* after reading this retrospective.
+**Applied by:** `claude-sm-9d4e` (Scrum Master persona), in one atomic commit so the rulebook is never self-contradictory between commits.
+**Route:** solo mode, so a direct trunk commit with the approval recorded here rather than a reviewed PR ([GIT.md](../../standards/GIT.md), *Remotes and solo mode*).
+
+| # | Change | Artifacts touched |
+| --- | --- | --- |
+| 1 | **Coverage claims must be falsifiable.** A claim that a test guards a behaviour is verified by mutation — break it, watch the test fail, restore, record both. A claim another ticket's DoD depends on is mutated first. | `standards/TESTING.md` (new section + a gate line), `skills/implement-ticket` (step 5) |
+| 2 | **Verification must be attributable.** Checks against a running service bind the response to the process under test — own project name, container asserted healthy first, attribution confirmed by stopping it. Tool exit codes are read from the tool, not a pipeline. | `standards/TESTING.md` (new section), `skills/implement-ticket` (step 5) |
+| 3 | **DoD item 4 closes the false-pointer gap.** A deferral is captured only when the destination ticket's scope accepts it, with the accepting line cited — adding one if none exists. | `governance/DEFINITION_OF_DONE.md` (item 4) |
+| 4 | **The archive step is reconciled with the validator.** "Copy verbatim" and link integrity contradicted each other; the skill now requires re-basing links one level and heading the archive with what differs. | `skills/retrospective` (step 1 + Validation) |
+
+**How we would notice these working.** Changes 1 and 2 should show up as *fewer blocking review findings of the "claim outran evidence" type* — that was 4 of 4 this sprint. If SPRINT-002's reviews still find them at the same rate, the rules are being read and not applied, which is a different problem needing a different fix. Change 3 should show up as deferrals citing a scope line. Change 4 is binary: the validator is green after the next archive, or it is not.
+
+**Compatibility.** No existing ticket, sprint or ADR needs touching: the changes bind future verification and future deferrals. SPRINT-001's own tickets were not retro-fitted, deliberately — rewriting closed records to match new rules would destroy the evidence the rules came from.
+
+**Foundation classification.** All four are project-agnostic — none mentions Got Issues, its stack, or its constraints — and are recorded as `Proposed` upstream contributions in [FOUNDATION.md](../../FOUNDATION.md). They came from a first sprint on a new stack, which is where a framework's blind spots surface most cheaply.

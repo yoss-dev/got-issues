@@ -17,6 +17,10 @@ When a retrospective or `evolve-governance` change fixes something **project-agn
 
 | Date | Change | Upstreamed? |
 | --- | --- | --- |
+| 2026-08-31 | **Coverage claims must be falsifiable** — `standards/TESTING.md` and `implement-ticket` now require a claim that a test guards a behaviour to be verified by mutation (break it, watch it fail, restore, record). From RETRO-SPRINT-001, where every blocking finding was a claim that read as true and was not. | Proposed |
+| 2026-08-31 | **Verification must be attributable** — `standards/TESTING.md` now requires checks against a running service to bind the response to the process under test, and tool exit codes to be read from the tool rather than a pipeline. Seven instances of the opposite in one sprint. | Proposed |
+| 2026-08-31 | **DoD item 4 closes the false-pointer gap** — a deferral counts as captured only when the destination ticket's scope accepts it, with the accepting line cited. A link to a ticket that disowns the item reads as covered and is worse than no link. | Proposed |
+| 2026-08-31 | **`retrospective` archive step reconciled with the validator** — "copy verbatim" and link integrity contradicted each other because the archive sits a directory deeper; the skill now requires re-basing links and heading the file with what differs. | Proposed |
 
 ## Foundation changelog
 

@@ -35,7 +35,7 @@ Scrum Master (facilitation and honesty about process), drawing on all persona pe
 
 ## Procedure
 
-1. **Archive the sprint:** copy `CURRENT_SPRINT.md` verbatim to `delivery/sprints/SPRINT-NNN.md`; return unfinished tickets to `ready` (status + backlog mirror), owners cleared, Work Logs already resumable per WoW §8.
+1. **Archive the sprint:** copy `CURRENT_SPRINT.md` to `delivery/sprints/SPRINT-NNN.md`, preserving content exactly **with one required exception**: the archive sits one directory deeper, so relative links must gain a `../` level or the validator reports them broken. Re-base them and head the file with a comment naming what differs from the original. (Copying literally byte-for-byte leaves every link dead — it did so on SPRINT-001, producing seven findings.) Then return unfinished tickets to `ready` (status + backlog mirror), owners cleared, Work Logs already resumable per WoW §8.
 2. **Review the previous retro's actions** honestly: done / in progress / dropped-with-reason. Repeatedly dropped actions are themselves a finding.
 3. **Mine the evidence** (not memory, not vibes): goal achieved? why/why not; per-ticket friction signals — acceptance failures and their causes, `blocked` episodes and durations, discovered work volume, escalations and their latency, criteria that turned out ambiguous, DoR/DoD items that caught real problems vs. pure ceremony this sprint; recurring defect patterns across bug tickets; skills/templates that agents visibly fought or worked around (Work Log traces).
 4. **Distinguish** implementation issues (belong in tickets) from *system* issues (process, governance, skills, tooling, missing automation) — the retro exists for the latter.
@@ -45,7 +45,7 @@ Scrum Master (facilitation and honesty about process), drawing on all persona pe
 
 ## Validation
 
-- Sprint archived byte-for-byte before reset; every observation cites evidence; every action has owner + landing place; previous actions accounted for; no in-flight ticket left ownerless in a non-resumable state.
+- Sprint archived before reset, content preserved and links re-based (validator green); every observation cites evidence; every action has owner + landing place; previous actions accounted for; no in-flight ticket left ownerless in a non-resumable state.
 
 ## Outputs
 
