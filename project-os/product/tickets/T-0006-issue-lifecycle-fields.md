@@ -320,3 +320,97 @@ as a defect in the refactor rather than in this ticket. Prefer the former.
 - **Remaining:** unchanged — `committed`, eligible once T-0005 reaches `done`.
 - **Open questions / blockers:** none; the sequencing question is answered.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — claimed, with the implementation plan
+
+Claimed at `cd18607`. Dependencies verified in their own files: T-0005 and T-0009 both `done`.
+
+#### The lesson from the ticket before this one, applied before writing any code
+
+T-0005 shipped a migration that backfilled existing rows with a value the contract forbade —
+`NextIssueNumber = 0`, so every pre-existing project's first issue would have been `GOTI-0`,
+unreadable through the only read path. It was invisible to the whole suite because **every test
+migrated an empty schema**.
+
+**This ticket adds four NOT NULL columns to a table that already holds rows.** It is the same
+migration shape, one table over, and [T-0021](T-0021-prove-migrations-against-populated-databases.md)
+exists precisely because `UpgradePathTests` covers T-0005's migration and not the class. So:
+
+- every new column carries a **database default** via `HasDefaultValue`, not merely a CLR
+  initialiser — that distinction is exactly what went wrong last time;
+- `UpgradePathTests` gains a case for **this** migration: migrate to the pre-T-0006 schema, create
+  a project and an issue through the API, upgrade, and assert the existing issue reads back with
+  `task` / `open` / `normal` and a null assignee.
+
+That test is the first thing I will write, before the migration exists, because it is the one that
+would fail if I repeat the defect.
+
+#### Shape
+
+| Step | What |
+| --- | --- |
+| 1 | `spec/openapi.yaml`: `IssueType`, `IssueStatus`, `IssuePriority` enums; the four fields on `Issue`; `PATCH /issues/{issueKey}` with `UpdateIssueRequest`; `Assignee` schema |
+| 2 | Generate; implement the generated contract |
+| 3 | Migration: four columns on `issues`, all NOT NULL with database defaults except `AssigneeSubject`, plus a non-cascading FK to `users` |
+| 4 | Tests, upgrade-path case first |
+
+**The enumerations are settled** (maintainer, 2026-08-31): `type` ∈ {`bug`, `task`}, `status` ∈
+{`open`, `in_progress`, `done`}, `priority` ∈ {`low`, `normal`, `high`}, defaulting to `task`,
+`open`, `normal`. Declared as OpenAPI enums so clients generate them as types.
+
+**Mutation is a `PATCH`, not a `PUT`.** The ticket asks for changing fields, and a `PUT` would
+require sending every field to change one — which turns "move this to in_progress" into a
+read-modify-write with a lost-update race. `PATCH` with all fields optional says what it means.
+
+#### The decisions already recorded, being carried in
+
+From refinement: the assignee is identified by `subject` (the projection's key, and the only stable
+identifier — `displayName` is not unique); the read model returns `subject` **and** `displayName`
+so a client can render a person without a second call; unassigned and never-assigned are
+deliberately **not** distinguished; an unknown assignee is **400**, not 404, because the subject
+arrives in a body while the issue in the path exists; lifecycle changes are a **member** act.
+
+#### Test plan
+
+| AC | Test |
+| --- | --- |
+| AC1 | change status, priority, type; each persists and reads back |
+| AC2 | a value outside each declared set → 400 `problem+json` naming the field |
+| AC3 | assign by subject; reassign; unassign → `assignee` reads null |
+| AC4 | assign to a subject with no projection row → 400 naming the field, issue unchanged |
+| AC5 | `done` → `open` is permitted — the "backwards" transition a workflow feature would forbid |
+| AC6 | `check-drift.sh` exit 0 |
+| AC7 | a freshly created issue reads `task` / `open` / `normal`, assignee null |
+| AC8 | a `member` may change every field and assign; only an unrecognised role is refused |
+| — | **upgrade path:** an issue created before this migration reads the defaults afterwards |
+
+**Mutation**, under the narrowed rule ([TESTING.md](../../standards/TESTING.md)): the only claim
+where a test is the sole evidence is **AC5** — nothing but a test stops someone adding transition
+validation, and the ticket forbids it explicitly. One mutant there. The enum rejection is enforced
+by the generated `[RegularExpression]`/enum binding, and the defaults by database defaults, so both
+are recorded as enforcement rather than mutated.
+
+#### Written in the current shape, deliberately
+
+Per the maintainer's sequencing decision, this is controller-plus-`DbContext` like T-0004 and
+T-0005; [T-0022](T-0022-adopt-clean-architecture-layering.md) migrates it afterwards. **Its tests
+must assert through the HTTP boundary**, never against controller internals — T-0022's AC4 forbids
+modifying a test to accommodate the refactor, so a test coupled to today's internals would surface
+as a defect in T-0022 rather than here.
+
+#### Risks
+
+- **The migration against populated rows is the risk**, and it is the one the previous ticket got
+  wrong. Hence the test first.
+- **The assignee FK must not cascade.** Deleting a user must not delete their issues; nothing
+  deletes users yet, so this is a decision to make now rather than discover.
+- **AC5 is a criterion against gold-plating**, which is unusual and easy to "improve" away. The
+  mutant exists to make that visible.
+
+- **Did:** Claimed; verified dependencies; planned the migration around the defect the previous
+  ticket shipped.
+- **Decided:** `PATCH` over `PUT`; database defaults over CLR initialisers; upgrade-path test written first.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **Test state:** not started.
