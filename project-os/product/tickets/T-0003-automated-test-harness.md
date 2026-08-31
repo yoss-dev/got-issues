@@ -58,7 +58,7 @@ Turns the merge gates in `GIT.md` from prose into something mechanical. Without 
 - [ ] AC4: Given the integration tests, when they are run twice in succession and when run in any order, then they pass both times — no leftover state, no order dependency.
 - [ ] AC5: Given a test covering an authorised endpoint, when an unauthenticated caller is simulated, then the test asserts the request is refused — the negative case is proven, not assumed.
 - [ ] AC6: Given Docker is **not** running, when `dotnet test` is run, then the integration tier fails within 60 seconds with a message naming the container runtime as the cause — not a connection timeout to `localhost:5432`.
-- [ ] AC7: Given the README and `TESTING.md`, when their documented test commands are followed, then they match what actually works.
+- [ ] AC7: Given the README and `TESTING.md`, when their documented test commands are followed, then they match what actually works. *(Amended 2026-08-30 by the PO: the `TESTING.md` remainder — the codegen drift check and a stale parenthetical — is owned by [T-0014](T-0014-correct-testing-standard-commands.md), a governance change requiring human approval, and is out of this ticket's reach. See Work Log.)*
 - [ ] AC9: Given a test deliberately altered to fail, when the suite runs, then it reports the failure and `dotnet test` exits non-zero — the harness actually gates rather than always reporting green.
 - [ ] AC10: Given the test authentication handler, when the API is built and run in its normal (non-test) configuration, then that handler is not registered and cannot be enabled by configuration alone — it exists only in the test host ([SECURITY.md](../../standards/SECURITY.md)).
 - [ ] AC8: Given [T-0001](T-0001-runnable-compose-stack.md) shipped without automated coverage (its Testing Notes explain why), when this harness lands, then its integration tier covers T-0001's stack behaviour — at minimum that the schema is applied by migrations and that the health endpoint reports the database's real state. This closes T-0001's Definition of Done gap rather than leaving it open.
@@ -536,3 +536,28 @@ Proceed to `complete-ticket`, which owes three recorded decisions before `done`:
 On the question I was asked to answer directly: **T-0001's DoD item 3 deviation is now closed for every behaviour a test harness can reach, including the one it most needed** — the API not migrating itself, which I proved by breaking it. The part left open is Compose orchestration, which was correctly out of scope here and should now be ticketed rather than considered settled.
 
 Status left at `in-acceptance`; `accepted_by` deliberately not set.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — AC6 verified literally; PO decisions applied
+
+**AC6 — no longer a proxy. The maintainer granted a daemon-stop window and it is now verified against the literal condition.**
+
+Before stopping anything I captured the six containers running for unrelated projects so they could be restored exactly. Docker Desktop was then quit and the daemon confirmed down.
+
+With the daemon genuinely stopped, `dotnet test apps/GotIssues.Api.IntegrationTests`:
+
+| AC6 requirement | Measured |
+| --- | --- |
+| fails within 60 seconds | **21 s** |
+| non-zero exit | **1** |
+| names the container runtime | `Failed to connect to Docker endpoint at 'unix:///var/run/docker.sock'`; `Docker is running and that the endpoint is properly configured` |
+| **not** a `localhost:5432` timeout | **0 occurrences of `5432`** in the entire output |
+
+Environment restored: daemon back in ~9 s, all six containers running and healthy, count identical to before, and the suite green again (13/13, exit 0).
+
+**Why this mattered more than it looked.** Six env-var simulations were tried across three sessions and **four of them left the suite green** — Testcontainers falls back to a working socket by design, so the simulation reports success while testing nothing. The acceptor's conclusion was right: no env-var simulation can verify AC6 on a machine with a working daemon. Only stopping it produced the real failure. Had we accepted a proxy, `README.md` would have kept describing "With Docker stopped" — a state nobody had ever produced.
+
+That is the fifth instance this session of a green signal measured from the wrong source, and the only one resolved by producing the real condition rather than a better proxy.
+
+**AC7 — PO decision applied.** The maintainer approved recording the deviation *and* adding the T-0014 link, satisfying both of the reviewer's conditions. AC7's text now names T-0014 as owner of the remainder. To be precise about the residual, per the acceptor: of `TESTING.md`'s three commands, `dotnet build` and `dotnet test` **now match reality**; only the codegen drift check (T-0002's tooling) and the stale parenthetical (T-0014's) are wrong.
+
+**Remaining for `complete-ticket`:** the AC7 deviation only. AC6 no longer needs one. The Compose-level coverage residual is ticketed as [T-0015](T-0015-compose-stack-smoke-test.md).
