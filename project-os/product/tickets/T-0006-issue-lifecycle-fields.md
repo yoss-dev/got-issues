@@ -8,7 +8,7 @@ owner: none
 implemented_by: none
 accepted_by: none
 depends_on: [T-0005, T-0009]
-adrs: [ADR-0004]
+adrs: [ADR-0004, ADR-0009]
 created: 2026-08-30
 updated: 2026-08-31
 ---
@@ -105,6 +105,7 @@ Assignment tests seed `users` directly (see Technical Notes). A test that assign
 
 ## Relevant ADRs & Documentation
 
+- [ADR-0009](../../architecture/adr/ADR-0009-controllers-talk-to-the-dbcontext-and-invariants-are-extracted.md) — **this ticket performs its rule 3**: the issue-number allocator moves out of `IssuesController` into a named type, carrying its raw SQL and its unchecked column name with it
 - [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md), [ENGINEERING.md](../../standards/ENGINEERING.md), [TESTING.md](../../standards/TESTING.md)
 - [PROJECT.md](../../PROJECT.md) §3 — workflows as a later goal
 - [IDEA-002](../IDEAS.md) — the originating idea
@@ -229,4 +230,36 @@ knows it was considered rather than overlooked.
 - **Open questions / blockers:** none.
 - **DoR verdict:** **ready** — the item-3 failure recorded earlier today is closed.
 - **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — ADR-0009 accepted; this ticket performs its rule 3 (claude-sm-9d4e)
+
+[ADR-0009](../../architecture/adr/ADR-0009-controllers-talk-to-the-dbcontext-and-invariants-are-extracted.md)
+was accepted by the maintainer on 2026-08-31: controllers keep taking `GotIssuesDbContext`
+directly, and **domain invariants are extracted into named types**. Its rule 3 names one concrete
+instance, and this is the ticket that performs it — because it is the next one to touch issue
+creation.
+
+**What moves:** the issue-number allocator currently in `IssuesController.CreateIssue` — the
+`UPDATE projects SET "NextIssueNumber" = "NextIssueNumber" + 1 … RETURNING` statement and the
+transaction around it — into a named type under `apps/GotIssues.Api/Domain/`.
+
+**Why it qualifies under rule 2** ("would this still have to be true if a second caller did
+it?"): yes, unambiguously. Any future path that creates an issue must allocate the same way, and
+[T-0005](T-0005-create-and-read-issues.md) records what goes wrong when it does not —
+`MAX(number)+1` passes twelve of thirteen tests and duplicates under concurrency.
+
+**What the move is actually worth**, beyond tidiness: the allocator names its column in a raw SQL
+string that nothing checks against the entity. Rename `NextIssueNumber` on the model today and the
+code compiles, ships, and fails at runtime. In one named type that fragility has one home and can
+be pinned by a test.
+
+**Not a licence to add layers.** ADR-0009 rejects a pass-through service explicitly. This ticket
+extracts one invariant; it does not introduce `IssueService`, and a reviewer should reject that if
+it appears.
+
+- **Did:** Recorded ADR-0009's acceptance and the extraction it assigns here.
+- **Decided:** nothing new — this transcribes an accepted decision.
+- **Remaining:** unchanged; this ticket is `committed` and not started.
+- **Open questions / blockers:** none.
 - **Test state:** n/a — not started.

@@ -29,4 +29,4 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 | [ADR-0006](ADR-0006-nswag-for-server-contracts.md) | Generate server contracts with NSwag, keeping OpenAPI Generator for clients | Rejected | 2026-08-30 |
 | [ADR-0007](ADR-0007-test-only-extension-grant-for-user-tokens.md) | Issue user-subject tokens through a test-only extension grant, deferring a real login model | Accepted | 2026-08-31 |
 | [ADR-0008](ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md) | Role restrictions are enforced by policy attributes and declared in the contract as a description and a 403 | Accepted | 2026-08-31 |
-| [ADR-0009](ADR-0009-controllers-talk-to-the-dbcontext-and-invariants-are-extracted.md) | Controllers talk to the DbContext directly; only domain invariants are extracted | **Proposed** | 2026-08-31 |
+| [ADR-0009](ADR-0009-controllers-talk-to-the-dbcontext-and-invariants-are-extracted.md) | Controllers talk to the DbContext directly; only domain invariants are extracted | Accepted | 2026-08-31 |

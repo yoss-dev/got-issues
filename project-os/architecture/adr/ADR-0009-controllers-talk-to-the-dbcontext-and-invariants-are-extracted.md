@@ -2,9 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
-**Not in force.** Raised by the maintainer on 2026-08-31, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository ever decided either way — which is the reason for this ADR. **Nothing changes until this is Accepted or Rejected.**
+**Accepted by the maintainer on 2026-08-31.** Raised by them the same day, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository had ever decided either way — which is why this ADR exists, and why "leave it as it is" was the one option ruled out even though the outcome resembles it.
+
+One supporting argument was corrected before acceptance: the first draft claimed the project "has decided it does not rely on" mocks, which is false — see the second bullet of Context. The conclusion did not depend on it.
 
 ## Date
 
@@ -80,7 +82,7 @@ Concretely:
 
 ## Related Tickets
 
-Frontmatter links follow acceptance; a `Proposed` ADR should not read as governing tickets that have not been told about it.
+Now Accepted, so [T-0006](../../product/tickets/T-0006-issue-lifecycle-fields.md) carries this ADR in its frontmatter: it is the next ticket to touch issue creation and therefore the one that performs rule 3.
 
 - [T-0005](../../product/tickets/T-0005-create-and-read-issues.md) — where the allocator lives today
 - [T-0006](../../product/tickets/T-0006-issue-lifecycle-fields.md) — the next ticket to touch issue creation, and the natural home for rule 3
