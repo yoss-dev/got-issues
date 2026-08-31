@@ -86,6 +86,7 @@ Relates to [T-0012](T-0012-pin-container-base-images.md): once base images are d
 - **The split seam, if this overruns, is stack (AC1–AC3) versus identity (AC6–AC7) — and it only works *after* the harness exists.** Splitting earlier just relocates the expensive part, which is standing the harness up at all; both halves need the same one (`claude-rev-2c8d`, 2026-08-30).
 - **AC4 is what makes the other six trustworthy** — mutation-proven rather than green-run-proven. If anything is trimmed under pressure, not that one.
 - **AC6's expired-token case needs either a short-lived token lifetime configured for the test or clock control.** Minting an expired token requires the issuer's cooperation; this is the refusal case most likely to be quietly dropped.
+- **The expired-token assertion is subject to a ~5-minute `ClockSkew`, and the number matters.** No `ClockSkew` is configured, so the framework default applies. Measured during T-0010's acceptance (`claude-qa-3f7c`, 2026-08-30): **200 at 268 s past `exp`, 401 at 328 s.** An implementer who mints a 1-second token and asserts 401 immediately will get **200**, and will then either believe the harness is broken or loosen the assertion into a false pass. Either configure `ClockSkew` explicitly for the test or wait past the window — decide which, and say so in the test.
 - Overlaps [T-0014](T-0014-correct-testing-standard-commands.md) if the standard ends up describing this command too.
 
 ## Testing Notes
