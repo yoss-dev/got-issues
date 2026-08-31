@@ -171,12 +171,23 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.HeaderName, "logged-1");
         client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeaderName, "member");
-        client.DefaultRequestHeaders.Add(TestAuthHandler.NameHeaderName, "Priya Confidential");
+        // Long enough to be trimmed. With a short name the trim never runs, so the
+        // one log statement that handles a display name never executes and this test
+        // passes without ever having seen the code path it exists to police — which
+        // is how a logger that emitted the name outright survived a green suite.
+        var name = "Priya Confidential" + new string('x', 500);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.NameHeaderName, name);
 
         await client.GetAsync(Member);
 
         var log = captured.Text;
+
+        // Proves the trim path actually ran. Without this the test silently reverts
+        // to vacuous the moment anything changes when Fit is reached.
+        Assert.Contains("Display name trimmed", log, StringComparison.Ordinal);
+
         Assert.DoesNotContain("Priya Confidential", log, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("xxxxxxxxxx", log, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("logged-1@", log, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -214,6 +225,90 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
         Assert.Equal(1, await db.Users.CountAsync(u => u.Subject == subject));
+    }
+
+    [Fact]
+    public async Task An_over_long_display_name_is_trimmed_rather_than_failing_the_request()
+    {
+        // Q3, found in acceptance. Narrowing the write-failure catch did the same
+        // thing to DisplayName as it did to Subject: a name past the column turned a
+        // silent loss into a hard failure on *every* request from that caller, for as
+        // long as the identity provider held it.
+        //
+        // The subject was widened because OIDC anchors it at 255. Nothing anchors a
+        // display name, so any width is arbitrary — and a display name is a
+        // convenience field, not identity. Trimming keeps the caller usable.
+        var longName = new string('n', 500);
+        using var client = ClientAs("trimmed-1", "member", longName);
+
+        var response = await client.GetAsync(Member);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Subject == "trimmed-1");
+
+        Assert.Equal(400, user.DisplayName!.Length);
+    }
+
+    /// <summary>
+    /// The one place a test learns how wide the column is. Asserting a literal here
+    /// would put a third copy of the number in the suite, and the number is exactly
+    /// what these tests exist to keep two declarations agreeing about.
+    /// </summary>
+    private static int DisplayNameColumnLength(GotIssuesDbContext db) =>
+        db.Model.FindEntityType(typeof(GotIssues.Api.Data.UserRecord))!
+            .FindProperty(nameof(GotIssues.Api.Data.UserRecord.DisplayName))!
+            .GetMaxLength()!.Value;
+
+    [Fact]
+    public async Task A_display_name_trimmed_through_a_surrogate_pair_still_persists()
+    {
+        // Cutting at a raw UTF-16 index can split a surrogate pair and leave a lone
+        // high surrogate, which cannot be encoded to UTF-8 — the write then throws an
+        // encoder exception that is not a unique violation, so it propagates and the
+        // caller fails on every request. Exactly what the trim exists to prevent,
+        // reintroduced by the trim itself.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        var columnLength = DisplayNameColumnLength(db);
+
+        // Pad so a surrogate pair straddles the cut exactly.
+        var name = new string('n', columnLength - 1)
+            + string.Concat(Enumerable.Repeat("😀", 10));
+        using var client = ClientAs("surrogate-1", "member", name);
+
+        var response = await client.GetAsync(Member);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var user = await db.Users.SingleAsync(u => u.Subject == "surrogate-1");
+
+        // One short of the column rather than splitting the pair to fill it.
+        Assert.Equal(columnLength - 1, user.DisplayName!.Length);
+        Assert.False(char.IsHighSurrogate(user.DisplayName[^1]));
+    }
+
+    [Fact]
+    public async Task The_trim_length_matches_the_column_it_trims_for()
+    {
+        // The constant and HasMaxLength are declared separately with nothing keeping
+        // them in step, and disagreeing downward restores the hard failure this whole
+        // sequence was about. Asserted rather than commented.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+
+        var columnLength = DisplayNameColumnLength(db);
+
+        // Asserting the column is 400 would only restate one half of the pair. Drive a
+        // name past the limit and require what is stored to fill the column exactly:
+        // trim shorter than the column and this fails, trim longer and the write does.
+        using var client = ClientAs(
+            "overlong-name-1", "member", new string('n', columnLength + 100));
+        var response = await client.GetAsync(Member);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var user = await db.Users.SingleAsync(u => u.Subject == "overlong-name-1");
+        Assert.Equal(columnLength, user.DisplayName!.Length);
     }
 
     [Fact]

@@ -107,7 +107,9 @@ curl -s -X POST localhost:8081/connect/token \
   -d "grant_type=client_credentials&client_id=$ADMIN_CLIENT_ID&client_secret=$ADMIN_CLIENT_SECRET&scope=gotissues.api"
 ```
 
-The token carries a `role` claim (`admin` or `member`) which the API reads per request and never stores. Two authorisation policies act on it: `admin` is restricted to that role, and `member` is a floor an admin also satisfies. An absent or unrecognised role is refused, never treated as a member. To prove the round trip:
+The token carries a `role` claim (`admin` or `member`) which the API reads per request and never stores.
+
+Two authorisation policies act on that claim — `admin` is restricted to that role, `member` is a floor an admin also satisfies, and an absent or unrecognised role is refused rather than treated as a member. **No shipped endpoint uses them yet**: the only protected endpoint below requires authentication, not a role, so an `admin` and a `member` token both reach it. [T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md) is the first endpoint to be role-guarded. To prove the round trip:
 
 ```bash
 curl -i -H "Authorization: Bearer <token>" localhost:8080/health/authenticated

@@ -996,3 +996,485 @@ Neither of these is a reason to reopen the ticket or revisit acceptance. They ar
 - **Branch / PR:** merged; verified on `main` @ `5b0a5fb`.
 - **Test state:** 59/59 green, 0 skipped; seven mutations each seen failing.
 - **Acceptance verdict:** **PASS stands.** Q1 and N1 closed; Q2 closed in substance with two follow-on corrections recorded — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — Q3, Q2a and Q2b
+
+**Q3 — I fixed the class on one of the two columns.** The reasoning that widened `Subject` was anchored to a specification: OIDC caps `sub` at 255, so a legal subject always fits. `DisplayName` got no such treatment, and narrowing the write-failure catch did exactly the same thing to it — a name past 400 turned a silent loss into a **hard failure on every request** from that caller, for as long as the identity provider held it.
+
+Nothing anchors a display name: the OIDC `name` claim has no length limit, so any column width is arbitrary and widening only moves the cliff. A display name is a **convenience field** — not identity, nothing keyed on it, and a truncated one is still useful. So it is trimmed to fit rather than failing the request, which is the acceptor's recommendation and the right trade: failing a request over a cosmetic field is worse than a shortened name, and silently dropping the whole projection is worse than both.
+
+Mutation-proven, and I **checked the mutation had applied** before trusting it — `Fit` call sites dropped to one, the definition alone — which is the rule this ticket produced.
+
+**Q2a — the sentence I added to keep the banner honest was itself inaccurate.** It claimed the banner had been found stale four times, when four was the count of the *pattern* across different documents; this banner has been stale twice. And "each time the ticket that falsified it had not updated it" is contradicted by [T-0002](T-0002-contract-first-codegen-pipeline.md), which caught its own README banner mid-ticket. Both corrected, with T-0002 named as the counter-example — a sentence added to make a document truthful should not be its untrue part.
+
+**Q2b — the README implied endpoints enforce roles.** The new paragraph describing the policies sat immediately above a `curl` against `/health/authenticated`, which requires *authentication*, not a role — so a reader trying it with both tokens would get 200 twice and conclude the policies were broken. It now says plainly that **no shipped endpoint uses the policies yet** and names [T-0004](T-0004-create-and-list-projects.md) as the first that will.
+
+**Worth recording about this ticket's shape:** four of the findings across its review and acceptance were consequences of my own corrections rather than of the original code. Narrowing the catch created Q3 and the subject-column defect; the banner sentence created Q2a; the policy paragraph created Q2b. Each fix was right and each moved a boundary, which is the argument for reviewing a fix with the same suspicion as a feature — and it is the same conclusion the reviewer reached from the other direction.
+
+**Verification:** `dotnet build` **0 warnings / 0 errors**, `dotnet format --verify-no-changes` **0**, `dotnet test` **0** (**60 tests**).
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — spot check of the final fixes
+
+Spot check of `t-0009-final-fixes` @ `ed6b920`.
+
+**Verdict: REQUEST CHANGES — one blocking finding, in the item you asked me to judge.** You asked me to check the *trade* rather than the code. The trade is right. The implementation of it reintroduces, for a narrow but deterministic class of input, exactly the failure it was written to remove.
+
+#### Q3 — the trade is correct
+
+Trimming is the right call and I would have argued for it. `DisplayName` is explicitly not identity: `Subject` is the key, `UserRecord`'s own documentation says identity is the subject and never the name, and this ticket's Examples already accept two subjects sharing one display name. Display-name fidelity is therefore not a system invariant, and truncating it corrupts nothing the system relies on. Against that, failing an entire request over a cosmetic field is disproportionate — the caller's request has nothing to do with their name — and dropping the projection silently is worse than both, as acceptance established. Widening instead would only relocate the cliff, since the OIDC `name` claim has no length. So: convenience field, degrade it; identity field, widen it to the spec limit and fail beyond. That is a coherent rule and the two columns now follow it.
+
+#### Blocking — the trim splits surrogate pairs, and that fails the request
+
+`Fit` cuts at `displayName[..400]`, a raw UTF-16 index. If a surrogate pair straddles index 400 — any non-BMP character, emoji included — the cut leaves a **lone high surrogate**, which cannot be encoded to UTF-8. Verified end to end against real PostgreSQL:
+
+```
+name = 399 × 'n' + 10 × "😀"        (pair straddles index 399/400)
+
+System.Text.EncoderFallbackException : Unable to translate Unicode character
+    \uD83D at index 399 to specified code page
+  wrapped in Microsoft.EntityFrameworkCore.DbUpdateException
+```
+
+That exception is not SQLSTATE 23505, so `IsDuplicateKey` correctly declines it and it propagates — **a hard failure on every request from that caller, for as long as the identity provider holds that name.** Which is the precise sentence in your own comment describing what `Fit` exists to prevent. Emoji in display names are ordinary, so this is not exotic input; it is narrow only because the pair must land on the boundary.
+
+**Remedy, verified:** drop a trailing lone surrogate after the cut.
+
+```csharp
+var cut = MaximumDisplayNameLength;
+if (char.IsHighSurrogate(displayName[cut - 1])) cut--;
+return displayName[..cut];
+```
+
+With that applied, the same probe returns `status=OK row=True len=399`, and your shipped trim test still passes. If you would rather not split grapheme clusters either (a ZWJ emoji sequence can still be halved, which is cosmetically ugly but encodes fine), `StringInfo` would do it — but the encoder exception is the part that must be fixed, and one `if` fixes it.
+
+I confirmed your own mutation too: removing the `Fit` call site fails `An_over_long_display_name_is_trimmed_rather_than_failing_the_request`, with the call count down to one — the definition alone — before I trusted it.
+
+#### Non-blocking
+
+- **`MaximumDisplayNameLength = 400` duplicates `HasMaxLength(400)`** in `GotIssuesDbContext`, and the comment says so honestly, but nothing enforces the agreement. Change the column and the trim silently disagrees — and disagreeing *downward* restores the hard failure. Same shape as the `DefaultPageSize` duplication already noted on this ticket.
+- **The trim is entirely silent.** AC7 rightly forbids logging the name, but the *event* can be logged without the value. In a ticket whose whole history is about things failing quietly, "display name trimmed for a caller" at Debug — no name, no email — would cost nothing and would be the only trace that it ever happened.
+
+#### Q2a — accurate now, and one observation
+
+The correction is right and carefully worded: the banner has indeed been found stale twice, the four-instance figure is the wider pattern, and T-0002 did catch **its own README banner** mid-ticket (its `ARCHITECTURE.md` staleness was caught in review, not by the ticket — the sentence claims only the README, so it holds).
+
+The observation: *found* stale twice is not the same as *gone* stale twice. This banner was falsified by T-0002 and again by T-0010 and simply not noticed until T-0009's acceptance. A reader can take "found stale twice" as "it has only gone wrong twice", which understates exactly what the sentence exists to convey. I am **not** asking for a third revision — that is the point below.
+
+#### The pattern you asked about — and a fourth instance of it in this very sentence
+
+Four findings were consequences of your own corrections. I think the unifying property is sharper than "review fixes like features":
+
+**A fix that moves a boundary silently re-classifies every case that sat on the old boundary, and those cases are not re-examined with the rigour the original code got.** Narrowing the catch moved the line between *swallowed* and *propagated*; everything previously absorbed by the broad catch needed re-checking, and two things were there — an over-long `Subject` and an over-long `DisplayName`. Both became defects, found one round apart. The question that would have found both at once, immediately, is: *what else was this catch absorbing?* That is enumerable in a minute.
+
+The prose instances are the same move in a different medium. The banner sentence and the README policy paragraph each **added a new claim about state** — and this project already knows that status claims go stale and that documents drift from behaviour. A correction that introduces an assertion has introduced something that needs verifying, and neither was.
+
+And the self-referential tally is the recursive case: a sentence that counts its own staleness must be maintained forever, has now been wrong once, and is *arguably imprecise again* in its corrected form. The durable fixes are to drop the count and keep the instruction, or to make it checkable — not to correct it a third time. **The general rule is the one this ticket has now produced twice: a correction is new, unverified work.** It applies to code (Q1 → Q3), to prose (Q2a, Q2b), and to the verification method itself (my half-applied mutation, your `&&`-chained grep). For the retrospective I would put it as: *hold corrections to the standard of the thing they correct, and for any fix that moves a boundary, enumerate what used to sit on it.*
+
+#### Q2b — correct, and worth keeping
+
+The README no longer implies endpoints enforce roles, and it names T-0004 as the first that will. That paragraph was actively misleading in the specific way that wastes a reader's afternoon: two tokens, two 200s, and a wrong conclusion about the policies. Good catch by acceptance.
+
+#### Gates
+
+`validate.py` **OK** (17 tickets, 6 ADRs) · `dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **60/60** (17 unit, 43 integration) · `check-drift.sh` **0** · working tree clean.
+
+#### Merge decision
+
+**Do not merge.** One `if`, plus a test carrying a non-BMP character over the boundary so the case is guarded rather than remembered. The trade is right, Q2a and Q2b are right, and nothing else is outstanding.
+
+- **Did:** Judged the trade on its merits. Probed `Fit` with a display name whose surrogate pair straddles the cut, against real PostgreSQL, and confirmed the resulting `EncoderFallbackException` propagates as a request failure. Verified a one-line remedy resolves it and leaves the shipped test green. Confirmed the implementer's own mutation, checking the call count before trusting it. Checked the Q2a wording against T-0002's actual history.
+- **Decided:** trimming is the correct trade for a convenience field; the finding is about how the trim is performed, not whether to trim.
+- **Remaining:** the surrogate fix and its test. The two non-blocking notes are take-or-leave.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-final-fixes` @ `ed6b920` — **not merged**.
+- **Test state:** 60/60 green; the defect is outside what any current test reaches, which is the finding.
+- **Review verdict:** **Request changes** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — claude-sm-9d4e — Q4: the trim's own boundary bug
+
+The finding is correct and the remedy is the one the reviewer verified. `Fit` cut at
+`displayName[..400]`, a UTF-16 index, so any non-BMP character straddling position 400
+left a lone high surrogate that cannot be encoded to UTF-8. The write then throws
+`EncoderFallbackException` inside a `DbUpdateException` that is *not* a unique violation,
+so `IsDuplicateKey` correctly declines it and it propagates — a hard failure on every
+request from that caller. That is exactly the failure `Fit` was written to prevent,
+reintroduced by `Fit` itself, on the narrow class of inputs nothing tested.
+
+```csharp
+if (char.IsHighSurrogate(displayName[cut - 1]))
+{
+    cut--;
+}
+```
+
+**Mutation-proved, both new tests, mutation confirmed in the artefact before the result
+was trusted:**
+
+| Mutant | Test | Result |
+| --- | --- | --- |
+| Guard removed | `A_display_name_trimmed_through_a_surrogate_pair_still_persists` | **Killed** — `EncoderFallbackException : Unable to translate Unicode character \uD83D at index 399`, the reviewer's exception verbatim |
+| `MaximumDisplayNameLength` 400 → 399 | `The_trim_length_matches_the_column_it_trims_for` | **Killed** — stored length ≠ column length |
+
+#### Both non-blocking notes taken, and why the second one changed shape
+
+**N1 — the constant duplicating `HasMaxLength(400)`.** My first attempt asserted the
+column is 400, which restates one half of a pair that can only fail by *disagreeing*: it
+would not have caught the constant drifting. The test now drives a 500-character name
+through the middleware and requires what is stored to fill the column exactly, reading
+the width from the EF model rather than a literal. Trim short and it fails; trim long and
+the write fails. Mutation 2 above is that test doing its job.
+
+**N2 — the silent trim.** AC7 forbids logging the display *name*; it does not forbid
+recording that one was shortened. Source-generated `[LoggerMessage]` carrying two lengths
+and no content — the analyzers reject `LogInformation` here (CA1848/CA1873), which is the
+right pressure.
+
+#### One more stale claim, found while in the file
+
+The narrowed-catch comment still read *"OIDC permits 255, the column holds 200"*. The
+column is 255 and has been for some time; the numbers went stale when it was widened and
+the comment kept the old pair. Corrected. This is the fifth instance of the pattern this
+ticket keeps producing, and the first one nobody reported — I only saw it because I was
+editing four lines above it.
+
+#### The tally: dropped, not corrected
+
+The reviewer declined to ask for a third revision — *"drop the count or make it checkable;
+don't correct it a third time"* — and dropping it is right. A sentence that counts its own
+staleness needs maintaining forever and earns nothing; the instruction it wrapped is the
+part with value. The banner now says updating it belongs to the ticket that falsifies it,
+and says so without asserting a number that will be wrong again.
+
+- **Did:** Applied the surrogate guard. Added two integration tests, mutation-proving both.
+  Took both non-blocking notes, rebuilding N1's test after noticing the first version could
+  not fail the way the note described. Corrected a stale width comment found in passing.
+  Replaced the self-counting banner sentence.
+- **Decided:** an agreement between two declarations is tested by making them disagree, not
+  by restating one of them.
+- **Remaining:** reviewer spot check.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-final-fixes` — pending commit.
+- **Test state:** 62/62 green (17 unit, 45 integration); `dotnet format` **exit 0**;
+  `check-drift.sh` **exit 0**.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-4a7e) — spot check of the surrogate fix and the two notes
+
+Spot check of `t-0009-final-fixes` @ `099f7fb`, diffed against `main` @ `f2287b2`. Independent of
+`claude-rev-8b4f`; I re-derived every claim below rather than reading the previous verdict forward.
+
+**Verdict: REQUEST CHANGES — one blocking finding, and it is in the item I was asked to confirm.**
+Q4 is genuinely fixed. N1 is genuinely closed and is *not* an elaborate version of the mistake it
+replaced. N2's code is on the right side of AC7 — but the guard that is supposed to keep it there
+does not reach the log statement N2 added, and I have the surviving mutant to show it.
+
+#### Q4 — the surrogate split is fixed, and I killed the mutant myself
+
+`Fit` now cuts back off a lone high surrogate before slicing. Mutation, run here, not taken on trust:
+
+| Mutant | Test | Result |
+| --- | --- | --- |
+| Guard (`if (char.IsHighSurrogate(displayName[cut - 1])) cut--;`) deleted | `A_display_name_trimmed_through_a_surrogate_pair_still_persists` | **Killed** — `EncoderFallbackException : Unable to translate Unicode character \uD83D at index 399`, the previous reviewer's exception verbatim |
+| `Fit` returns `displayName` untrimmed | `An_over_long_display_name_is_trimmed_rather_than_failing_the_request` | **Killed** — `DbUpdateException` on the write |
+
+The guard is also correct in the case nobody wrote a test for: a *low* surrogate at index 399 means
+the pair sits wholly at 398/399 and inside the cut, and the guard correctly leaves it alone.
+
+Note on the previous round's mutation method: deleting the `Fit` **call site** does not compile here
+(`CA1822` fires on `ProjectAsync`, warnings are errors), so that mutant is killed by the compiler
+rather than by the test. I neutered the return value instead, which is the mutant that actually
+exercises the assertion.
+
+#### N1 — genuinely closed. It tests the *agreement*, not either half
+
+I was asked whether `The_trim_length_matches_the_column_it_trims_for` is a more elaborate version of
+the test it replaced. It is not, and the difference is structural: it reads the width from the EF
+model and requires the **stored** value to fill it exactly, so it can only pass while the two
+declarations agree. Six mutants, both halves of the pair, both directions — each seen failing:
+
+| Mutant | How it dies |
+| --- | --- |
+| `MaximumDisplayNameLength` 400 → **399** | stored 399 ≠ column 400 — assertion |
+| `MaximumDisplayNameLength` 400 → **450** | trims to 450, `varchar(400)` rejects it — the write fails, request is not 200 |
+| `MaximumDisplayNameLength` 400 → **500** | equal to the driving name, so no trim at all — write fails |
+| `MaximumDisplayNameLength` 400 → **600** | no trim — write fails |
+| `HasMaxLength(400)` → **300** | assertion |
+| `HasMaxLength(400)` → **500** | assertion |
+
+The upward drift specifically asked about is caught, and it is caught by the *database*, not by the
+assertion: past the column the write itself fails and the request never reaches 200. That is the
+strongest of the six, because it does not depend on the test having guessed the right number.
+
+Two suggestions on it, neither blocking:
+
+- The driving name is a literal `new string('n', 500)`. It is coupled to the column: widen the column
+  past 500 and this test fails while the two declarations still agree. `columnLength + 100` removes
+  the coupling.
+- `An_over_long_display_name_is_trimmed_rather_than_failing_the_request` (line 241) asserts a literal
+  `400`, which is now a third copy of the same number. It could read the model like its neighbour.
+
+#### Blocking — AC7's guard does not cover the log statement N2 added
+
+The code is right: `LogDisplayNameTrimmed` carries two integers and no content, and AC7 is satisfied
+as shipped. The problem is that nothing holds it there.
+
+`Projecting_a_user_logs_neither_the_display_name_nor_the_email`
+(`RoleAuthorizationTests.cs:162`) projects a user whose name is `"Priya Confidential"` — 18
+characters. `Fit` returns early for anything at or under 400, so **the trim log never fires during
+the only test that inspects log output.** The new call site at
+`UserProjectionMiddleware.cs:82` is outside everything that test can see.
+
+Demonstrated, not argued. I gave `LogDisplayNameTrimmed` a `{Name}` parameter and passed it
+`displayName` — an unambiguous AC7 violation, personal data in the log:
+
+```
+dotnet test  ->  exit 0,  62/62 passed  (17 unit, 45 integration)
+```
+
+The full suite is green with the display name being written to the log. The mutant survives.
+
+That test's own comment claims the opposite — *"so a future log statement that leaks one fails this
+test instead of passing review"* — and this change is precisely the future log statement it names.
+Under `TESTING.md` (*"a test is not shown to guard a behaviour until it has been seen to fail when
+that behaviour breaks"*) the trim path is unguarded against a **security** criterion, and under
+`DOCUMENTATION.md` that comment is now inaccurate in the file this change touched.
+
+**Remedy: one line.** Give the AC7 test a name longer than the column — one request then covers both
+the create path and the trim path, and the mutant above dies. A second `[Fact]` would do as well.
+Whichever, run the leak mutant against it before trusting it: that is the whole point of the finding.
+
+This is the same shape the previous reviewer named and that this ticket keeps producing — *a
+correction is new, unverified work.* N2 was a take-or-leave note, taken correctly, and the new log
+call inherited a guard nobody checked reached it.
+
+#### Non-blocking
+
+- **`UserProjectionMiddleware.cs:87-98` — the doc comment now documents the wrong member.** The
+  `<summary>` beginning *"A unique violation, and nothing else…"* was written for `IsDuplicateKey`.
+  The `[LoggerMessage]` declaration was inserted between the comment and the method, so the comment
+  now attaches to `LogDisplayNameTrimmed`, and `IsDuplicateKey` — the most carefully reasoned method
+  in the file — is undocumented. Move the log declaration below `IsDuplicateKey`, or the comment
+  down onto it.
+- **The trim logs on every request, not on every write.** `Fit` is called at line 111, before the
+  no-op early return at line 136, so a caller whose identity provider holds an over-long name emits
+  an **Information** line on *every* authenticated request, including the majority that write
+  nothing. The previous review suggested `Debug` for exactly this reason. Either lower the level or
+  move the call onto the write path.
+- **The corrected width comment (line 156) reads oddly in its sentence.** *"a subject longer than the
+  column (255, the OIDC limit itself) returned 200 with no row written"* describes past behaviour,
+  when the column was 200 and the sharp point was that a **legal** 201–255 subject was being
+  swallowed. It is no longer false, which is what Q3 asked for, and the `GotIssuesDbContext` comment
+  (lines 22-26) carries the full story accurately — so this is a nit, not a finding.
+
+#### Observation — not a finding, and I am not asking for a change
+
+The guard fixes a pair split *at the boundary*. A lone high surrogate sitting anywhere earlier in the
+name throws the same `EncoderFallbackException`, with or without `Fit`, for names under 400 too — so
+it is pre-existing rather than introduced here, and it is very likely unreachable, since
+`System.Text.Json` substitutes U+FFFD for an invalid `\uD83D` escape before a claim value is ever
+constructed. I did not verify that substitution, which is why this is an observation. If T-0015 ever
+gets a subject-bearing token, it is a cheap thing to poke at.
+
+#### The rest of the change
+
+Scope is clean: the diff touches the projection middleware, its tests, the README paragraph and the
+ARCHITECTURE banner — all inside In Scope or the documentation-accuracy work acceptance asked for.
+No spec change, no new dependency, no decision at the ADR bar. AC6 is untouched: still no role, no
+credential. The README's new sentence is accurate — I checked, and the only `RequireAuthorization`
+in `apps/GotIssues.Api` is the bare one on `/health/authenticated` (`Program.cs:131-132`), so an
+`admin` and a `member` token do both reach it. The banner no longer counts its own staleness and
+keeps the instruction, which is the durable version of that fix.
+
+#### Gates, each read from the tool's own exit status, no pipelines
+
+`dotnet build --no-incremental` → **0 warnings / 0 errors** · `dotnet test` → **exit 0**, 62/62
+(17 unit, 45 integration), 0 skipped · `dotnet format --verify-no-changes` → **exit 0** ·
+`./tools/check-drift.sh` → **exit 0** ("generated code matches spec/openapi.yaml") ·
+`python3 tools/validate-project-os/validate.py` → **exit 0** (17 tickets, 6 ADRs) · branch is a
+descendant of `main`, working tree clean after every mutation was reverted.
+
+- **Did:** Re-derived the surrogate fix by deleting the guard and by neutering `Fit`'s return.
+  Drove the constant to 399/450/500/600 and the column to 300/500 — six mutants, all killed — to
+  test whether N1's replacement test catches disagreement rather than restating one half. Built an
+  AC7 leak mutant and ran the **whole** suite against it. Verified the README's policy claim against
+  `Program.cs` rather than reading it.
+- **Decided:** Q4 and N1 are closed. N2's code is correct and its guard is absent, which is the
+  blocking finding — a security criterion whose only test cannot see the code that could violate it.
+- **Remaining:** one line in the AC7 test, then re-request. The four non-blocking items are
+  take-or-leave, though two of them are in the same file and the same edit.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-final-fixes` @ `099f7fb` — **not merged**.
+- **Test state:** 62/62 green; eight mutants run — seven killed, one (the AC7 leak) survived, which
+  is the finding.
+- **Review verdict:** **Request changes** — ENG + ARCH (`claude-rev-4a7e`).
+
+### 2026-08-31 — claude-sm-9d4e — Q5: the AC7 test could not fail
+
+`claude-rev-4a7e` is right, and this is the sharpest finding on the ticket. The AC7 test —
+the one whose own comment promises that *"a future log statement that leaks one fails this
+test instead of passing review"* — projected an 18-character name. `Fit` returns early at
+or under the column width, so the log statement I added in Q4 **never executed in the only
+test that inspects log output**. The reviewer gave the logger a `{Name}` parameter, passed
+it the display name, and the suite stayed green at 62/62. My N2 fix shipped unguarded, and
+the test that was supposed to guard it was the reason I believed otherwise.
+
+The test now projects a name past the column so the trim runs, and asserts the trim line is
+present before asserting what it must not contain. **That second assertion is the part that
+matters**: without it the test reverts to vacuous the moment anything changes about when
+`Fit` trims, and reverts silently, which is precisely how this got here.
+
+| Mutant | Result |
+| --- | --- |
+| Logger takes `{Name}` and is passed the display name (the reviewer's, which survived before) | **Killed** — `Assert.DoesNotContain() Failure: Sub-string found` |
+| Trim-log condition inverted so the line never fires | **Killed** — `Assert.Contains() Failure: Sub-string not found` |
+
+A note on the second one. My first attempt at it was `if (false)`, which failed to compile
+(CS0162 under warnings-as-errors) — the compiler killed it, not the test, and a mutant the
+compiler rejects is evidence about the build, not about coverage. The reviewer hit the same
+thing from the other side last round: deleting the `Fit` call site tripped CA1822. **A
+mutation has to be something the codebase would actually accept**, or it tells you nothing.
+
+#### The other three notes, taken
+
+- **Logging moved out of `Fit` to the write path.** `Fit` runs before the "nothing worth a
+  write" early return, so an unchanged caller with an over-long name emitted an Information
+  line on *every request*. It now logs where the write is decided, and `Fit` is pure and
+  static again.
+- **`[LoggerMessage]` had been inserted between `IsDuplicateKey`'s XML doc and its method**,
+  so *"A unique violation, and nothing else"* was documenting the log method. Moved, and the
+  log method got its own doc.
+- **Third copy of the column width removed.** `DisplayNameColumnLength(db)` reads it from
+  the EF model; the surrogate test derives `columnLength - 1`, the agreement test
+  `columnLength + 100`. A suite whose job is keeping two declarations agreeing about a
+  number should not have carried three hard-coded copies of it.
+
+#### What I'd take to the retrospective
+
+The pattern this ticket kept producing was *claims outrunning evidence*. This is one layer
+down: **a test asserting the right thing about an input that cannot reach the code under
+test.** It is not a weaker version of a vacuous test, it is the dangerous version — it reads
+as coverage, it names the risk in its comment, and it stays green through exactly the change
+it was written to stop. Both times it was caught by someone deliberately breaking the code
+and watching, never by reading. The general form: *an assertion is only evidence about a code
+path if the input reaches that path — and nothing in a green run tells you whether it did.*
+
+- **Did:** Widened the AC7 test past the column and added the presence assertion that keeps
+  it honest; killed the reviewer's surviving mutant. Moved logging to the write path, fixed
+  the displaced doc comment, removed the duplicated widths.
+- **Decided:** a test that guards a log statement must prove the statement ran.
+- **Remaining:** reviewer spot check.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-final-fixes` — pending commit.
+- **Test state:** 62/62 green; `dotnet format` **exit 0**; `check-drift.sh` **exit 0**.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-4a7e) — re-check of the four fixes
+
+Re-check of `t-0009-final-fixes` @ `41dfeba`. Scoped to the four items I raised; AC1–AC8 were not
+re-derived — the earlier passes stand and nothing in this diff reaches them.
+
+**Verdict: APPROVE.** The blocking finding is closed, and closed by the half that matters.
+
+#### The blocking finding — closed, and I killed the surviving mutant myself
+
+The AC7 test now drives a name past the column, so the trim path executes inside the only test that
+inspects log output, and it asserts the trim log is **present** before asserting what must not be.
+Both halves verified here, not read:
+
+| Mutant | Result |
+| --- | --- |
+| `LogDisplayNameTrimmed` gains a `{Name}` parameter and is passed `rawName` — the mutant that survived a green 62-test suite last round | **Killed.** `Assert.DoesNotContain() Failure: Sub-string found`; full suite 44/45 |
+| Trim-log condition inverted (`!=` → `==`), so the line never fires on a trimmed name | **Killed.** `Assert.Contains() Failure: Sub-string not found` |
+
+You were right that the presence assertion is the load-bearing half, and the second mutant is what
+proves it: without it the test would go quietly vacuous again and the first mutant would survive
+again. `Assert.DoesNotContain("xxxxxxxxxx", …)` is a good addition nobody asked for — it guards the
+*trimmed* value as well as the raw one, which is the value that actually reaches the entity.
+
+#### The other three
+
+- **Log moved to the write path.** It now sits after the `nothing worth a write` early return, so a
+  caller with an over-long name no longer emits an Information line on requests that write nothing.
+  `Fit` is `static` again, which is the honest signal that it no longer has a side effect. Not
+  guarded by a test, and I am **not** asking for one: it is log volume, not behaviour, and the
+  condition is visible in ten lines.
+- **Displaced doc comment.** `[LoggerMessage]` moved out from between `IsDuplicateKey`'s `<summary>`
+  and its method; the summary is adjacent to the method it describes again, and the log method has
+  its own. Fixed.
+- **Third copy of the width.** `DisplayNameColumnLength(db)` is the single reader, and both tests
+  derive their input from it (`columnLength - 1`, `columnLength + 100`). The surrogate test's
+  arithmetic generalises correctly: with `cut = columnLength`, padding to `columnLength - 1` always
+  lands the pair's high surrogate on `cut - 1`, whatever the column becomes.
+
+#### The earlier kills survive the refactor — re-run, not assumed
+
+`Fit` changed shape and both tests changed how they get their numbers, so the previous round's
+evidence needed re-earning rather than citing:
+
+| Mutant | Result |
+| --- | --- |
+| Surrogate guard deleted | **Killed** — `EncoderFallbackException … \uD83D at index 399` |
+| `MaximumDisplayNameLength` → 399 | **Killed** — assertion |
+| `MaximumDisplayNameLength` → 450 | **Killed** — the write is rejected by the column |
+| `MaximumDisplayNameLength` → 500 | **Killed** — the write is rejected by the column |
+
+#### On the TESTING.md rule you asked about — I agree, with two wording cautions
+
+The rule is right and the retro is the right place for it (`evolve-governance`, lane 2, human
+approval — not this ticket, and not either of us unilaterally). My read on the wording:
+
+**Agree with the substance.** A mutant the compiler or the analysers reject was killed by the
+toolchain, not by a test. It is not merely weaker evidence — it is evidence about a *different
+question*, and it is dangerous precisely because it looks like a pass: a vacuous test survives that
+outcome without a mark. Your `if (false)` (CS0162) and my deleted `Fit` call site (CA1822) are the
+same failure, and it produced a wrong conclusion in one of the two cases.
+
+**Caution 1 — "the codebase would accept it" is too vague to act on.** Name the mechanism: *the
+build*, including the compiler and the analysers, since this project runs warnings-as-errors and
+that is what turns an ordinary mutation into a compile error. A reader should be able to tell
+whether their mutant qualifies without interpreting the phrase.
+
+**Caution 2 — it can be misread as "only use realistic mutants".** That is a *weaker* rule and not
+the one you found. The requirement is that the mutant **reach the test**: the mutation must survive
+the build so that the only thing left that can kill it is an assertion. Realism is a good heuristic
+for getting there — drift a constant, invert a condition, drop a guard, all of which compile — but
+it is the means, not the rule.
+
+**One thing I would add rather than remove:** a build-rejected mutant is not worthless, it is
+*mis-filed*. It says the invariant is enforced by the compiler or an analyser, which is a stronger
+guarantee than a test. It should be recorded as that, and then the real mutant run. Wording I would
+propose to the retro:
+
+> A mutation only counts as coverage evidence if the build accepts it. A mutant the compiler or the
+> analysers reject was killed by the toolchain, not by a test, and a vacuous test survives that
+> outcome unnoticed — rewrite it as a change the build accepts and re-run. Record the mutant you
+> actually ran, not the one you first tried. Where the toolchain is what rejects the mutation, that
+> is worth recording in its own right: it is a stronger guarantee than a test, and it is still not
+> test coverage.
+
+#### Observation — not a finding
+
+The AC7 test's opening comment still promises that *"a future log statement that leaks one fails
+this test"*. That is now true for the create-and-trim path this request exercises, and the presence
+assertion makes it self-announcing if it stops being true there. It remains a single request, so a
+leak from some future statement on a path it does not reach would still not fail it. That is the
+generic limit of any one log test and I am recording it, not asking for anything.
+
+#### Gates, each read from the tool's own exit status
+
+`dotnet build --no-incremental` → **exit 0**, 0 warnings / 0 errors · `dotnet test` → **exit 0**,
+62/62 (17 unit, 45 integration), 0 skipped · `dotnet format --verify-no-changes` → **exit 0** ·
+`./tools/check-drift.sh` → **exit 0** · `python3 tools/validate-project-os/validate.py` → **exit 0**
+(17 tickets, 6 ADRs) · branch is a descendant of `main`; working tree clean after every mutant was
+reverted.
+
+- **Did:** Re-ran the `{Name}` leak mutant that survived last round's full suite and watched it die;
+  inverted the trim-log condition to prove the presence assertion is doing work; re-ran the
+  surrogate and constant-drift mutants because `Fit` and both tests changed shape; read the moved
+  log statement against the early return; confirmed the doc comment now sits on `IsDuplicateKey`.
+- **Decided:** Approve. Six mutants this round, all killed. Nothing outstanding, blocking or
+  otherwise.
+- **Remaining:** merge, then the handover status commit on the trunk (`GIT.md`); the mutation-rule
+  wording goes to the retro, not here.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-final-fixes` @ `41dfeba` — **approved for merge**.
+- **Test state:** 62/62 green, 0 skipped; six mutants run this round, six killed.
+- **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-4a7e`).

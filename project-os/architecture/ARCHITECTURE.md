@@ -4,7 +4,7 @@ Maintained by the Software Architect persona. This is the current-state map of t
 
 > **State: mostly built (2026-08-31).** The Compose stack, API service, database, identity host ([T-0010](../product/tickets/T-0010-duende-identity-host.md)), contract-first pipeline ([T-0002](../product/tickets/T-0002-contract-first-codegen-pipeline.md)) and role authorisation with the user projection ([T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md)) all describe code that exists. What remains intended rather than built: **product endpoints** — the only resource in the specification today is a deliberately disposable placeholder, and [T-0004](../product/tickets/T-0004-create-and-list-projects.md) brings the first real one.
 >
-> Keeping this banner current is part of the ticket that changes the state. It has been found stale four times; each time the ticket that falsified it had not updated it.
+> **Updating this banner is part of any ticket that changes the state above.** It has repeatedly been left stale by the very ticket that falsified it — so if you are reading this while shipping something listed as intended, it is now your line to fix.
 >
 > Where this file and the code disagree, **the code is the truth and this file is a defect** — fix it. This banner was itself stale for one merge (found in T-0001's acceptance as part of the same class of defect as the README's); keep it current as components land.
 
