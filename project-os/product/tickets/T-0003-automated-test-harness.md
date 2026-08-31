@@ -2,11 +2,11 @@
 id: T-0003
 title: Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers
 type: technical
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-3f7c
 depends_on: [T-0001]
 adrs: [ADR-0003, ADR-0005]
 created: 2026-08-30
@@ -109,7 +109,7 @@ This ticket's own verification is meta: the deliverable is the harness, so accep
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked 2026-08-30. Items 1–8 pass, **item 3 genuinely** this time. One recorded PO deviation on AC7; see the closing entry.
 
 ---
 
@@ -561,3 +561,40 @@ That is the fifth instance this session of a green signal measured from the wron
 **AC7 — PO decision applied.** The maintainer approved recording the deviation *and* adding the T-0014 link, satisfying both of the reviewer's conditions. AC7's text now names T-0014 as owner of the remainder. To be precise about the residual, per the acceptor: of `TESTING.md`'s three commands, `dotnet build` and `dotnet test` **now match reality**; only the codegen drift check (T-0002's tooling) and the stale parenthetical (T-0014's) are wrong.
 
 **Remaining for `complete-ticket`:** the AC7 deviation only. AC6 no longer needs one. The Compose-level coverage residual is ticketed as [T-0015](T-0015-compose-stack-smoke-test.md).
+
+### 2026-08-30 — Scrum Master (claude-sm-9d4e) — complete-ticket: **done**
+
+**Definition of Done, walked literally.**
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | Pass — everything In Scope built; nothing from T-0002/T-0010 smuggled in |
+| 2 All AC verified independently | Pass — `claude-qa-3f7c` verified by **mutation**, not by reading: five mutations, three of them its own |
+| 3 Automated tests exist and pass | **Pass, genuinely.** 13 tests shown to fail when the code is wrong, not merely seen green. This ticket *is* the tests |
+| 4 No known unrecorded defects | Pass — the Compose-level residual is ticketed as [T-0015](T-0015-compose-stack-smoke-test.md), not left as Work Log prose |
+| 5 Code quality | Pass — approved by `claude-rev-2c8d` after two rounds; format exit 0, build 0/0 |
+| 6 Documentation updated | Pass — README documents `dotnet test` and what the integration tier actually does |
+| 7 Work Log complete | Pass |
+| 8 State updated | Pass — this commit |
+
+Conditional items: **Security** — the test authentication handler is proven absent from the shipped assembly (the acceptor published the API alone: six assemblies, no test assembly, zero occurrences of the scheme name). **Migrations** — applied by the project's own migrations, asserted. **ADR** — none required.
+
+## AC7 — recorded deviation
+
+**Approved by the human PO, 2026-08-30**, choosing "Record the deviation, add the T-0014 link".
+
+**What is deviated from:** AC7 requires the README *and* `TESTING.md` to match what works. The README half is done. `TESTING.md` still documents the codegen drift check, whose tooling is T-0002's, and carries a stale parenthetical.
+
+**Why it cannot be met here:** `project-os/standards/` is governance. [GIT.md](../../standards/GIT.md) routes it through `evolve-governance` with human approval, and editing a standard from inside a source ticket is exactly what that rule prevents. [T-0014](T-0014-correct-testing-standard-commands.md) exists for it, links this ticket, and its AC2 requires no further correction once T-0002 and T-0003 have landed.
+
+**Precisely how much is outstanding**, per the acceptor: of `TESTING.md`'s three commands, `dotnet build` and `dotnet test` **now match reality**. Only the drift check and the parenthetical are wrong.
+
+## AC6 — no deviation needed
+
+Originally flagged as only partly satisfiable. The PO granted a daemon-stop window and it is now verified against the literal condition: **21 s, exit 1, names the Docker socket, zero occurrences of `5432`**. The environment was restored exactly — six containers, healthy, count unchanged.
+
+## What this ticket closed for another
+
+T-0001 completed with an approved deviation on DoD item 3, bounded by this ticket's AC8. That is now discharged for everything a test harness can reach — including the criterion T-0001 itself called the one most likely to be quietly violated, proven by inserting `Database.Migrate()` into startup and watching the suite go red. **T-0001's Compose-level criteria remain outside any harness**, which is why [T-0015](T-0015-compose-stack-smoke-test.md) exists rather than the residual sitting in prose.
+
+**Unblocking:** [T-0009](T-0009-role-authorisation-and-user-projection.md) lists this ticket in `depends_on` and now waits on [T-0010](T-0010-duende-identity-host.md) alone. [T-0004](T-0004-create-and-list-projects.md) waits on T-0002 and T-0009. [T-0015](T-0015-compose-stack-smoke-test.md) becomes eligible.
