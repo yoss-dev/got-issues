@@ -14,7 +14,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | committed | T-0003, T-0010 |
+| 1 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | in-progress | T-0003, T-0010 |
 | 2 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | ready | T-0002, T-0003, T-0009 |
 | 3 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | ready | T-0004 |
 | 4 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | backlog | T-0005, T-0009 |
