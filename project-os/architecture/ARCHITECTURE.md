@@ -2,7 +2,9 @@
 
 Maintained by the Software Architect persona. This is the current-state map of the system; the *history and rationale* of decisions lives in [`adr/`](adr/README.md). When this overview and an Accepted ADR disagree, the ADR wins and this file has a bug — fix it.
 
-> **State: partly built (2026-08-30).** [T-0001](../product/tickets/T-0001-runnable-compose-stack.md) delivered the runnable core — the API service, PostgreSQL, and the explicit migration step, under Docker Compose — so the *Compose stack*, *API service*, and *Database* rows below describe code that exists. Everything else is still the intended shape agreed at bootstrap: no API specification or generated contracts (T-0002), no identity host (T-0010), no roles or user projection (T-0009), no product endpoints.
+> **State: mostly built (2026-08-31).** The Compose stack, API service, database, identity host ([T-0010](../product/tickets/T-0010-duende-identity-host.md)), contract-first pipeline ([T-0002](../product/tickets/T-0002-contract-first-codegen-pipeline.md)) and role authorisation with the user projection ([T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md)) all describe code that exists. What remains intended rather than built: **product endpoints** — the only resource in the specification today is a deliberately disposable placeholder, and [T-0004](../product/tickets/T-0004-create-and-list-projects.md) brings the first real one.
+>
+> Keeping this banner current is part of the ticket that changes the state. It has been found stale four times; each time the ticket that falsified it had not updated it.
 >
 > Where this file and the code disagree, **the code is the truth and this file is a defect** — fix it. This banner was itself stale for one merge (found in T-0001's acceptance as part of the same class of defect as the README's); keep it current as components land.
 

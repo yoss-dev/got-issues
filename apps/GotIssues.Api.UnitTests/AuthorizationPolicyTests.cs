@@ -101,6 +101,38 @@ public sealed class AuthorizationPolicyTests
     }
 
     [Fact]
+    public async Task A_role_on_an_unauthenticated_identity_grants_nothing()
+    {
+        // N1, found in acceptance. The check gated on the *primary* identity being
+        // authenticated while the claim search ran across *all* identities — so an
+        // authenticated role-less identity beside an unauthenticated one carrying
+        // admin was granted admin. Unreachable with one scheme; fail-open the moment
+        // a second is added, in a design where everything else fails closed.
+        var principal = new ClaimsPrincipal(
+        [
+            new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "s-1")], "test"),
+            new ClaimsIdentity([new Claim("role", GotIssuesRoles.Admin)]),   // not authenticated
+        ]);
+
+        Assert.False(await Allows(principal, AuthorizationPolicies.Admin));
+        Assert.False(await Allows(principal, AuthorizationPolicies.Member));
+    }
+
+    [Fact]
+    public async Task A_role_on_a_second_authenticated_identity_is_honoured()
+    {
+        // The other half: narrowing to authenticated identities must not stop a
+        // legitimate second scheme from carrying the role.
+        var principal = new ClaimsPrincipal(
+        [
+            new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "s-2")], "test"),
+            new ClaimsIdentity([new Claim("role", GotIssuesRoles.Admin)], "second-scheme"),
+        ]);
+
+        Assert.True(await Allows(principal, AuthorizationPolicies.Admin));
+    }
+
+    [Fact]
     public async Task One_recognised_role_among_several_claims_is_enough()
     {
         // A token may legitimately carry more than one role claim.

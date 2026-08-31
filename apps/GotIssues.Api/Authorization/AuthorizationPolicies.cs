@@ -51,8 +51,7 @@ public static class AuthorizationPolicies
     /// claiming <c>role: superuser</c> is refused rather than treated as a member.
     /// </summary>
     private static bool HasRole(ClaimsPrincipal user, string role) =>
-        user.Identity?.IsAuthenticated == true
-        && RoleValues(user)
+        RoleValues(user)
             .Where(GotIssuesRoles.Known.Contains)
             .Any(value => string.Equals(value, role, StringComparison.Ordinal));
 
@@ -71,7 +70,16 @@ public static class AuthorizationPolicies
     /// does. It failed closed, so no permitted-path test noticed.
     /// </summary>
     private static IEnumerable<string> RoleValues(ClaimsPrincipal user) =>
-        user.FindAll("role")
-            .Concat(user.FindAll(ClaimTypes.Role))
+        user.Identities
+            // Only authenticated identities. The previous version gated on the
+            // *primary* identity being authenticated while searching claims across
+            // *all* of them — so an authenticated role-less identity alongside an
+            // unauthenticated one carrying `role: admin` would have been granted
+            // admin. Unreachable today (one scheme, one identity) and fail-open the
+            // moment a second scheme is added, in a design where everything else
+            // fails closed. Found in acceptance.
+            .Where(identity => identity.IsAuthenticated)
+            .SelectMany(identity =>
+                identity.FindAll("role").Concat(identity.FindAll(ClaimTypes.Role)))
             .Select(claim => claim.Value);
 }

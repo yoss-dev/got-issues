@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GotIssues.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GotIssues.Api.Authentication;
 
@@ -34,6 +35,20 @@ public sealed class UserProjectionMiddleware(RequestDelegate next)
 
         await next(context).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// A unique violation, and nothing else — any other write failure must propagate
+    /// rather than be reported to the caller as success.
+    ///
+    /// Note this matches <em>any</em> unique violation, which is correct while the
+    /// primary key is the only unique constraint on this table. Adding a unique index
+    /// later would silently widen what gets swallowed here.
+    /// </summary>
+    private static bool IsDuplicateKey(DbUpdateException exception) =>
+        exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+        };
 
     private static async Task ProjectAsync(
         GotIssuesDbContext dbContext, HttpContext context, string subject)
@@ -76,16 +91,19 @@ public sealed class UserProjectionMiddleware(RequestDelegate next)
         {
             await dbContext.SaveChangesAsync(context.RequestAborted).ConfigureAwait(false);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
             // Two concurrent first requests from the same subject both see no existing
             // record and both insert; the second violates the primary key. The other
             // request created the projection, which is the outcome we wanted — so this
             // is a race won by someone else, not a failure to report to the caller.
             //
-            // The alternative, an unhandled DbUpdateException, is a 500 on a caller's
-            // very first request. Same shape as T-0004's recorded risk: a read-then-
-            // insert check that passes every single-threaded test.
+            // Narrowed to the unique violation deliberately. Catching DbUpdateException
+            // wholesale silently swallowed *every* write failure: a subject longer than
+            // the column (OIDC permits 255, the column holds 200) returned 200 with no
+            // row written and nothing logged, leaving a caller who appeared to succeed
+            // permanently unusable as an assignee. Found in acceptance; the broad catch
+            // turned a loud failure into an invisible one.
             dbContext.ChangeTracker.Clear();
         }
     }

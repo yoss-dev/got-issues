@@ -729,3 +729,147 @@ Conditional items: **Security** — dependency scan clean and recorded here as `
 - **Branch / PR:** merged; verified on `main` @ `c92bc24`.
 - **Test state:** 55/55 green, 0 skipped; eight mutations each seen failing.
 - **Acceptance verdict:** **PASS** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — review of the acceptance fixes
+
+Review of `t-0009-acceptance-fixes` @ `c10f1dd`. No Docker stack needed this pass — every question was answerable by mutation against the suite.
+
+**Verdict: REQUEST CHANGES.** Both code fixes are correct, and I pinned each from both sides rather than reading them. The two findings are not code defects: they are things this change-set *knows* and does not record. Both are one small edit.
+
+#### Q1 — the narrowing is real, and the predicate is right
+
+You asked whether I could confirm the swallow was narrowed rather than moved. It was, and the two existing tests pin it from opposite directions:
+
+```
+MUTATION A  widen the catch back to DbUpdateException wholesale
+              race test       -> Passed!   (unchanged, as expected)
+              oversized test  -> Failed!   <- the new test genuinely guards the narrowing
+
+MUTATION B  remove the catch entirely
+              race test       -> Failed!  Failed!  Failed!   (3/3)
+```
+
+Mutation B is the answer to "is `InnerException is PostgresException { SqlState: "23505" }` the right predicate": with no catch the race fails, with the narrow catch it passes, so the predicate demonstrably matches the exception PostgreSQL actually raises on that collision. Mutation A shows non-23505 failures now propagate. Narrowed, not moved — proven at both edges rather than at one.
+
+Two smaller notes, neither blocking. `"23505"` could be `PostgresErrorCodes.UniqueViolation`, which is self-documenting and immune to a typo the compiler cannot see. And 23505 is *any* unique violation on the table: correct today, because the primary key on `Subject` is the only unique constraint, but a unique index added later would silently widen the swallow again. A clause in the comment saying the predicate is scoped to "the only unique constraint here is the PK" would make that dependency visible to whoever adds one.
+
+#### N1 — closed in one direction, still open in the other, both now guarded
+
+```
+MUTATION C  revert to the pre-fix shape (primary-identity gate, all-identity search)
+              -> Failed: A_role_on_an_unauthenticated_identity_grants_nothing
+
+MUTATION D  over-narrow to the primary identity only
+              -> Failed: A_role_on_a_second_authenticated_identity_is_honoured
+```
+
+So the fail-open is closed *and* the legitimate multi-scheme case you were worried about is protected against a future over-correction. That second test is the one that earns its place: it is the guard against fixing this bug too hard, which is the more likely next mistake.
+
+**A confession that belongs in the record, because it is this project's own failure class.** My first run of mutation C reported all 15 tests still green, and I was one sentence from writing that the N1 test did not catch the fail-open. It did — my mutation was **half-applied**: the script did two string replacements, the second target did not match because the real `RoleValues` has a comment block between `user.Identities` and `.Where(...)`, and Python's `str.replace` returns the unchanged string rather than complaining. Same shape as the `&&`-chained grep recorded above: a silent no-op producing a confident, wrong conclusion. I caught it by checking whether the mutation had applied before trusting what it said, which is the discipline this ticket has been teaching all week. Re-run with the change verified in the file first, both mutations bite.
+
+#### Blocking
+
+**1. Nothing in this change-set is recorded in the ticket.** `git diff main --name-only` on the T-0009 ticket file is empty: three acceptance defects fixed, and the Work Log's last entry is still the acceptance entry listing them as found. A reader of T-0009 today sees Q1, N1 and Q2 raised and no statement that any was addressed. `GIT.md` fixes the handover order — *final Work Log entry on the branch → PR → review → merge* — and DoD item 7 requires that repository state alone tells the full story.
+
+In fairness the code comments are unusually good and carry most of the *why* for Q1 and N1. What is missing is the ticket-level record: which acceptance defects this addresses, the evidence, and the disposition of finding 2 below. One entry.
+
+**2. The 200-character subject column is a known defect with no destination.** Acceptance reproduced it and this commit's own comment states it plainly: OIDC permits a 255-character `sub`, the column holds 200. Narrowing the catch was right and I am not asking you to reverse it — but it changes the failure rather than removing it. Before, such a caller got 200 with no row written; now they get a hard failure on **every** request, so a user with a long subject is not merely unusable as an assignee, they cannot use the API at all. That is the better failure, and it is still a defect.
+
+DoD item 4: every defect found is either fixed or captured as a bug ticket linked from this one, with the deferral accepted. This one is found, documented in two Work Logs and a code comment, and captured nowhere. **T-0015's new AC8 does not take it on** — it covers *verifying the projection against a subject-bearing token*, not the column being narrower than the standard permits; citing it would be the false-pointer failure that the same commit's T-0015 widening was so careful to avoid. Either widen the column here (a property change and a migration) or open the ticket. I have no view on which; I do have a view on it living only in prose.
+
+Worth noting *when* it bites: the condition that makes real subjects appear — T-0010's provisioning answer — is exactly the condition that makes long subjects appear. It becomes reachable at the same moment as everything else in T-0015's AC8, which is an argument for capturing it now while the reasoning is fresh.
+
+#### Q2 and the T-0015 widening — both right
+
+The README's "Not here yet" entry is now a true statement about user tokens rather than a false one about roles, and the token section explains the two policies including the floor semantics, which is where someone choosing a mechanism will look. The `ARCHITECTURE.md` banner is current and now says that keeping it current is part of the ticket that changes the state, with the count of times it has been found stale. Naming the recurrence in the artefact is the right instinct — it converts a habit into something a reader can check.
+
+The T-0015 widening is the correct shape and I checked the thing that matters: its Out of Scope does not disown the new line, and AC8 carries an explicit instruction not to pass quietly if no subject-bearing token exists. That is a real improvement on "add a scope line and hope".
+
+#### Gates
+
+`validate.py` **OK** (17 tickets, 6 ADRs) · `dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **58/58** (17 unit, 41 integration) · `check-drift.sh` **0** · working tree clean.
+
+#### Merge decision
+
+**Do not merge yet — but the code is done.** Both fixes are correct and verified from both sides; I found nothing wrong with either. What is missing is a Work Log entry and a home for a known defect, and those are the two things this project has repeatedly found are not safe to leave in prose. Add the entry, capture or fix the column width, and this is an approve with no further technical pass needed.
+
+- **Did:** Four mutations — widening the catch, removing it, reverting the identity filter, and over-narrowing it — each verified as applied to the file before its result was trusted. Checked the predicate from both edges. Read the README, banner and T-0015 changes, including whether T-0015's Out of Scope disowns its new line.
+- **Decided:** the narrowed predicate is correct as written; my notes on it are style, not substance.
+- **Remaining:** the two findings above. No further technical verification needed from me.
+- **Open questions / blockers:** none for the reviewer.
+- **Branch / PR:** `t-0009-acceptance-fixes` @ `c10f1dd` — **not merged**.
+- **Test state:** 58/58 green, and the three behaviours at issue are each green for the right reason — every one seen failing without its fix.
+- **Review verdict:** **Request changes** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — acceptance findings fixed
+
+**Q1 — the race catch swallowed every write failure, not the race.** `catch (DbUpdateException)` wholesale meant a subject longer than the column returned **200 with no row written and nothing logged**: a caller told they had succeeded, then permanently unusable as an assignee (T-0006) or comment author (T-0008). Narrowed to `PostgresErrorCodes.UniqueViolation`.
+
+The reviewer pinned it from both edges — widening the catch back makes the new oversized-subject test fail; removing it entirely makes the race test fail 3/3 — which together prove the predicate matches what PostgreSQL actually raises on that collision, rather than the swallow having simply moved.
+
+**And narrowing it exposed a second defect the broad catch had been hiding.** The `Subject` column held 200 characters while OpenID Connect permits a `sub` of up to 255, so a *legal* subject of 201–255 turned from a silent loss into a **hard failure on every request**. The reviewer flagged that this needed a destination and that [T-0015](T-0015-compose-stack-smoke-test.md)'s AC8 does not take it on — citing it would have been the false-pointer failure the same commit's T-0015 widening was careful to avoid.
+
+**Fixed rather than captured**, because the fix is one migration and the defect is the projection's own: the column is now 255, so a legal subject always fits. Tests cover both sides — a 255-character subject is projected, and one beyond the specification still fails loudly.
+
+**N1 — the only fail-open in the design.** `HasRole` gated on the **primary** identity's `IsAuthenticated` while the claim search ran across **all** identities, so an authenticated role-less identity beside an *unauthenticated* one carrying `role: admin` would have been granted admin. Unreachable today with one scheme; fail-open the moment a second is added.
+
+Claims are now read only from authenticated identities. Two tests, deliberately: one that the unauthenticated identity grants nothing, and one that a **legitimate second authenticated scheme is still honoured** — the reviewer's point that the more likely next mistake is fixing this too hard, which its mutation confirmed.
+
+**Q2 — documentation, and the fourth instance of this pattern.** The README still listed role authorisation under *"Not here yet"* while describing it as working further down the same file; `ARCHITECTURE.md`'s state banner still said *"no roles or user projection"*. Both corrected, and the README gained a true statement about what genuinely does not exist yet: **user** tokens, since the identity host issues machine-client tokens carrying a role but no subject.
+
+The banner now records that it has been found stale four times, each time by the ticket that falsified it. Naming the recurrence is the only durable thing available short of an automated check — and it is worth raising at the retrospective, because four instances is a pattern rather than four accidents.
+
+**Also:** T-0015 widened to accept T-0009's AC5/AC8 residual, with its new AC8 instructed to record a reason and name a successor rather than pass quietly if no subject-bearing token can be issued when it is implemented.
+
+**A note on the reviewer's own method**, because it is this project's central lesson turned on itself: their first mutation of the N1 fix showed all tests green, and they were about to report that the guard did not work — when they checked and found the mutation had been **half-applied**, a string replacement that silently matched nothing. They verified the mutation had landed before trusting its result. That is the same failure as my `&&`-chained grep, caught one step earlier.
+
+**Verification, each from the tool's own exit status:** `dotnet build` **0 warnings / 0 errors**, `dotnet format --verify-no-changes` **0**, `dotnet test` **0** (**59 tests**), `validate.py` **OK**.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — review of the acceptance fixes, second pass
+
+Review of `t-0009-acceptance-fixes` @ `5874e7c`.
+
+**Verdict: APPROVE. The change-set may merge.**
+
+**First, a correction to my own last verdict.** I wrote that this would be "an approve with no further technical pass needed" once the two items landed. That was conditional on the disposition I expected — *capturing* the column defect in a ticket. You **fixed** it instead, which is a schema change, a migration and two new tests: new code, and new code gets reviewed regardless of what I promised about the shape I anticipated. So I checked it rather than honouring the letter of my own sentence. It holds up.
+
+#### The column widening — verified, including the check I had not run before
+
+- **Model, migration and snapshot agree.** `dotnet ef migrations has-pending-model-changes` → *"No changes have been made to the model since the last migration."* That is the right consistency check for a schema change and I had not run it on any earlier pass; running it now also confirms nothing else in the model has drifted from the migration history.
+- **The migration is a clean widening with a real `Down`.** `AlterColumn` 200 → 255 with `oldMaxLength: 200`, and a `Down` that narrows back. Widening a `varchar` needs no table rewrite in PostgreSQL, so it is cheap on a populated database.
+- **The 255 test genuinely depends on the widening.** I edited the migration's `Up` to leave the column at 200 — verifying the edit had landed in the file before trusting the result, which is the whole point:
+
+  ```
+  column left at 200:   A_subject_at_the_OIDC_limit_is_projected                 -> Failed!
+                        A_subject_beyond_the_OIDC_limit_fails_loudly...          -> Passed!
+  ```
+
+  Both behave as intended: the boundary test is sensitive to the column width, and the beyond-the-limit test is correctly insensitive to it — it asserts only that the write is never silently discarded, which stays true at any column size.
+
+**One observation, not a finding.** The `Down` narrows 255 → 200 and will fail if any stored subject exceeds 200. That is the correct behaviour — refusing to roll back is better than truncating identity data — but it makes the rollback conditional rather than unconditional, which is worth knowing before anyone reaches for it in anger. Nothing to change.
+
+#### The rest
+
+`PostgresErrorCodes.UniqueViolation` replaces the literal, and the comment now records that the predicate matches *any* unique violation — correct while the primary key is the only unique constraint, and silently wider if an index is added later. That dependency is now visible to whoever adds one, which was the point.
+
+The Work Log entry covers what was missing: Q1 and the predicate pinned from both edges, the column consequence and why it was fixed rather than captured, N1 with the reason the second test exists, Q2 and the fourth-instance pattern, and the T-0015 widening. Repository state now tells the full story without this review thread.
+
+#### On "verify the mutation applied"
+
+You put it better than I would have: it belongs alongside "verify by mutation" as a rule, not as an anecdote. The argument for it is that both failures in this ticket — the `&&`-chained grep and my half-applied `str.replace` — were **silent no-ops that produced confident false conclusions**, and in both cases every downstream signal was honest. Mutation testing assumes the mutation happened; when it silently doesn't, a green result reads as "the guard works" when it means "nothing was tested". The check is cheap — look at the file, or assert the replacement changed something — and it is the difference between the two instances being caught one step apart. If that reaches the retrospective, I would put it as: *a mutation is evidence only once you have seen it in the artefact.*
+
+#### Gates
+
+`validate.py` **OK** (17 tickets, 6 ADRs) · `dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **59/59** (17 unit, 42 integration) · `check-drift.sh` **0** · `dotnet ef migrations has-pending-model-changes` **none** · working tree clean.
+
+#### Merge decision
+
+**Merge.** Both acceptance defects are fixed, the defect the first fix exposed is fixed rather than deferred, and every behaviour at issue has been seen failing without its fix. Nothing is outstanding.
+
+- **Did:** Reviewed the schema change, migration and snapshot; ran the EF model/migration consistency check; mutated the migration to leave the column at 200 and confirmed the boundary test depends on it, verifying the edit had landed first; read the Work Log entry against what was missing.
+- **Decided:** approve. Fixing rather than capturing was the better call — the defect is the projection's own and the fix is one migration, so a ticket would have been ceremony.
+- **Remaining:** implementer merges and performs the handover status commit.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0009-acceptance-fixes` @ `5874e7c` — **approved for merge**.
+- **Test state:** 59/59 green, each of the behaviours at issue seen red without its fix.
+- **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-8b4f`).

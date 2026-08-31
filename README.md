@@ -94,7 +94,7 @@ The generator runs from a pinned container image, so **no JDK is needed** — on
 ### Not here yet
 
 - Product resources — projects, issues, comments. What exists is a disposable placeholder proving the pipeline; [T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md) brings the first real one.
-- Role-based authorisation. Tokens carry a `role` claim, but nothing reads it yet — that is [T-0009](project-os/product/tickets/T-0009-role-authorisation-and-user-projection.md).
+- **User** tokens. The identity host issues machine-client tokens, which carry a role but no subject — so no endpoint is yet guarded by a *person's* identity, and the user projection stays empty in practice.
 
 *(Everything else the standards mention now exists.)*
 
@@ -107,7 +107,7 @@ curl -s -X POST localhost:8081/connect/token \
   -d "grant_type=client_credentials&client_id=$ADMIN_CLIENT_ID&client_secret=$ADMIN_CLIENT_SECRET&scope=gotissues.api"
 ```
 
-The token carries a `role` claim (`admin` or `member`) which the API reads per request and never stores. To prove the round trip:
+The token carries a `role` claim (`admin` or `member`) which the API reads per request and never stores. Two authorisation policies act on it: `admin` is restricted to that role, and `member` is a floor an admin also satisfies. An absent or unrecognised role is refused, never treated as a member. To prove the round trip:
 
 ```bash
 curl -i -H "Authorization: Bearer <token>" localhost:8080/health/authenticated

@@ -45,6 +45,7 @@ These are the behaviours that break silently and expensively: a base-image chang
   - **Stack behaviour (from T-0001):** cold start on an empty volume reaching healthy; restart against an existing volume preserving data and re-running the migration step as a no-op; the API tolerating a database that is slow or absent.
   - **Token validation against a real issuer (from T-0010):** a token issued by the identity host is accepted, and the refusals that need a real issuer to construct — expired, wrong audience, and a token signed by an unknown key.
   - **The identity host does not migrate or seed on ordinary startup** — the analogue of T-0001's AC5 for that host, currently unguarded by any test.
+  - **The user projection against a token carrying a real subject (from [T-0009](T-0009-role-authorisation-and-user-projection.md)).** T-0009's AC5 and AC8 are proven only in its test host, because **no token this system can currently issue carries a `sub`** — the identity host issues machine-client tokens. Acceptance confirmed it from both ends: seven real tokens decoded, none with a subject; the `users` table held zero rows after a full traffic run. That blind spot is what hid T-0009's claim-mapping bug, and it is the condition under which its narrowed write-failure handling first becomes reachable. **This scope line exists so the residual has a destination that accepts it** — it is conditional on user tokens existing, which follows T-0010's unanswered provisioning question.
 - A decision on where it lives and how it is invoked. It is materially slower than `dotnet test` and must not be dragged into the habitual suite ([TESTING.md](../../standards/TESTING.md): the habitual tier stays fast). **Refinement's recommendation, not a constraint** — see Technical Notes.
 - Documentation of how to run it.
 
@@ -63,6 +64,7 @@ These are the behaviours that break silently and expensively: a base-image chang
 - [ ] AC5: Given the habitual `dotnet test` suite, when it runs, then this check is not part of it, and the README says how to run it separately.
 - [ ] AC6: Given the identity host running against the stack, when a token it issued is presented to the protected endpoint, then the request is accepted; and when an **expired** token, a **wrong-audience** token, or one signed by an **unknown key** is presented, then each is refused with 401.
 - [ ] AC7: Given the identity host started **without** its migration step against an empty schema, when it runs, then it creates no tables and seeds nothing — the analogue of T-0001 AC5 for the identity host.
+- [ ] AC8: Given a token carrying a real subject, when an authenticated request is made, then a user projection is created for that subject and updated (not duplicated) on return — T-0009's AC5 and AC8 against a real token rather than a test host. **If no such token can be issued when this ticket is implemented, that is recorded as the reason and this criterion is deferred with a named successor** — not silently passed.
 
 ## Examples / Scenarios
 
@@ -156,3 +158,13 @@ That also settles how it splits if it does overrun: **the seam is stack (AC1–A
 **What this ticket discharges when it lands:** the DoD item 3 deviations recorded on [T-0001](T-0001-runnable-compose-stack.md) and [T-0010](T-0010-duende-identity-host.md). Both were approved on the basis that this ticket would close them, so it carries more weight than its position in the backlog suggests.
 
 **DoR verdict: `ready`.**
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e)
+
+- **Did:** Added the T-0009 user-projection residual to scope and AC8, from T-0009's acceptance (`claude-qa-5a71`).
+- **Decided:** widened this ticket rather than pointing at it without checking — its scope named stack-dependent verification but not this, and citing it regardless would have been the false-pointer failure DoD item 4 exists to prevent, which this project has now made three times.
+- **Decided:** AC8 carries an explicit instruction for the case where no subject-bearing token can be issued when it is implemented: record the reason and name a successor, rather than pass it quietly. The residual's whole history is that it was invisible.
+- **Remaining:** Refinement.
+- **Open questions / blockers:** none.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.

@@ -198,6 +198,51 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
     }
 
     [Fact]
+    public async Task A_subject_at_the_OIDC_limit_is_projected()
+    {
+        // The column was 200 characters while OpenID Connect permits a `sub` of up to
+        // 255. Once the write-failure catch was correctly narrowed, a legal subject of
+        // 201-255 characters became a hard failure on every request — the narrowing
+        // converted a silent loss into a loud refusal of valid input. The column is
+        // now 255, so a legal subject fits.
+        var subject = new string('s', 255);
+        using var client = ClientAs(subject, "member");
+
+        var response = await client.GetAsync(Member);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        Assert.Equal(1, await db.Users.CountAsync(u => u.Subject == subject));
+    }
+
+    [Fact]
+    public async Task A_subject_beyond_the_OIDC_limit_fails_loudly_rather_than_silently()
+    {
+        // Q1, found in acceptance. The race catch was DbUpdateException wholesale, so
+        // a subject longer than the column returned 200 with no row written and
+        // nothing logged — a caller told they succeeded, then permanently unusable as
+        // an assignee. OIDC permits 255 characters; the column holds 200.
+        //
+        // The requirement is that it must NOT silently succeed. A 500 is the correct
+        // loud failure here: it is a real write failure, not a race someone else won.
+        // Beyond 255 is outside the specification, so a loud failure is correct —
+        // what must never happen is a 200 with nothing written.
+        using var client = ClientAs(new string('x', 300), "member");
+
+        var thrown = await Record.ExceptionAsync(() => client.GetAsync(Member));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        var written = await db.Users.CountAsync(u => u.Subject.StartsWith("xxxx"));
+
+        // Either it threw, or it returned a non-success status — what must not happen
+        // is a 200 with nothing written.
+        Assert.True(thrown is not null || written > 0,
+            "an oversized subject was silently discarded and the caller was told it worked");
+    }
+
+    [Fact]
     public async Task The_projection_stores_no_role_and_no_credential()
     {
         // AC6. Asserted against the model rather than by reading the class: the role
