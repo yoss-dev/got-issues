@@ -17,11 +17,13 @@ Sequenced: T-0001 first — everything except the spike depends on it.
 | Ticket | Title | Status | Owner | Blocked by |
 | --- | --- | --- | --- | --- |
 | [T-0001](../product/tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | blocked | claude-sm-9d4e | PO decision (see Blockers) |
-| [T-0011](../product/tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | in-progress | claude-sm-9d4e | — |
+| [T-0011](../product/tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | in-acceptance | none | — |
 | [T-0003](../product/tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | committed | none | T-0001 |
 | [T-0010](../product/tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | committed | none | T-0001 |
 
 ## Blockers & Escalations
+
+- **T-0011 — verdict is "supersede", so the loop stopped as planned.** The spike found that OpenAPI Generator's `aspnetcore` templates emit **synchronous** controller methods with no `CancellationToken` (`operationIsAsync=true` is silently ignored, confirmed across three configurations), which collides with ENGINEERING.md's async rule on every endpoint permanently. **ADR-0006 is drafted as `Proposed`**, recommending NSwag for server contracts and OpenAPI Generator for clients. This sprint's Notes said a "supersede" verdict stops the loop rather than absorbing it, because T-0002's scope changes materially (WoW §7). Awaiting the maintainer: accept ADR-0006, reject it, or ask for NSwag to be verified first. **T-0002 is now stale-Ready** and must be re-refined against whichever way this goes.
 
 - **T-0001 — awaiting a PO decision on AC1.** Implementation is complete and independently reviewed (`claude-rev-2c8d`, request-changes); every finding is resolved except one. AC1 requires `docker compose up` to work from a clean clone "with no further manual steps", but `.env` is git-ignored by design, so PostgreSQL will not initialise without it. Resolving it means either committing a default credential (forbidden outright by SECURITY.md), amending AC1 to permit the documented `cp .env.example .env` (a PO artifact I may not change), or switching PostgreSQL to trust authentication (technically clean, but a security posture lowered to pass a criterion). **Recommended default: amend AC1** — the ticket's own In Scope already mandates `.env.example`, which implies copying it. Full escalation in the ticket Work Log. Blocked since 2026-08-30; unblocked by the maintainer choosing one option.
 

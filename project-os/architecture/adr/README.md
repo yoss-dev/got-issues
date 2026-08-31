@@ -11,7 +11,7 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 ## Conventions
 
 - Created via the [`create-adr`](../../skills/create-adr/SKILL.md) skill, from [`templates/ADR_TEMPLATE.md`](../../templates/ADR_TEMPLATE.md).
-- Files: `ADR-NNNN-short-slug.md` in this directory. IDs sequential, never reused. Next ID: **ADR-0006**.
+- Files: `ADR-NNNN-short-slug.md` in this directory. IDs sequential, never reused. Next ID: **ADR-0007**.
 - Statuses: `Proposed` → `Accepted` | `Rejected`; `Accepted` → `Superseded by ADR-XXXX` | `Deprecated`.
 - **ADRs are immutable once Accepted** except for status changes and links. Changing a decision means a *new* ADR that supersedes the old one — never editing history.
 - Acceptance authority: the Software Architect persona accepts ADRs whose options do not differ materially in business consequence; otherwise a human decides ([WoW §13](../../governance/WAY_OF_WORKING.md)).
@@ -26,3 +26,4 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 | [ADR-0003](ADR-0003-initial-technology-stack.md) | Build Got Issues as a .NET 10 API on PostgreSQL with Duende IdentityServer, running entirely under Docker Compose | Accepted | 2026-08-30 |
 | [ADR-0004](ADR-0004-contract-first-openapi-code-generation.md) | Generate server contracts and clients from a hand-authored OpenAPI specification using OpenAPI Generator | Accepted | 2026-08-30 |
 | [ADR-0005](ADR-0005-operational-endpoints-outside-the-api-contract.md) | Operational endpoints are outside the API contract | Accepted | 2026-08-30 |
+| [ADR-0006](ADR-0006-nswag-for-server-contracts.md) | Generate server contracts with NSwag, keeping OpenAPI Generator for clients | Proposed | 2026-08-30 |
