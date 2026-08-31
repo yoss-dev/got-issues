@@ -2,7 +2,7 @@
 id: T-0004
 title: Create and list projects
 type: feature
-status: backlog
+status: ready
 priority: high
 owner: none
 implemented_by: none
@@ -34,6 +34,7 @@ Sam gets the structure that a flat list cannot provide — work grouped by proje
 ### In Scope
 
 - Specification of the project resource in `spec/openapi.yaml`: create and list operations, schemas, error responses, required scopes.
+- **A project key**: short, uppercase, unique across the deployment, and **immutable once set**. It is the human-quotable half of every issue identifier (`GOTI-123`), so it is addressable in API paths.
 - **Removal of T-0002's disposable placeholder resource** from the specification and of its generated output — projects is the first real resource, and the placeholder exists only until it arrives.
 - Implementation behind the generated controller contracts.
 - Persistence via EF Core, with the migration that introduces the projects table.
@@ -51,7 +52,10 @@ Sam gets the structure that a flat list cannot provide — work grouped by proje
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given a caller holding the `admin` role, when they create a project with valid input, then it is persisted and returned with its identifier.
+- [ ] AC1: Given a caller holding the `admin` role, when they create a project with a valid name and key, then it is persisted and returned with both.
+- [ ] AC1b: Given a key that is not short uppercase alphanumeric (as declared in the specification), when a project is created, then the API returns 400 with a problem document naming the key.
+- [ ] AC1c: Given a key already in use, when a project is created with it, then the API returns 409 and no second project exists — keys are unique across the deployment.
+- [ ] AC1d: Given an existing project, when any operation attempts to change its key, then the key does not change — it is immutable, because every issue identifier derives from it.
 - [ ] AC2: Given a caller holding only the `member` role, when they attempt to create a project, then the API returns 403 and nothing is persisted — project creation is an admin act (`PROJECT.md` §5).
 - [ ] AC2b: Given a caller of either role, when they request the project list, then it is returned — listing is not restricted.
 - [ ] AC2c: Given an unauthenticated or invalid-token caller, when they attempt either operation, then the API returns 401 — distinct from the 403 of AC2.
@@ -62,7 +66,10 @@ Sam gets the structure that a flat list cannot provide — work grouped by proje
 
 ## Examples / Scenarios
 
-- An `admin` creates a project, then a `member` lists it: it appears.
+- An `admin` creates a project with key `GOTI`, then a `member` lists it: it appears with its key.
+- Creating a second project with key `GOTI`: 409, one project remains.
+- Key `goti` or `Got Issues!` or a 40-character key: 400, naming the key.
+- Two simultaneous creates with the same key: exactly one succeeds.
 - A `member` attempts to create one: 403, nothing written.
 - Create with a missing or empty name: 400 with a problem document, not a 500.
 - Create two projects with the same name: **behaviour undecided — see Risks.**
@@ -81,9 +88,10 @@ The specification comes first: design the resource in `spec/openapi.yaml`, regen
 
 ## Risks / Unknowns
 
-- **Project keys are undecided.** Jira uses short keys (`PROJ-123`) that make issue identifiers human-readable. Whether Got Issues does the same is open ([IDEA-001](../IDEAS.md)) and affects both this schema and issue identity in T-0005 — cheap now, expensive later. **Refinement should settle it before implementation.**
+- ~~**Project keys are undecided.**~~ **Settled by the PO, 2026-08-31: keys, and per-project issue numbering.** The consequence this ticket carries is **immutability** — once an issue is `GOTI-1`, renaming the project's key orphans every reference to it, in this system and in every commit message and chat log outside it. AC1d makes that a criterion rather than an assumption. Renaming, if it is ever wanted, is a separate ticket with a migration, not a field update.
+- **Key uniqueness must hold under concurrency**, not merely be checked. Two simultaneous creates with the same key must not both succeed; a read-then-insert check without a unique constraint behind it will let them. The constraint is the guarantee, the check is the error message.
 - **Archiving projects is out of scope but is an admin act** when it arrives (maintainer, 2026-08-30) — recorded so the follow-up ticket inherits the rule rather than rediscovering it.
-- Name uniqueness is unspecified — duplicates allowed, or rejected?
+- Name uniqueness is unspecified — duplicates allowed, or rejected? The *key* is unique (AC1c); whether two projects may share a display name is a separate and much less consequential question, and the ticket's default is that they may.
 - This is the first real exercise of the generated `aspnetcore` contracts. If the output proves unworkable, [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) requires superseding rather than a quiet workaround, and this ticket's Work Log is where that evidence gets recorded.
 
 ## Testing Notes
@@ -99,7 +107,7 @@ Integration tests through `WebApplicationFactory` against PostgreSQL in Testcont
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — checked during refinement; note applied exceptions here.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold; the one gap that would have blocked it (project keys) was answered live by the PO and is now AC1–AC1d. Conditional items: security — creation is an `admin` act with the negative case as a criterion (AC2); data-shape impact identified (key column, unique constraint, immutability); architectural questions resolved (ADR-0004 governs how the resource is specified and generated); no UX. No exceptions applied.
 
 ## Definition of Done
 
@@ -126,3 +134,23 @@ Integration tests through `WebApplicationFactory` against PostgreSQL in Testcont
 - **Open questions / blockers:** none.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-31 — Product Owner decision, transcribed by claude-sm-9d4e
+
+Asked during refinement whether projects get Jira-style keys and issues per-project numbers, the maintainer (human PO) answered:
+
+> "Keys and per-project numbers — GOTI-123"
+
+Recorded per [WoW §13](../../governance/WAY_OF_WORKING.md) before being acted on. This settles the decision refinement had flagged as needing an answer *before* implementation, and it settles it for [T-0005](T-0005-create-and-read-issues.md) too — issue identity derives from it.
+
+### 2026-08-31 — Business Analyst (claude-sm-9d4e) — refinement
+
+Perspectives applied: Product Owner, Business Analyst, Software Engineer, Architect, QA, Security. (No UX — no user-facing UI.)
+
+- **PO answered the blocking question live**, so this ticket did not have to park. Keys are now In Scope with four criteria: valid format, uniqueness, immutability, and the creation-role restriction that was already there.
+- **BA/QA:** the interesting criterion is **AC1d, immutability**. It is easy to implement a key as an ordinary column and only discover the problem when someone renames one and orphans every `GOTI-*` reference — including references living outside this system entirely, in commit messages and chat. Making it a criterion rather than a note is the difference between a decision and an accident.
+- **ENG:** added the concurrency risk. A read-then-insert uniqueness check without a database constraint behind it lets two simultaneous creates both succeed; the constraint is the guarantee and the check is only the error message. This is the kind of thing that passes every test written against a single-threaded harness.
+- **ARCH:** no ADR bar reached — the resource is specified and generated under [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md), and roles are settled in `PROJECT.md` §5.
+- **Sizing:** grew by four criteria but they are all one resource's validation rules; still comfortably within the guideline.
+
+**DoR verdict: `ready`.**

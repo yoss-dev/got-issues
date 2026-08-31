@@ -7,7 +7,7 @@ priority: high
 owner: none
 implemented_by: none
 accepted_by: none
-depends_on: [T-0001, T-0011]
+depends_on: [T-0001, T-0011]   # both done 2026-08-30/31
 adrs: [ADR-0004, ADR-0005]
 created: 2026-08-30
 updated: 2026-08-30
@@ -55,6 +55,8 @@ This is the half of the proof of concept that tests the *method* rather than the
 - [ ] AC4: Given the generated server contracts, when the API is built, then its controllers implement the generated interfaces and declare no routes of their own.
 - [ ] AC5: Given the stack from T-0001, when the placeholder resource's endpoint is called through the running API, then it behaves as the specification declares, including the `application/problem+json` error shape.
 - [ ] AC8: Given the generator's version, when `./tools/generate.sh` is inspected, then the version is pinned explicitly — regeneration on another machine or another day produces identical output.
+- [ ] AC9: Given the generated output under `libs/`, when `dotnet build` and `dotnet format --verify-no-changes` run, then both are clean — generated code is excluded from analyzers and formatting checks, and the exclusion is verified in **both** directions (a violation in generated code passes; the same violation in hand-written code still fails).
+- [ ] AC10: Given the container build, when `docker compose build` runs on a clean clone, then it succeeds — `libs/` and `spec/` reach the build context and the root `.editorconfig` is copied, so the container build does not fail where the host build succeeds.
 - [ ] AC6: Given the README, when a newcomer follows the documented spec→regenerate→implement workflow, then it works as written.
 
 ## Examples / Scenarios
@@ -66,7 +68,29 @@ This is the half of the proof of concept that tests the *method* rather than the
 
 ## Technical Notes
 
+**The working generator configuration, proven by [T-0011](T-0011-spike-aspnetcore-generator-viability.md) (2026-08-30).** Pin the whole option string; it is not a menu:
+
+```
+-g aspnetcore
+--additional-properties=aspnetCoreVersion=8.0,buildTarget=library,\
+  classModifier=abstract,operationModifier=abstract,\
+  operationIsAsync=true,operationResultTask=true,\
+  nullableReferenceTypes=true,useSwashbuckle=false,useNewtonsoft=false,\
+  packageName=<name>
+```
+
+`operationIsAsync` alone is **not** enough — it makes the body async while leaving the return type `IActionResult`. `operationResultTask` is what produces `Task<IActionResult>`. Missing that pairing is what made the spike's first verdict wrong.
+
+Client: `-g csharp --additional-properties=library=generichost` — the default, System.Text.Json, async with `CancellationToken`, no Newtonsoft.
+
+**Two consequences of the generator's own limits**, both verified rather than assumed:
+
+- `aspnetCoreVersion` stops at **8.0** and emits `<TargetFramework>net8.0</TargetFramework>`. It compiles on `net10.0` once retargeted, but the generated `.csproj` must not be hand-edited — so this ticket needs a `Directory.Build.props` override or a post-generation step.
+- The output pulls **`Newtonsoft.Json` with a high-severity advisory** transitively via `JsonSubTypes`, *even with* `useNewtonsoft=false`. Under `TreatWarningsAsErrors` that is `NU1903: Warning As Error` and the build fails. A repository-level pin to `Newtonsoft.Json` 13.0.3 clears it — in our own files, so the never-hand-edit rule holds.
+
 **Run the generator from its container image — decided during refinement (2026-08-30).** The project already requires Docker; running the generator in a pinned container removes the host-JDK prerequisite entirely, pins the version for free (AC8), and matches the project's "everything runs under Docker" posture. The host-JDK route works (JDK 25 verified locally) but adds a prerequisite for every future contributor and lets versions drift between machines.
+
+*Cost discovered in T-0011:* the first pull of the generator image **exceeded a 10-minute timeout** before completing in the background, while the 30 MB JAR downloaded in seconds. The decision stands, but the first-run cost belongs in the README so nobody reads a slow pull as a hang.
 
 **Consequence the implementer must handle:** `PROJECT.md` §5 currently lists the JDK as build tooling and the README lists it as a prerequisite. Both need updating in this ticket if AC1 is met as written — a documentation change is part of the change that breaks it ([DOCUMENTATION.md](../../standards/DOCUMENTATION.md)).
 
@@ -79,7 +103,11 @@ This is the half of the proof of concept that tests the *method* rather than the
 
 ## Risks / Unknowns
 
-- **The `aspnetcore` generator's output may not suit ASP.NET Core 10** — the project's single biggest unvalidated assumption. **Now owned by [T-0011](T-0011-spike-aspnetcore-generator-viability.md)**, a time-boxed spike this ticket depends on, so the answer arrives *before* the pipeline is built rather than during it. If the spike's verdict is "supersede", ADR-0004 is replaced and this ticket's scope changes before anyone plans a sprint around it.
+- ~~**The `aspnetcore` generator's output may not suit ASP.NET Core 10.**~~ **Answered by [T-0011](T-0011-spike-aspnetcore-generator-viability.md), 2026-08-30: it does, with the right options.** [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) stands; ADR-0006 was proposed on a wrong reading and rejected. The configuration is now a constraint on this ticket rather than an unknown — see Technical Notes.
+- **`buildTarget=library` is load-bearing, not cosmetic.** Removing it from the same option set makes the generator emit `public abstract async Task<...>` — invalid C# (`CS1994`). The option string is pinned as a whole; cherry-picking from it breaks the build in a way that looks like a generator bug (T-0011 acceptance, `claude-qa-5e19`).
+- **The `csharp` client half of the recorded configuration is asserted, not verified.** T-0011 proved the server generator and the `generichost` library's dependency profile, but did not build a client from this project's spec. Confirm it on first use rather than trusting the note.
+- **Generated code must be excluded from analyzers and formatting, and the mechanism is now known.** T-0003 and T-0010 both hit this with EF migrations: the fix is an `.editorconfig` section with `generated_code = true`, and the glob must be checked in both directions — a half-matching glob silently covers subdirectories only (T-0003). `libs/` will need the same treatment as `**/Migrations/**.cs` already has.
+- **`.dockerignore` currently excludes `libs/` and `spec/`.** T-0001 left a comment there saying to remove those two lines in this ticket; the container build will otherwise compile without the generated contracts. Also: the Dockerfiles must keep copying the root `.editorconfig`, or analyzers run against generated code inside the image and the container build fails where the host build succeeds (T-0010).
 - Committed generated code may produce large, noisy diffs. Accepted deliberately so drift is visible; revisit if it becomes intolerable.
 - Generation is a separate step, not part of `dotnet build`, so "regenerate after editing the spec" is enforced by the check rather than the compiler. **With no CI (`PROJECT.md` Q6), nothing runs that check but a human remembering to** — the weakest link in the contract-first guarantee, and worth knowing rather than assuming.
 - The placeholder resource adds churn: T-0004 must delete it. Small, but it means the first product ticket starts by removing something.
@@ -97,7 +125,7 @@ The drift check is itself a test and a merge gate ([TESTING.md](../../standards/
 
 ## Definition of Ready
 
-- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-30 during `refinement-session`. All nine universal items hold. Item 5: dependencies are T-0001 and the new spike T-0011; neither makes starting pointless, though T-0011's verdict could change this ticket's scope — which is exactly why it gates. Conditional items: the architectural question is resolved by ADR-0004 (Accepted) with its residual risk routed to T-0011; ADR-0005 settles the operational-endpoint boundary; no personal data; no UX. No exceptions applied.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — **re-evaluated 2026-08-31** (original evaluation 2026-08-30 below). All nine universal items hold. Item 5: dependencies are T-0001 and the new spike T-0011; neither makes starting pointless, though T-0011's verdict could change this ticket's scope — which is exactly why it gates. Conditional items: the architectural question is resolved by ADR-0004 (Accepted) with its residual risk routed to T-0011; ADR-0005 settles the operational-endpoint boundary; no personal data; no UX. No exceptions applied.
 
 ## Definition of Done
 
@@ -132,3 +160,23 @@ Perspectives applied: Product Owner, Business Analyst, Software Engineer, Archit
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
 - **DoR verdict:** **ready**.
+
+### 2026-08-31 — Business Analyst (claude-sm-9d4e) — re-refinement after T-0011
+
+Perspectives applied: Product Owner, Business Analyst, Software Engineer, Architect, QA, Security.
+
+**Why re-refined:** this ticket was marked Ready *before* the spike it depends on had run. T-0011 has since completed and produced facts this ticket was carrying as unknowns. A Ready ticket whose assumptions have been overtaken is stale, and shipping it unchanged would waste the spike.
+
+**What changed**
+
+- **The headline risk is retired.** "The generator's output may not suit ASP.NET Core 10" was the project's biggest unvalidated assumption; T-0011 answered it. [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) stands. The generator configuration moved from *unknown* to *constraint*, with the full option string in Technical Notes and the reason `operationIsAsync` alone is insufficient — that pairing is what made the spike's first verdict wrong.
+- **Three risks added from T-0011's evidence**, none of which this ticket knew before: `buildTarget=library` is load-bearing (drop it and the generator emits invalid C#); the `csharp` client half of the configuration is asserted rather than verified and must be confirmed on first use; and the output pulls a vulnerable `Newtonsoft.Json` transitively *even with* `useNewtonsoft=false`, which fails a warnings-as-errors build until pinned at repository level.
+- **Two risks added from what T-0003 and T-0010 learned the hard way**, because this ticket introduces the project's second and third bodies of generated code: generated output must be excluded from analyzers and formatting, and the glob must be checked in *both* directions — a half-matching glob silently covers subdirectories only. And `.dockerignore` still excludes `libs/` and `spec/`, with a comment T-0001 left saying to remove them here.
+- **AC9 and AC10 added.** AC9 makes the analyzer exclusion verifiable in both directions rather than assumed — which is now what [TESTING.md](../../standards/TESTING.md) requires of any coverage claim. AC10 requires the *container* build to succeed on a clean clone, because T-0010 shipped a Dockerfile that built on the host and failed in the image for exactly this reason.
+- `aspnetCoreVersion` capping at 8.0 is recorded as a concrete task (a `Directory.Build.props` override or post-generation step), not a surprise for the implementer.
+
+**Not changed:** scope, the disposable placeholder resource, and the decision to run the generator from a pinned container image. T-0011 measured the first-run pull as slow enough to look like a hang, which is now a README note rather than a reason to reverse the decision.
+
+**Sizing:** grew — two more ACs and several named constraints. Still within the guideline, but it is now the larger of the two Ready tickets. If it overruns, the seam is the client generator (out of scope for anything but proving it runs).
+
+**DoR verdict: `ready`** — and more genuinely so than before, since the item that previously passed on "an ADR exists" now passes on evidence.

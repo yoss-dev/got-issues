@@ -16,7 +16,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | --- | --- | --- | --- | --- | --- |
 | 1 | [T-0002](tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | technical | ready | T-0001, T-0011 |
 | 2 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | ready | T-0003, T-0010 |
-| 3 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | backlog | T-0002, T-0003, T-0009 |
+| 3 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | ready | T-0002, T-0003, T-0009 |
 | 4 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | backlog | T-0004 |
 | 5 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | backlog | T-0005, T-0009 |
 | 6 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | backlog | T-0006 |
