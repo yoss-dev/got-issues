@@ -487,3 +487,150 @@ Housekeeping note: four orphaned `t0010v2-*` images from an earlier verification
 **Clear to merge.** Squash-merge titled `T-0010: <summary>` per [GIT.md](../../standards/GIT.md), then the `os:` status commit on the trunk, then remove the worktree and delete the branch. Acceptance inherits one flagged residual — token validation against a real issuer, now genuinely owned by T-0015 — and the ticket says so in the place a PO will look.
 
 A closing note on the pattern, since it has now recurred four times across three tickets and this is the last of them I will see. Every blocking finding I have raised on this project was the same defect: the repository claiming more than the code delivered — coverage that did not cover, a criterion satisfied by deleting what it tested, a residual assigned to a ticket that disowned it, a health check that could not fail. None was a bug in the ordinary sense, and none would have been caught by a passing build. What caught all four was the same cheap habit: take each claim, ask what would have to be true for it to be false, and then try to make it false. Mutation for tests, a dropped schema for a health check, and reading the destination ticket rather than the sentence pointing at it. That habit is the reusable part of this review, more than any individual finding.
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-3f7c) — independent acceptance
+
+Independent `acceptance-test` pass on `b467545`. I did not implement this ticket and did not review it (`implemented_by: claude-sm-9d4e`, reviewer `claude-rev-2c8d`). Criteria derived from the requirements sections before reading the Work Log; every claim below is something I produced myself, and where a property could be broken I broke it.
+
+**Method.** Fresh `git clone` of `main`, `.env` from `.env.example`, own Compose project `qa3f7c10` on the README's own ports 8080/8081 (both verified free first). Docker state recorded before and after. Everything torn down with `down -v --rmi local`; all scratch trees deleted.
+
+**Verdict: PASS.** All ten criteria verified. One finding (D1) that is a requirement nuance rather than a defect, and which matters most as a trap laid for T-0015. **DoD item 3 needs a recorded PO deviation** — reasoning below.
+
+#### Acceptance criteria — verified by me
+
+| AC | Verdict | Evidence that settled it |
+| --- | --- | --- |
+| **AC1** discovery served, advertises scopes | **pass** | `issuer: http://localhost:8081`, `scopes_supported: [gotissues.api, offline_access]`, `client_credentials` in `grant_types_supported`, `jwks_uri` present |
+| **AC2** client-credentials token with the scope | **pass** | Both seeded clients: `token_type: Bearer`, `expires_in: 3600`, `scope: gotissues.api`, 737-char JWT, `alg RS256` |
+| **AC3** token accepted at the protected endpoint | **pass** | `/health/authenticated` → **200** `{"status":"authenticated"}` for **both** admin and member tokens |
+| **AC4** no / expired / wrong-audience / unknown-key → 401 | **pass — all four isolated**, including the two the review could not | See below |
+| **AC5** `role` claim present | **pass** | `role: admin` and `role: member`; `aud: gotissues-api`, `iss: http://localhost:8081`, `client_id` matching. The claim is named **`role`**, not `client_role` — T-0009's policies will find it |
+| **AC6** clean clone → healthy, API validates, no manual step | **pass** | Cold start on an empty volume: all **five** services healthy (`postgres`, `migrator` exited 0, `identity-migrator` exited 0, `identity`, `api`). Both app containers `restarts=0`, `user=1654` (non-root). **Attribution proved**: stopped the identity container id → host `curl` on 8081 **exit 7**, nothing else listening; restarted → 200 |
+| **AC7** no key or credential in repo or history | **pass** | `git ls-files` finds no `.jwk/.pfx/.pem/.key/.p12/.crt`; only `.env.example` tracked; history scan over `apps/`, `compose.yaml`, `.env.example` surfaces **only** a config path (`Identity:SigningKeyPath`) and a compose key, no values. The signing key exists only on the `identity-keys` volume (`tempkey.jwk`, owned by `app`, not root). Client secrets stored as `SharedSecret` **hashes** — a query for the plaintext value returns **0 rows** |
+| **AC8** empty database → both identities seeded, each gets a role token | **pass** | The cold start above seeded both clients into `identity."Clients"` via the explicit migration step, and each immediately obtained a token carrying its own role. No manual step of any kind |
+| **AC9** re-seeding neither duplicates nor overwrites | **pass — and I falsified it two ways** | See below |
+| **AC10** seed config is placeholders from environment variables | **pass** | `.env.example` carries `replace-with-a-local-value` for both secrets; `compose.yaml` passes `Seed__Clients__N__{ClientId,Secret,Role}` as `${VAR}`; `SeedConfiguration.Secret` defaults to `string.Empty` — no literal anywhere. The identities are **machine clients** (`gotissues-admin-client`, `gotissues-member-client`), not a person's name — the counter-example the ticket forbids |
+
+#### AC4 — I isolated all four cases, including the two the review reported it could not
+
+The review recorded: *"I could not independently isolate expired or wrong audience: both would need either the host's private key or a second API resource, and forging them collapses into the signature test."* That is true of forging, but not of the database-backed store — the store is the lever.
+
+| Case | Construction | Result |
+| --- | --- | --- |
+| **No token** | — | **401** |
+| **Garbage token** | `Bearer not.a.token` | **401** |
+| **Unknown signing key** | Took a genuine token, kept its **header and payload byte-for-byte** (verified programmatically: same `kid`, `alg`, `iss`, `aud`, `role`), re-signed with an RSA key I generated with `openssl`. Only the signature differs | **401**, with the genuine token returning **200** in the same breath — signature validation isolated |
+| **Wrong audience** *(review could not isolate)* | Renamed the persisted `identity."ApiResources"."Name"` from `gotissues-api` to `wrong-audience-api`, then requested a token normally. The host issued it **with its own real signing key and real issuer** — only `aud` differed | **401**; restored the name → control token **200** |
+| **Expired** *(review could not isolate)* | Set the seeded client's `AccessTokenLifetime` to **1 second** in the store, then requested a token. Genuinely issued, genuinely signed, genuinely expired — expiry isolated from signature | **401** — but only past the clock-skew window; see D1 |
+
+Both new constructions work because the PO's decision put the configuration in a database. Under the rejected configuration-based design neither would have been possible without rebuilding the image — a second, unplanned dividend of that call.
+
+#### AC9 — genuinely a property that can fail, established from four angles
+
+The question I was asked is whether AC9 is real now or still trivially true. It is real. Four independent angles, two of them mine:
+
+| # | Angle | Result |
+| --- | --- | --- |
+| 1 | *(implementer)* hand-edit a persisted client, re-seed | edit survives — no overwrite |
+| 2 | *(reviewer)* remove the `AnyAsync` guard | unique-index violation `23505` — duplication impossible at the storage layer |
+| 3 | **(mine) delete one client entirely, re-seed** | **the deleted client was restored, while the *other* client's hand-edit survived**; counts back to exactly 2 clients / 1 scope / 1 resource / 2 secrets; the restored client immediately issued a token with the correct role |
+| 4 | **(mine) mutate the seeder to overwrite on re-seed** | rebuilt the image, re-ran: **the hand edit was destroyed** — so the recorded check genuinely detects an overwrite regression |
+
+**Why angle 3 adds something the first two cannot.** A *global* guard — `if (!await context.Clients.AnyAsync()) { insert all }` — would pass the implementer's hand-edit check and would not trip the reviewer's unique index either, yet it would silently fail to restore a missing identity. Deleting one and watching only that one return proves the guard is **per-entity**, which is what the code does (`AnyAsync` per scope, per resource, per client) and what nothing had yet distinguished.
+
+**Why angle 4 matters.** Angles 1 and 3 show the property *holds*; neither shows the check would *catch a regression*. Mutating the seeder to update on re-seed does: the hand-edit check goes from surviving to destroyed. That closes the "can it fail?" question on the overwrite half, as the reviewer's mutation already had on the duplication half.
+
+#### The two defects I was asked to confirm were fixed rather than moved
+
+**Schema ownership — fixed, and I checked by enumeration rather than by count.** A count alone would not reveal a Duende table hiding in `public`:
+
+```
+identity | 39      public: __EFMigrationsHistory, placeholder_records   (that is all)
+public   |  2
+```
+
+`public` contains **exactly** the API's own table and its migrations history — nothing else. The API's source contains no reference to the `identity` schema. The `ARCHITECTURE.md` ownership boundary holds. The earlier failure mode (history table in `identity`, 40 entities in `public`) is genuinely corrected, not relocated.
+
+**The container-vs-host build divergence — fixed, and the fix is load-bearing.** I removed `COPY .editorconfig ./` from the identity Dockerfile and rebuilt: **exit 1, `error CA1861`** — the failure reproduced exactly. So it is a fix, not a precaution.
+
+**A distinction worth recording, because it makes the implementer's claim more precise rather than less.** I ran the same removal against the **API's** Dockerfile: **build exit 0**. So the API's copy is *preventive* today and the identity host's is *currently required*. That matches the stated rationale — *"Fixed in **both** Dockerfiles, not just the identity host's: the API's migrations will hit the same wall as they grow"* — which is therefore accurate as written, and I verified it in both directions rather than only the one that fails.
+
+#### The health check, and the ~50 s lag reasoning I was asked to check rather than take
+
+**The fix is real.** With the stack healthy I dropped the `identity` schema out from under the running host:
+
+| Probe | Before drop | After drop |
+| --- | --- | --- |
+| `/health` | 200 `Healthy` | **503 `Unhealthy`** |
+| `/.well-known/openid-configuration` | 200 | 500 |
+| `/connect/token` | issues tokens | 500 |
+
+The endpoint now tracks the host's actual ability to do its job. A liveness-only check would have reported 200 against that same state — which is precisely the blindness that hid the 40-tables defect earlier in this ticket.
+
+**The startup-gate reasoning holds, and I verified the premise rather than the conclusion.** Runtime config as Docker sees it: `interval=5s retries=10 start_period=15s` — so ~50 s to mark a *running* container unhealthy. The claim is that this lag cannot weaken the startup gate. It cannot, because `condition: service_healthy` requires the container to reach healthy **at least once**, and with the new check that requires a queryable configuration store. Observed in the cold-start log, in order:
+
+```
+identity-migrator-1 Exited → identity-1 Started → identity-1 Healthy → api-1 Starting
+```
+
+The API did not begin starting until the identity host had actually passed the store-backed probe. So the 50 s tolerance only delays detection of *post-start* degradation — where tolerance is deliberate and matches what the API service already carries. The reasoning is sound.
+
+**Also verified, and currently unguarded by any test:** with the schema dropped I restarted the identity host **alone** (`--no-deps --force-recreate`, no migration step). Afterwards: **0 tables, and the `identity` schema was not even recreated** (0 rows in `information_schema.schemata`), container `running=true restarts=0`. The T-0001 AC5 analogue holds for this host. Correctly owned by T-0015 AC7 rather than left as prose.
+
+#### T-0015 genuinely accepts the residual — confirmed by reading it, not the pointer to it
+
+This was the substance of the review's blocking finding, so I checked the destination rather than the sentence aiming at it:
+
+- **In Scope** now names *"Token validation against a real issuer (from T-0010): a token issued by the identity host is accepted, and the refusals that need a real issuer to construct — expired, wrong audience, and a token signed by an unknown key"*, and *"The identity host does not migrate or seed on ordinary startup"*.
+- **AC6** covers the accepted token plus all three refusals. **AC7** covers the no-migrate-on-startup property.
+- **Out of Scope was rewritten** on the real constraint: *"The line is not 'stack versus API'; it is 'needs the real stack versus does not'."* The old wording disowned "anything about the API's own behaviour" — which is exactly what token validation is. That was the actual bug, and redrawing the line means the *next* residual routes correctly without anyone having to notice.
+- `depends_on: [T-0003, T-0010]`, title, and backlog row all follow.
+
+The residual is genuinely owned. I also confirmed the pointer compiled into `ResourceServerTests.cs`'s XML docs no longer names a ticket that disowns it.
+
+#### Finding
+
+**D1 (informational, but with a concrete downstream consequence) — "expired token → 401" is subject to the framework's default five-minute clock skew.** `Program.cs` configures `Authority`, `MetadataAddress`, `Audience`, `ValidIssuer` and `RequireHttpsMetadata`, but **no `ClockSkew`** — so `TokenValidationParameters` keeps its default of five minutes. Measured against a genuinely-issued, genuinely-expired token:
+
+| Seconds past `exp` | Result |
+| --- | --- |
+| 28 / 88 / 148 / 208 / 268 | **200 — accepted** |
+| 328 | **401** |
+
+**I am not classifying this as an implementation defect.** Five minutes is the framework default and a near-universal tolerance for clock drift between issuer and resource server; nothing in the ticket, `SECURITY.md`, or ADR-0003 asks for it to be tightened, and AC4 does not quantify "expired". A PoC on one machine has no reason to narrow it. AC4 is satisfied: an expired token is refused.
+
+**Why it is worth recording anyway.** T-0015 AC6 must construct an expired token, and its Risks already anticipate the technique — *"needs either a short-lived token lifetime configured for the test or clock control"*. What that note does not say is the number, and the number is the trap: **a token minted with a one-second lifetime is still accepted for the next five minutes.** An implementer following that risk note, asserting 401 immediately after a short-lived token expires, will get **200** — and will either conclude the test harness is broken or, worse, loosen the assertion until it passes. That is a false pass of exactly the shape this project has produced four times. **Recommendation:** add the measured skew window to T-0015's expired-token risk, so whoever implements AC6 either waits past it or sets `ClockSkew` explicitly in a test configuration. Cheap now, expensive to rediscover.
+
+#### Definition of Done assessment
+
+| # | Item | Assessment |
+| --- | --- | --- |
+| 1 | Implementation complete | **met** — every In Scope bullet delivered: host under `apps/`, own `identity` schema, machine clients and scope, `role` claim, seeded admin/member, API as resource server, protected operational endpoint, locally-generated signing key, README updated |
+| 2 | Acceptance criteria verified | **met** — all ten, independently, against the running stack |
+| 3 | Automated tests exist and pass | **partially met — needs a recorded PO deviation.** See below |
+| 4 | No known unrecorded defects | **met** — the residual is genuinely owned by T-0015 AC6/AC7 (verified by reading T-0015), and D1 is recorded here with a concrete recommendation |
+| 5 | Code quality | **met** — `dotnet build --no-incremental` 0 Warning(s) / 0 Error(s); `dotnet format --verify-no-changes` exit 0; `dotnet test` **16/16** exit 0; both containers non-root; secrets hashed; no dead code or debug leftovers found |
+| 6 | Documentation updated | **met** — README's *Getting a token* documents the flow, the `role` claim, the round trip, the unlicensed-Duende expectation, **and** the secret-rotation footgun (N2). I ran its documented commands and they work as written |
+| 7 | Work Log complete | **met** — including the escalation, the PO's rejection, and the withdrawal of the deviation. A stranger could reconstruct the decision |
+| 8 | State updated | `complete-ticket`'s responsibility |
+
+**On item 3, since I was asked to consider whether it needs a deviation: yes, it does, for the same reason AC7 did on T-0003.** The suite is green at 16/16 and this ticket added integration coverage. But **the headline behaviour of this ticket — a token issued by a real issuer being accepted, and the three refusals that need one to construct — is not automated.** The reason is structural and honest: `WebApplicationFactory` cannot host Duende, so the coverage cannot exist until a harness drives the real `compose.yaml`. The implementer flagged it rather than counting manual checks as coverage, which is the right instinct and the third time on this project that instinct has been correct.
+
+That makes item 3 *substantially* met and not *fully* met. The precedent this project has already set — T-0001's item 3, T-0003's AC7 — is that such a gap is closed by an **explicit, reasoned PO deviation**, never by a silent tick. It should be recorded at completion, naming T-0015 AC6/AC7 as the owner. I would accept the ticket on that basis; I would not accept it with item 3 marked complete without comment.
+
+#### Could not verify
+
+- **Token behaviour after the signing key rotates or the `identity-keys` volume is lost.** The Examples section expects previously-issued tokens to keep validating across restarts; I confirmed the key **persists** across an identity restart (the container came back and the same key id kept serving), but I did not exercise key rollover, which nothing in scope implements.
+- **Any behaviour under concurrency** — two migration steps racing, or simultaneous seeding. Single-node local Compose with a gated migration step makes this unreachable today; the unique index would be the backstop.
+- **Behaviour on any machine but this one** — macOS / Apple Silicon, Docker 29.2.1, .NET SDK 10.0.300, matching `PROJECT.md` §5's supported scope.
+- **Duende licence-limit behaviour**, deliberately: running unlicensed is a recorded maintainer decision (`PROJECT.md` §4) and the startup warnings are expected, not defects.
+
+#### Verdict
+
+**PASS.** The identity host issues tokens from a database-backed store, the API accepts what it issued and refuses everything else — including, as I verified individually, a token signed by an unknown key, one carrying the wrong audience, and one that has genuinely expired. The schema-ownership boundary holds under enumeration, the health check now fails when the host cannot do its job, ordinary startup migrates and seeds nothing, and re-seeding is idempotent in a way I was able to break on purpose and watch fail.
+
+The PO's rejection of the scope deviation is vindicated twice over: AC9 became a property that can fail, and the database-backed store is also what let me isolate AC4's expired and wrong-audience cases, which the review had recorded as not independently checkable.
+
+Proceed to `complete-ticket`, which owes two things before `done`: the **DoD item 3 deviation** naming T-0015 AC6/AC7 as owner, and — a recommendation rather than a gate — **adding D1's measured five-minute clock-skew window to T-0015's expired-token risk**, so the criterion that inherits this residual is not implemented into a false pass.
+
+Status left at `in-acceptance`; `accepted_by` deliberately not set.
