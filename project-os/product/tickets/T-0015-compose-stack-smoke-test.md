@@ -2,7 +2,7 @@
 id: T-0015
 title: Automated coverage for behaviour that needs the real Compose stack
 type: technical
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
@@ -45,7 +45,7 @@ These are the behaviours that break silently and expensively: a base-image chang
   - **Stack behaviour (from T-0001):** cold start on an empty volume reaching healthy; restart against an existing volume preserving data and re-running the migration step as a no-op; the API tolerating a database that is slow or absent.
   - **Token validation against a real issuer (from T-0010):** a token issued by the identity host is accepted, and the refusals that need a real issuer to construct — expired, wrong audience, and a token signed by an unknown key.
   - **The identity host does not migrate or seed on ordinary startup** — the analogue of T-0001's AC5 for that host, currently unguarded by any test.
-- A decision on where it lives and how it is invoked. It is materially slower than `dotnet test` and should not be dragged into the habitual suite ([TESTING.md](../../standards/TESTING.md): the habitual tier stays fast).
+- A decision on where it lives and how it is invoked. It is materially slower than `dotnet test` and must not be dragged into the habitual suite ([TESTING.md](../../standards/TESTING.md): the habitual tier stays fast). **Refinement's recommendation, not a constraint** — see Technical Notes.
 - Documentation of how to run it.
 
 ### Out of Scope
@@ -89,6 +89,14 @@ Relates to [T-0012](T-0012-pin-container-base-images.md): once base images are d
 - **The expired-token assertion is subject to a ~5-minute `ClockSkew`, and the number matters.** No `ClockSkew` is configured, so the framework default applies. Measured during T-0010's acceptance (`claude-qa-3f7c`, 2026-08-30): **200 at 268 s past `exp`, 401 at 328 s.** An implementer who mints a 1-second token and asserts 401 immediately will get **200**, and will then either believe the harness is broken or loosen the assertion into a false pass. Either configure `ClockSkew` explicitly for the test or wait past the window — decide which, and say so in the test.
 - Overlaps [T-0014](T-0014-correct-testing-standard-commands.md) if the standard ends up describing this command too.
 
+## Technical Notes
+
+**Where it lives — a recommendation, not a constraint.** An xUnit project (`apps/GotIssues.SmokeTests`) reusing T-0003's conventions, but **kept out of the solution's default test run** and invoked through a thin `tools/smoke.sh` wrapper. That keeps `dotnet test` meaning exactly what it means today (AC5), keeps real assertions and one report format rather than hand-rolled shell comparisons, and gives one obvious documented entry point.
+
+*The honest cost:* a project outside the solution is easy to let rot, since nothing compiles it by accident. The mitigations are that the wrapper is the documented command and that [T-0014](T-0014-correct-testing-standard-commands.md) will name it in `TESTING.md`. The alternative — a trait filter with the habitual command becoming `dotnet test --filter "Category!=Smoke"` — keeps the project in the solution but changes the command every other document already documents. Implementation may reverse this; it should say why.
+
+**Driving Compose from a test.** The check must exercise the real `compose.yaml`, not a copy: a smoke test against a duplicated compose file verifies the duplicate. Use its own project name (`-p`) so it cannot collide with a developer's running stack, and tear down what it starts — [TESTING.md](../../standards/TESTING.md)'s attribution rule applies here more than anywhere, since this test's entire subject is *a running stack on localhost*.
+
 ## Testing Notes
 
 AC4 is the criterion that keeps this honest: a stack check that has only ever been seen green proves nothing. Mutate the compose file, watch it fail, revert.
@@ -101,7 +109,7 @@ AC4 is the criterion that keeps this honest: a stack check that has only ever be
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold. Item 7 (sizing) is the one that needed argument and is recorded in the Work Log. Item 5: depends on T-0003 and T-0010, both `done`. Conditional items: no personal data; no UX; no architectural decision at the ADR bar — this builds verification, not system structure. No exceptions applied.
 
 ## Definition of Done
 
@@ -128,3 +136,23 @@ AC4 is the criterion that keeps this honest: a stack check that has only ever be
 - **Open questions / blockers:** none.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-31 — Business Analyst (claude-sm-9d4e) — refinement
+
+Perspectives applied: Product Owner, Business Analyst, Software Engineer, Architect, QA, Security.
+
+**Sizing — the item that needed a verdict.** Seven acceptance criteria looks like too much, and the reviewer flagged it as possibly oversized. It is not, and the reason is structural: **AC1–AC3 and AC6–AC7 all reduce to "drive compose, assert one thing" once the harness exists.** The whole cost of this ticket is standing that harness up — a runner that can bring the stack up under its own project name, wait for health, assert, and tear down. After that, each criterion is a few lines.
+
+That also settles how it splits if it does overrun: **the seam is stack (AC1–AC3) versus identity (AC6–AC7), and it only works *after* the harness exists.** Splitting earlier relocates the expensive part instead of dividing it, because both halves need the same harness. Recorded in Risks by the reviewer; confirmed here as the refinement verdict rather than left as a note.
+
+**This ticket now answers to a rule that did not exist when it was written.** [TESTING.md](../../standards/TESTING.md) gained a requirement on 2026-08-31 that coverage claims be verified by mutation — break the behaviour, watch the check fail, restore. **AC4 already required exactly that**, having been written from the same evidence that produced the rule. The alignment is worth noting because it means AC4 is no longer this ticket's own idea of rigour; it is the project standard, and dropping it under pressure would now be a standards violation rather than a judgement call.
+
+**ENG:** recorded a recommendation for where the check lives — an xUnit project outside the solution's default run, invoked via a wrapper — with the honest cost (an unreferenced project can rot) and the alternative (a trait filter that changes the habitual command every other document names). Marked clearly as a recommendation; implementation may reverse it with reasons.
+
+**ENG:** added the instruction that the check must drive the *real* `compose.yaml`. A smoke test against a copied compose file verifies the copy, which is the most plausible way for this ticket to produce a check that passes while proving nothing.
+
+**QA:** the attribution rule now in `TESTING.md` applies here more sharply than anywhere else in the project, because this test's entire subject is a running stack on `localhost` — the exact situation that produced two false passes in SPRINT-001.
+
+**What this ticket discharges when it lands:** the DoD item 3 deviations recorded on [T-0001](T-0001-runnable-compose-stack.md) and [T-0010](T-0010-duende-identity-host.md). Both were approved on the basis that this ticket would close them, so it carries more weight than its position in the backlog suggests.
+
+**DoR verdict: `ready`.**
