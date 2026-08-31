@@ -2,11 +2,11 @@
 id: T-0001
 title: Runnable Docker Compose stack with API skeleton and PostgreSQL
 type: technical
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-3f7c
 depends_on: []
 adrs: [ADR-0003, ADR-0005]
 created: 2026-08-30
@@ -110,7 +110,7 @@ The test harness does not exist yet ([T-0003](T-0003-automated-test-harness.md) 
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval. **See Testing Notes: item 3 needs either T-0003 first or a recorded deviation.**
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked 2026-08-30. Items 1–2, 4–8 pass. **Item 3 (automated tests) is an explicitly approved PO deviation** — see the closing Work Log entry.
 
 ---
 
@@ -785,3 +785,42 @@ Two things I want on the record rather than smoothed over:
 `complete-ticket` still owes one thing before `done`: the **DoD item 3 deviation** (or T-0003 landing first). D1 and D2 are both resolved and verified, so DoD item 4 is now clear on that front.
 
 Status left at `in-acceptance`; `accepted_by` deliberately still not set.
+
+### 2026-08-30 — Scrum Master (claude-sm-9d4e) — complete-ticket: **done**
+
+**Definition of Done, walked literally.**
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | Pass — everything In Scope built; scope diff-checked at 21 files with nothing from T-0002/T-0003/T-0010 |
+| 2 All AC verified independently | Pass — AC1–AC9 by `claude-qa-3f7c` against the running system, AC9 re-verified after the documentation fixes |
+| 3 Automated tests exist and pass | **DEVIATION — approved by the human PO** (below) |
+| 4 No known unrecorded defects | Pass — D1, D2, S1, S2 fixed; three review deferrals ticketed as [T-0012](T-0012-pin-container-base-images.md), [T-0013](T-0013-enforce-migration-boundary-with-db-privileges.md), [T-0014](T-0014-correct-testing-standard-commands.md) |
+| 5 Code quality | Pass — approved by `claude-rev-2c8d` after four rounds; `dotnet format --verify-no-changes` clean, build 0 warnings / 0 errors, no vulnerable packages |
+| 6 Documentation updated | Pass — README rewritten and every documented command run in printed order on a cold clone |
+| 7 Work Log complete | Pass — plan, implementation, three review rounds, two acceptance passes, and the PO decision are all recorded here |
+| 8 State updated | Pass — this commit |
+
+Conditional items: **Migrations** — scripted, applied by an explicit step, non-destructive restart proven (AC6). **Security** — no secrets in tree or history (AC8), non-root container, no vulnerable packages. **ADR recorded** — [ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md) is Accepted, not merely Proposed. **Observability** — health endpoint and structured logging. **Accessibility**, **Deployment** — not applicable (no UI, no pipeline).
+
+## DoD item 3 — recorded deviation
+
+**Approved by the human PO (maintainer), 2026-08-30**, when asked directly whether to record a deviation or hold the ticket until T-0003 lands:
+
+> "Record a PO deviation, complete T-0001 now"
+
+**What is being deviated from:** DoD item 3, *automated tests exist and pass*. T-0001 ships with **manual verification only**.
+
+**Why it cannot be met here:** the test harness is [T-0003](T-0003-automated-test-harness.md), which `depends_on` this ticket. A harness cannot test a stack that does not exist. The dependency is real and correctly directed — this is not a shortcut taken under time pressure.
+
+**Why it is bounded rather than open-ended:** [TESTING.md](../../standards/TESTING.md)'s substitute for un-automatable verification — the ticket states how it is verified instead — was applied *in advance*, at refinement, not retroactively to excuse a gap. T-0003's **AC8** requires its integration tier to cover this stack's behaviour, so the gap closes when T-0003 lands rather than persisting.
+
+**What the acceptor required:** `claude-qa-3f7c` accepted the deviation conditionally and was explicit that reaching `done` with item 3 *silently unmarked* was the one outcome it would not accept. It is therefore marked here, not glossed.
+
+**What the acceptor added after the AC9 re-check, and it deserves to survive this ticket:** a documented command was broken across three manual verification passes and caught on the fourth only because the review scope widened. That is an argument that **T-0003 should cover the documented setup path, not only the HTTP surface.** Carried to T-0003.
+
+## What this ticket cost, honestly
+
+Four review rounds and two acceptance passes. Every round found something real: a NuGet lock file missing against a `[confirmed]` project fact; AC1 unsatisfiable from a clean clone (a false pass in my own evidence); an `.editorconfig` fix that broke `dotnet format`; and three stale-documentation defects including a command that never worked. Two of those were my errors caught by others, and one was an acceptor's error it caught itself.
+
+**Unblocking:** [T-0003](T-0003-automated-test-harness.md) and [T-0010](T-0010-duende-identity-host.md) (both `committed`, sprint) and [T-0002](T-0002-contract-first-codegen-pipeline.md) (`ready`, backlog) list this ticket in `depends_on`. All three are now eligible.

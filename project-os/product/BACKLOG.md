@@ -14,25 +14,25 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | in-acceptance | — |
-| 2 | [T-0003](tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | technical | committed | T-0001 |
-| 3 | [T-0010](tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | technical | committed | T-0001 |
-| 4 | [T-0002](tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | technical | ready | T-0001, T-0011 |
-| 5 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | ready | T-0003, T-0010 |
-| 6 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | backlog | T-0002, T-0003, T-0009 |
-| 7 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | backlog | T-0004 |
-| 8 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | backlog | T-0005, T-0009 |
-| 9 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | backlog | T-0006 |
-| 10 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | backlog | T-0005, T-0009 |
-| 11 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container base images to immutable digests | technical | backlog | T-0001 |
-| 12 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct TESTING.md's suite commands to match reality | technical | backlog | — |
-| 13 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | backlog | T-0001 |
+| 1 | [T-0003](tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | technical | committed | T-0001 |
+| 2 | [T-0010](tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | technical | committed | T-0001 |
+| 3 | [T-0002](tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | technical | ready | T-0001, T-0011 |
+| 4 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | ready | T-0003, T-0010 |
+| 5 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | backlog | T-0002, T-0003, T-0009 |
+| 6 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | backlog | T-0004 |
+| 7 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | backlog | T-0005, T-0009 |
+| 8 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | backlog | T-0006 |
+| 9 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | backlog | T-0005, T-0009 |
+| 10 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container base images to immutable digests | technical | backlog | T-0001 |
+| 11 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct TESTING.md's suite commands to match reality | technical | backlog | — |
+| 12 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | backlog | T-0001 |
 
 ## Completed
 
 | ID | Title | Type | Outcome | Finished |
 | --- | --- | --- | --- | --- |
 | [T-0011](tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | spike | done | 2026-08-30 |
+| [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | done | 2026-08-30 |
 
 ## Changelog
 
