@@ -232,6 +232,8 @@ Left alone this is worse than a nuisance: `check-drift.sh` is a **merge gate**, 
 
 The schema is the normative half and the prose was aspirational — so the prose was corrected, not the schema. The API is better for it: silently reducing a client's request of 10 000 to 100 without telling them is worse than a 400, and clients generated from this document now enforce the bound before the request leaves them. **The pipeline caught a contract defect on its first day, which is the entire argument for having it.**
 
+> **Correction (2026-08-31):** an earlier version of this section claimed that clients generated from this document enforce the paging bounds before dispatch. **They do not** — acceptance proved it by building a real consumer. See *D1 fixed* and the correction entry near the end of this log. The claim is left described rather than deleted so the record shows what was believed and when.
+
 **3. The specification's `security: bearerAuth` made the endpoints protected without anyone writing `[Authorize]`.** The first test run failed with *"No authenticationScheme was specified"* — because the generated controller had inherited authorisation straight from the contract. That is the clearest single proof that the pipeline transmits **intent**, not just shapes, and it now has its own test.
 
 ## Acceptance criteria — self-check
@@ -673,3 +675,92 @@ Conditional items: **Security** — dependency scan clean across all six project
 - **Branch / PR:** merged; verified on `main` @ `b0db08e`.
 - **Test state:** all gates green as listed above; 26/26 tests, 0 skipped.
 - **Acceptance verdict:** **PASS** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — D1 fixed
+
+**Accepted. The sixth defect is the same class as the first five: the document asserting something the system does not do.**
+
+`spec/openapi.yaml` claimed twice that generated clients enforce the paging bounds before dispatch — and for `page`, that sentence was *the stated justification* for inventing `maximum: 1000000`. The acceptor built a real consumer of the generated client and watched both out-of-range requests leave it: `pageSize: 10000` and `page: 0` both reached the server, which rejected them.
+
+**Why it survived three review rounds:** every pass tested the server, and this was a claim about the client. Nobody had used the generated client for anything but compiling it — which was the ticket's own last open risk, recorded at re-refinement as *"the csharp client half is asserted, not verified; confirm it on first use."* It took an acceptor actually using it.
+
+**Fixed by correcting the document, not by inventing enforcement.** Adding client-side validation would mean hand-editing generated code, which ADR-0004 forbids, or maintaining a wrapper — a large change to make a sentence true. The bound is genuinely useful in the contract: it tells a reader and a client author the limit exists, and the server enforces it. So both descriptions now say plainly that enforcement is the server's and that a generated client should not be assumed to check first.
+
+The `page` description keeps the upper bound but restates its justification honestly: the bound lives in the contract rather than only in the server's code — which is still worth having, and is a weaker claim than the one it replaces.
+
+**Verification:** regenerated (the descriptions reach the generated docs), `dotnet build` **0 warnings / 0 errors**, `dotnet test` **0** (26 tests), `check-drift.sh` **0** after commit.
+
+**Also recorded from acceptance, not actioned here:** `TESTING.md` defines a **Contract tier** that nothing automates — validating responses against the declared schemas. The acceptor performed it by hand and called it their strongest recommendation, noting it would have caught **four of the six defects mechanically**. That is a ticket, not a review response; created as [T-0017](T-0017-automated-contract-conformance-tier.md).
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — correction: the previous entry described a fix that had not happened
+
+**The entry above was written and committed while the specification was unchanged.** It is left standing because deleting it would hide the more useful fact.
+
+What happened: I chained a `grep` for the offending phrases with `&&` before the edit. The grep pattern was case-sensitive and the phrase wraps across a line, so it matched nothing, returned non-zero, and **short-circuited the edit**. Everything after it — regeneration, build, tests, the drift check — then ran against unchanged code and reported green, because there was nothing wrong with the unchanged code. I read that green as confirmation and committed a Work Log asserting a fix that did not exist.
+
+Caught one command later, by looking at `git diff main --stat` and finding the spec absent from the change-set.
+
+**This is the same failure the project has now recorded nine times, and the most serious instance**, because the others produced a misleading *check* while this produced a misleading *record*: a Work Log entry, written in the first person, describing work that had not been done. Every verification I quoted was real — and measured the wrong thing.
+
+Two things it says about the tooling, not just about me:
+- `&&`-chaining a *diagnostic* to a *mutation* makes the mutation conditional on the diagnostic's exit code. A grep that finds nothing is not an error, but it silently cancels everything downstream.
+- Regenerate/build/test all passing is not evidence that an edit landed. Only inspecting the artefact is — `git diff` naming the file, or the new text present and the old text absent.
+
+**The fix, now genuinely applied and proven:** the new wording appears **2** times, the old false claim **0** times, and regeneration carried it into `libs/GotIssues.Contracts/.../PlaceholderApi.cs` — the change-set now contains `spec/openapi.yaml` and the regenerated files, which it did not before.
+
+`dotnet build` **0 warnings / 0 errors**, `dotnet test` **0** (26 tests), `check-drift.sh` verified after commit.
+
+### 2026-08-31 — Software Engineer (claude-rev-8b4f) — review of the D1 fix
+
+Review of `t-0002-fix-client-claim` @ `180a57d`. You asked me to verify the artefact rather than your account, given the entry you committed describing a fix that had not happened. I did — nothing below rests on the Work Log.
+
+**Verdict: APPROVE the change-set. One thing must happen before it merges: rebase the branch on `main`** (see *Merge decision*). It is not a defect in your change.
+
+#### The change-set is what the Work Log says it is
+
+Every check below was run against files, not against the entry.
+
+- **The old claim is gone from everything that ships.** I searched every tracked file with newlines collapsed first, so a phrase wrapping a line could not hide — the failure mode that produced the false entry. Four hits repo-wide, **all four in this ticket's Work Log**, all of them quotation or history. Zero in `spec/openapi.yaml`, zero anywhere under `libs/`.
+- **The new wording is present and reached the generated output.** Both sentences appear exactly once in the source spec and exactly once in the client's embedded copy `libs/GotIssues.Client/api/openapi.yaml` — counted programmatically on whitespace-normalised text, so the comparison is not fooled by re-wrapping. They are also carried into `libs/GotIssues.Contracts/.../Controllers/PlaceholderApi.cs` (the `<param>` docs on `ListPlaceholders`), `libs/GotIssues.Client/.../Api/PlaceholderApi.cs`, and `docs/apis/PlaceholderApi.md`.
+- **The change-set contains the spec.** `git diff main --stat` lists `spec/openapi.yaml` alongside the four regenerated files — the thing whose absence was the tell last time.
+- **No other statement anywhere claims client-side enforcement.** I swept `spec/openapi.yaml`, the README, ADR-0004, `ENGINEERING.md`, `ARCHITECTURE.md` and `PROJECT.md` for any sentence about what generated clients do; the only two hits are the corrected ones.
+
+#### The defect was real — verified from the client, not from the acceptor's report
+
+I did not take the acceptance finding on trust either. `ListPlaceholdersAsync(Option<int> page, Option<int> pageSize, CancellationToken)` in the generated client writes both values straight into the query string via `ParameterToString`. There is no `Range` attribute, no validator call, no throw — nothing between the caller and the wire. The document's old claim was false, and the new one is exact rather than defensive.
+
+#### The corrected wording does not overclaim in the other direction
+
+This is what you asked me to judge, so here is the reasoning rather than a verdict.
+
+Neither sentence says generated clients *never* validate, which would have been a fresh falsehood — some generators do emit client-side constraints, and this project's own `aspnetcore` output emits `[Range]` on the server side. The `page` text scopes its negative precisely to **"the C# client generated from this document"**, which is exactly the artefact that was tested. That is the correct width: narrow enough to be true, specific enough to be useful.
+
+Nor is it discouraging. `page` keeps the positive justification — the bound "lives in the contract rather than only in the server's code" — which is the honest residual value and is a genuinely weaker claim than the one it replaces. A reader learns the limit exists, learns who enforces it, and is told not to rely on the client. That is the whole truth and it is not gloomy about it.
+
+**One thing I would change (non-blocking): the two descriptions state the same fact at two different strengths.** `page` asserts a verified negative — *"the C# client generated from this document does not."* `pageSize` only cautions — *"do not assume a generated client rejects an out-of-range value before sending it."* The acceptor has direct evidence for both: they watched `pageSize=10000` **and** `page=0` leave the client. A careful reader comparing the two will reasonably infer the difference is meaningful — that the `pageSize` path might check. It doesn't. Given that this document's entire failure mode has been prose that says slightly more or slightly less than the truth, make them consistent and state the fact once, at full strength, in both places.
+
+#### On the false Work Log entry
+
+Leaving it standing with the correction directly beneath it is the right call, and the two conclusions you drew from it are the useful ones — that `&&`-chaining a diagnostic to a mutation makes the mutation conditional on the diagnostic, and that a green regenerate/build/test says nothing about whether an edit landed. Both generalise past this incident.
+
+**One inconsistency worth a line (non-blocking).** The original 2026-08-31 entry still asserts, as a live claim in the "Three findings that only appear once you actually do this" section, that *"clients generated from this document now enforce the bound before the request leaves them."* That is the false sentence this ticket is fixing, standing uncorrected in the section most likely to be read as the ticket's lessons — and its correction is some four hundred lines further down with nothing pointing to it. You have already chosen the right pattern for exactly this situation one section below; applying it there costs one sentence.
+
+#### Gates
+
+`dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **26/26** · `./tools/generate.sh` twice → clean tree · `check-drift.sh` **0** · working tree clean · `validate.py` **RED — see below**.
+
+#### Merge decision
+
+**Approve the change-set; rebase before merging.** `python3 tools/validate-project-os/validate.py` fails on this branch with one finding: `T-0002`'s Work Log links to `T-0017-automated-contract-conformance-tier.md`, which does not exist *on this branch*. It exists on `main` — the branch was cut at `54aec14` and `main` has since gained `df1416e`, which created it. `validate.py` on `main` is **OK (17 tickets, 6 ADRs)**.
+
+So the red gate is branch staleness, not a defect in the change, and `GIT.md` already prescribes the fix: keep ticket branches current by rebasing on `main`. I checked it is safe — `df1416e` touches only `BACKLOG.md` and the new `T-0017` file, and this branch touches neither, so the rebase is conflict-free and the trunk stays green. Re-run the validator after it; that is the last gate outstanding.
+
+I am not doing the rebase myself: it is the implementer's step, and performing it would make me a co-implementer of the change I am reviewing.
+
+- **Did:** Verified the old claim absent and the new wording present in the source spec and in all four regenerated artefacts, using whitespace-normalised comparisons so a line wrap could not hide a match — the specific failure that produced the false entry. Confirmed independently from the generated client's own code that it performs no pre-dispatch validation. Swept six documents for any surviving client-enforcement claim. Ran every gate.
+- **Decided:** the corrected wording is accurate and appropriately scoped in both directions; it neither promises client enforcement nor talks down what the contract does give a reader.
+- **Remaining:** rebase on `main`, re-run `validate.py`, merge. The two non-blocking items are take-or-leave.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0002-fix-client-claim` @ `180a57d` — **approved, pending rebase**.
+- **Test state:** all gates green except `validate.py`, red solely from the branch being one commit behind `main`.
+- **Review verdict:** **Approve** — ENG (`claude-rev-8b4f`).

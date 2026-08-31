@@ -56,8 +56,8 @@ Returns a page of placeholder records, newest first.
 
 | Name | Type | Description | Notes |
 |------|------|-------------|-------|
-| **page** | **int** | 1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound exists so the constraint is expressible in the contract and enforced by generated clients; this API does not support paging beyond that depth.  | [optional] [default to 1] |
-| **pageSize** | **int** | Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Clients generated from this document enforce it before the request leaves them.  | [optional] [default to 20] |
+| **page** | **int** | 1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound is declared so the constraint lives in the contract rather than only in the server&#39;s code; this API does not support paging beyond that depth.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  | [optional] [default to 1] |
+| **pageSize** | **int** | Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  | [optional] [default to 20] |
 
 ### Return type
 
