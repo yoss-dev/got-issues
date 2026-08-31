@@ -4,6 +4,7 @@ using GotIssues.Api.Authentication;
 using GotIssues.Api.Authorization;
 using GotIssues.Api.Data;
 using GotIssues.Api.Health;
+using GotIssues.Api.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -71,7 +72,12 @@ if (!string.IsNullOrWhiteSpace(authority))
 // responses; AddProblemDetails gives them the RFC 9457 shape.
 builder.Services.AddProblemDetails();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    // The generated contract's enums declare their wire values with [EnumMember], which
+    // System.Text.Json does not read. Without this the API answers `"status": 2` where
+    // the specification declares `enum: [open, in_progress, done]`.
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new EnumMemberJsonConverter()));
 builder.Services.AddDbContext<GotIssuesDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddHealthChecks()

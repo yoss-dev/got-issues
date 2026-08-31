@@ -38,22 +38,48 @@ namespace GotIssues.Client.Model
         /// <param name="projectKey">The key of the project this issue belongs to.</param>
         /// <param name="number">The issue&#39;s number within its project. Allocated by the server, starting at 1 in each project, and never reused.  The maximum is not arbitrary: it is the largest number &#x60;key&#x60; can express, since that pattern allows nine digits. Without it the two fields could disagree — a number of ten digits would produce a key violating the very pattern this document declares, and the issue would be unreadable through the only operation that fetches one. A project reaching this limit is refused with 409 rather than issued a key it cannot use. </param>
         /// <param name="title">A one-line summary. C0 control characters and DEL are excluded, for the same two reasons a project name excludes them: PostgreSQL cannot store &#x60;U+0000&#x60; at all, and the ASCII line breaks and tabs in that range have no place in a title.  Deliberately **not** full Unicode line-break handling: &#x60;U+0085&#x60; and &#x60;U+2028&#x60; are accepted. Refinement asked this ticket to decide rather than inherit the limit, and the decision is to keep the constraint the narrow, checkable one — a title carrying an exotic separator is a cosmetic problem, while a title carrying &#x60;U+0000&#x60; cannot be stored at all. </param>
+        /// <param name="type">type</param>
+        /// <param name="status">status</param>
+        /// <param name="priority">priority</param>
         /// <param name="createdAt">When the issue was created, in UTC.</param>
         /// <param name="description">Optional free text. Multi-line **by design** — unlike a title, this is where the reasoning goes, so line breaks are permitted and only &#x60;U+0000&#x60; is excluded, because PostgreSQL cannot store it in any text column.  That difference is deliberate: the constraint on a title is about being one line, the constraint here is about being storable, and they are not the same rule (recorded on T-0005 from T-0004&#39;s review). </param>
+        /// <param name="assignee">assignee</param>
         [JsonConstructor]
-        public Issue(Guid id, string key, string projectKey, int number, string title, DateTime createdAt, Option<string?> description = default)
+        public Issue(Guid id, string key, string projectKey, int number, string title, IssueType type, IssueStatus status, IssuePriority priority, DateTime createdAt, Option<string?> description = default, Option<Assignee?> assignee = default)
         {
             Id = id;
             Key = key;
             ProjectKey = projectKey;
             Number = number;
             Title = title;
+            Type = type;
+            Status = status;
+            Priority = priority;
             CreatedAt = createdAt;
             DescriptionOption = description;
+            AssigneeOption = assignee;
             OnCreated();
         }
 
         partial void OnCreated();
+
+        /// <summary>
+        /// Gets or Sets Type
+        /// </summary>
+        [JsonPropertyName("type")]
+        public IssueType Type { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Status
+        /// </summary>
+        [JsonPropertyName("status")]
+        public IssueStatus Status { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Priority
+        /// </summary>
+        [JsonPropertyName("priority")]
+        public IssuePriority Priority { get; set; }
 
         /// <summary>
         /// The issue&#39;s identifier.
@@ -112,6 +138,19 @@ namespace GotIssues.Client.Model
         public string? Description { get { return this.DescriptionOption; } set { this.DescriptionOption = new(value); } }
 
         /// <summary>
+        /// Used to track the state of Assignee
+        /// </summary>
+        [JsonIgnore]
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        public Option<Assignee?> AssigneeOption { get; private set; }
+
+        /// <summary>
+        /// Gets or Sets Assignee
+        /// </summary>
+        [JsonPropertyName("assignee")]
+        public Assignee? Assignee { get { return this.AssigneeOption; } set { this.AssigneeOption = new(value); } }
+
+        /// <summary>
         /// Returns the string presentation of the object
         /// </summary>
         /// <returns>String presentation of the object</returns>
@@ -124,8 +163,12 @@ namespace GotIssues.Client.Model
             sb.Append("  ProjectKey: ").Append(ProjectKey).Append("\n");
             sb.Append("  Number: ").Append(Number).Append("\n");
             sb.Append("  Title: ").Append(Title).Append("\n");
+            sb.Append("  Type: ").Append(Type).Append("\n");
+            sb.Append("  Status: ").Append(Status).Append("\n");
+            sb.Append("  Priority: ").Append(Priority).Append("\n");
             sb.Append("  CreatedAt: ").Append(CreatedAt).Append("\n");
             sb.Append("  Description: ").Append(Description).Append("\n");
+            sb.Append("  Assignee: ").Append(Assignee).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
         }
@@ -243,8 +286,12 @@ namespace GotIssues.Client.Model
             Option<string?> projectKey = default;
             Option<int?> number = default;
             Option<string?> title = default;
+            Option<IssueType?> type = default;
+            Option<IssueStatus?> status = default;
+            Option<IssuePriority?> priority = default;
             Option<DateTime?> createdAt = default;
             Option<string?> description = default;
+            Option<Assignee?> assignee = default;
 
             while (utf8JsonReader.Read())
             {
@@ -276,11 +323,29 @@ namespace GotIssues.Client.Model
                         case "title":
                             title = new Option<string?>(utf8JsonReader.GetString()!);
                             break;
+                        case "type":
+                            string? typeRawValue = utf8JsonReader.GetString();
+                            if (typeRawValue != null)
+                                type = new Option<IssueType?>(IssueTypeValueConverter.FromStringOrDefault(typeRawValue));
+                            break;
+                        case "status":
+                            string? statusRawValue = utf8JsonReader.GetString();
+                            if (statusRawValue != null)
+                                status = new Option<IssueStatus?>(IssueStatusValueConverter.FromStringOrDefault(statusRawValue));
+                            break;
+                        case "priority":
+                            string? priorityRawValue = utf8JsonReader.GetString();
+                            if (priorityRawValue != null)
+                                priority = new Option<IssuePriority?>(IssuePriorityValueConverter.FromStringOrDefault(priorityRawValue));
+                            break;
                         case "createdAt":
                             createdAt = new Option<DateTime?>(JsonSerializer.Deserialize<DateTime>(ref utf8JsonReader, jsonSerializerOptions));
                             break;
                         case "description":
                             description = new Option<string?>(utf8JsonReader.GetString());
+                            break;
+                        case "assignee":
+                            assignee = new Option<Assignee?>(JsonSerializer.Deserialize<Assignee>(ref utf8JsonReader, jsonSerializerOptions));
                             break;
                         default:
                             break;
@@ -303,6 +368,15 @@ namespace GotIssues.Client.Model
             if (!title.IsSet)
                 throw new ArgumentException("Property is required for class Issue.", nameof(title));
 
+            if (!type.IsSet)
+                throw new ArgumentException("Property is required for class Issue.", nameof(type));
+
+            if (!status.IsSet)
+                throw new ArgumentException("Property is required for class Issue.", nameof(status));
+
+            if (!priority.IsSet)
+                throw new ArgumentException("Property is required for class Issue.", nameof(priority));
+
             if (!createdAt.IsSet)
                 throw new ArgumentException("Property is required for class Issue.", nameof(createdAt));
 
@@ -321,10 +395,19 @@ namespace GotIssues.Client.Model
             if (title.IsSet && title.Value == null)
                 throw new ArgumentNullException(nameof(title), "Property is not nullable for class Issue.");
 
+            if (type.IsSet && type.Value == null)
+                throw new ArgumentNullException(nameof(type), "Property is not nullable for class Issue.");
+
+            if (status.IsSet && status.Value == null)
+                throw new ArgumentNullException(nameof(status), "Property is not nullable for class Issue.");
+
+            if (priority.IsSet && priority.Value == null)
+                throw new ArgumentNullException(nameof(priority), "Property is not nullable for class Issue.");
+
             if (createdAt.IsSet && createdAt.Value == null)
                 throw new ArgumentNullException(nameof(createdAt), "Property is not nullable for class Issue.");
 
-            return new Issue(id.Value!.Value!, key.Value!, projectKey.Value!, number.Value!.Value!, title.Value!, createdAt.Value!.Value!, description);
+            return new Issue(id.Value!.Value!, key.Value!, projectKey.Value!, number.Value!.Value!, title.Value!, type.Value!.Value!, status.Value!.Value!, priority.Value!.Value!, createdAt.Value!.Value!, description, assignee);
         }
 
         /// <summary>
@@ -370,6 +453,15 @@ namespace GotIssues.Client.Model
 
             writer.WriteString("title", issue.Title);
 
+            var typeRawValue = IssueTypeValueConverter.ToJsonValue(issue.Type);
+            writer.WriteString("type", typeRawValue);
+
+            var statusRawValue = IssueStatusValueConverter.ToJsonValue(issue.Status);
+            writer.WriteString("status", statusRawValue);
+
+            var priorityRawValue = IssuePriorityValueConverter.ToJsonValue(issue.Priority);
+            writer.WriteString("priority", priorityRawValue);
+
             writer.WriteString("createdAt", issue.CreatedAt.ToString(CreatedAtFormat));
 
             if (issue.DescriptionOption.IsSet)
@@ -377,6 +469,15 @@ namespace GotIssues.Client.Model
                     writer.WriteString("description", issue.Description);
                 else
                     writer.WriteNull("description");
+
+            if (issue.AssigneeOption.IsSet)
+                if (issue.AssigneeOption.Value != null)
+                {
+                    writer.WritePropertyName("assignee");
+                    JsonSerializer.Serialize(writer, issue.Assignee, jsonSerializerOptions);
+                }
+                else
+                    writer.WriteNull("assignee");
         }
     }
 }

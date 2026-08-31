@@ -195,6 +195,55 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /issues/{issueKey}:
+    patch:
+      operationId: updateIssue
+      tags: [Issues]
+      summary: Change an issue's lifecycle fields.
+      description: |
+        Changes any of an issue's type, status, priority or assignee. Every field is
+        optional; omitting one leaves it as it was.
+
+        **Any declared status may follow any other.** There are no transition rules —
+        an issue may move from `done` back to `open`. Configurable workflows and
+        validated transitions are a later product goal, and enforcing them here would
+        pre-empt that decision.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        change these fields; a token carrying neither receives 403. Moving an issue is
+        not one of this system's administrative acts.
+      parameters:
+        - name: issueKey
+          in: path
+          required: true
+          description: The issue's key, for example `GOTI-1`.
+          schema:
+            type: string
+            pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$'
+            minLength: 4
+            maxLength: 20
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateIssueRequest'
+      responses:
+        '200':
+          description: The issue as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     get:
       operationId: getIssue
       tags: [Issues]
@@ -327,7 +376,7 @@ components:
     Issue:
       type: object
       description: A unit of work inside a project.
-      required: [id, key, projectKey, number, title, createdAt]
+      required: [id, key, projectKey, number, title, createdAt, type, status, priority]
       properties:
         id:
           type: string
@@ -385,10 +434,154 @@ components:
             That difference is deliberate: the constraint on a title is about being
             one line, the constraint here is about being storable, and they are not
             the same rule (recorded on T-0005 from T-0004's review).
+        type:
+          $ref: '#/components/schemas/IssueType'
+        status:
+          $ref: '#/components/schemas/IssueStatus'
+        priority:
+          $ref: '#/components/schemas/IssuePriority'
+        assignee:
+          oneOf:
+            - $ref: '#/components/schemas/Assignee'
+            - type: 'null'
+          description: |
+            The person this issue is assigned to, or null when nobody holds it.
+
+            An issue that was never assigned and one that has been unassigned are
+            deliberately indistinguishable: assignment history is not kept, and a
+            tri-state here would imply an audit trail this system does not have.
         createdAt:
           type: string
           format: date-time
           description: When the issue was created, in UTC.
+
+    IssueType:
+      type: string
+      enum: [bug, task]
+      default: task
+      description: |
+        What kind of work this is. Two values, deliberately: `story` and `epic` imply a
+        planning model this product does not have, and adding a value later is additive
+        while renaming one is a breaking change for every generated client.
+
+    IssueStatus:
+      type: string
+      enum: [open, in_progress, done]
+      default: open
+      description: |
+        Where the work stands. Any value may follow any other — there are no transition
+        rules, by design.
+
+        `in_review` was considered and deliberately left out: it is the first status
+        that invites the transition rules this API does not have. Adding it later is the
+        additive direction.
+
+    IssuePriority:
+      type: string
+      enum: [low, normal, high]
+      default: normal
+      description: |
+        How urgent the work is. Three levels, because `critical` reliably becomes a
+        second `high`.
+
+    Assignee:
+      type: object
+      description: |
+        The person an issue is assigned to.
+
+        Carries the display name as well as the subject so a client can render who holds
+        an issue without a second call — which is what the user projection exists for.
+      required: [subject]
+      properties:
+        subject:
+          type: string
+          maxLength: 255
+          description: |
+            The subject claim identifying the person. This is the identifier: the
+            projection stores no email, and a display name is neither unique nor stable.
+        displayName:
+          type: [string, 'null']
+          maxLength: 400
+          description: |
+            The person's display name as their token last carried it, or null if their
+            token carried none.
+
+    UpdateIssueRequest:
+      type: object
+      description: |
+        Every field is optional. An omitted field is left unchanged; this is a partial
+        update, not a replacement.
+      properties:
+        type:
+          oneOf:
+            - $ref: '#/components/schemas/IssueType'
+            - type: 'null'
+          description: Omit or send null to leave the type unchanged.
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/IssueStatus'
+            - type: 'null'
+          description: Omit or send null to leave the status unchanged.
+        priority:
+          oneOf:
+            - $ref: '#/components/schemas/IssuePriority'
+            - type: 'null'
+          description: Omit or send null to leave the priority unchanged.
+        assignment:
+          oneOf:
+            - $ref: '#/components/schemas/AssignmentChange'
+            - type: 'null'
+          description: |
+            Include this object to change who holds the issue; omit it to leave the
+            assignment alone.
+
+            It is an object rather than a bare subject for a reason: unassigning has to
+            be expressible, and `"assigneeSubject": null` would be indistinguishable
+            from omitting the field. Wrapping it makes *absent* and *null inside a
+            present object* two different things the contract can state, rather than a
+            rule living only in the server's code.
+
+    AssignmentChange:
+      type: object
+      description: |
+        A change of assignment.
+
+        There are three ways to send this object and they mean two things:
+
+        | Sent | Meaning |
+        | --- | --- |
+        | `{"subject": "alice"}` | assign to `alice` |
+        | `{"subject": null}` | unassign |
+        | `{}` | **unassign** — an absent `subject` is read as null |
+
+        The third is worth stating plainly rather than leaving to be discovered: a
+        client that forgets to send `subject` unassigns the issue and receives 200. The
+        API cannot distinguish an omitted `subject` from an explicit null — that is the
+        same limitation this object exists to work around one level up — so it is
+        documented rather than rejected. Omit `assignment` entirely to leave the holder
+        alone.
+
+        `subject` is deliberately **not** listed as required. In JSON Schema `required`
+        means "the property must be present", but the C# generator renders it as
+        `[Required]`, which means "must not be null" — and null is precisely the value
+        that unassigns. Listing it would reject the operation this object exists to
+        express.
+      properties:
+        subject:
+          type: [string, 'null']
+          maxLength: 255
+          pattern: '^[^\u0000-\u001F\u007F]+$'
+          description: |
+            The subject of the person to assign, or **null to unassign**.
+
+            Control characters are excluded, for the reason every other free-text field
+            in this document excludes them: PostgreSQL cannot store `U+0000`, so without
+            this the value reaches the database and fails as an unhandled error rather
+            than as validation. A subject is a token claim and spans one line.
+
+            A subject with no user record is rejected with 400: this API assigns to
+            people it has seen, and inventing one silently would produce an assignee no
+            client could render.
 
     CreateIssueRequest:
       type: object

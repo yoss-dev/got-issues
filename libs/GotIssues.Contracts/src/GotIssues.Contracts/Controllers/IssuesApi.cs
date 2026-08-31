@@ -76,5 +76,30 @@ namespace GotIssues.Contracts.Controllers
         [ProducesResponseType(statusCode: 404, type: typeof(Problem))]
         [ProducesResponseType(statusCode: 500, type: typeof(Problem))]
         public abstract Task<IActionResult> GetIssue([FromRoute (Name = "issueKey")][Required][RegularExpression("^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$")][StringLength(20, MinimumLength=4)]string issueKey);
+
+        /// <summary>
+        /// Change an issue&#39;s lifecycle fields.
+        /// </summary>
+        /// <remarks>Changes any of an issue&#39;s type, status, priority or assignee. Every field is optional; omitting one leaves it as it was.  **Any declared status may follow any other.** There are no transition rules — an issue may move from &#x60;done&#x60; back to &#x60;open&#x60;. Configurable workflows and validated transitions are a later product goal, and enforcing them here would pre-empt that decision.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may change these fields; a token carrying neither receives 403. Moving an issue is not one of this system&#39;s administrative acts. </remarks>
+        /// <param name="issueKey">The issue&#39;s key, for example &#x60;GOTI-1&#x60;.</param>
+        /// <param name="updateIssueRequest"></param>
+        /// <response code="200">The issue as it now stands.</response>
+        /// <response code="400">The request was malformed or failed validation.</response>
+        /// <response code="401">No credentials were supplied, or they were not valid.</response>
+        /// <response code="403">The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused. </response>
+        /// <response code="404">The addressed resource does not exist — a project that was never created, or an issue key that corresponds to nothing. </response>
+        /// <response code="500">The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared. </response>
+        [HttpPatch]
+        [Route("/issues/{issueKey}")]
+        [Authorize]
+        [Consumes("application/json")]
+        [ValidateModelState]
+        [ProducesResponseType(statusCode: 200, type: typeof(Issue))]
+        [ProducesResponseType(statusCode: 400, type: typeof(Problem))]
+        [ProducesResponseType(statusCode: 401, type: typeof(Problem))]
+        [ProducesResponseType(statusCode: 403, type: typeof(Problem))]
+        [ProducesResponseType(statusCode: 404, type: typeof(Problem))]
+        [ProducesResponseType(statusCode: 500, type: typeof(Problem))]
+        public abstract Task<IActionResult> UpdateIssue([FromRoute (Name = "issueKey")][Required][RegularExpression("^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$")][StringLength(20, MinimumLength=4)]string issueKey, [FromBody]UpdateIssueRequest updateIssueRequest);
     }
 }

@@ -82,6 +82,31 @@ namespace GotIssues.Client.Api
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
         /// <returns><see cref="Task"/>&lt;<see cref="IGetIssueApiResponse"/>?&gt;</returns>
         Task<IGetIssueApiResponse?> GetIssueOrDefaultAsync(string issueKey, System.Threading.CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Change an issue&#39;s lifecycle fields.
+        /// </summary>
+        /// <remarks>
+        /// Changes any of an issue&#39;s type, status, priority or assignee. Every field is optional; omitting one leaves it as it was.  **Any declared status may follow any other.** There are no transition rules — an issue may move from &#x60;done&#x60; back to &#x60;open&#x60;. Configurable workflows and validated transitions are a later product goal, and enforcing them here would pre-empt that decision.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may change these fields; a token carrying neither receives 403. Moving an issue is not one of this system&#39;s administrative acts. 
+        /// </remarks>
+        /// <exception cref="ApiException">Thrown when fails to make API call</exception>
+        /// <param name="issueKey">The issue&#39;s key, for example &#x60;GOTI-1&#x60;.</param>
+        /// <param name="updateIssueRequest"></param>
+        /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
+        /// <returns><see cref="Task"/>&lt;<see cref="IUpdateIssueApiResponse"/>&gt;</returns>
+        Task<IUpdateIssueApiResponse> UpdateIssueAsync(string issueKey, UpdateIssueRequest updateIssueRequest, System.Threading.CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Change an issue&#39;s lifecycle fields.
+        /// </summary>
+        /// <remarks>
+        /// Changes any of an issue&#39;s type, status, priority or assignee. Every field is optional; omitting one leaves it as it was.  **Any declared status may follow any other.** There are no transition rules — an issue may move from &#x60;done&#x60; back to &#x60;open&#x60;. Configurable workflows and validated transitions are a later product goal, and enforcing them here would pre-empt that decision.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may change these fields; a token carrying neither receives 403. Moving an issue is not one of this system&#39;s administrative acts. 
+        /// </remarks>
+        /// <param name="issueKey">The issue&#39;s key, for example &#x60;GOTI-1&#x60;.</param>
+        /// <param name="updateIssueRequest"></param>
+        /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
+        /// <returns><see cref="Task"/>&lt;<see cref="IUpdateIssueApiResponse"/>?&gt;</returns>
+        Task<IUpdateIssueApiResponse?> UpdateIssueOrDefaultAsync(string issueKey, UpdateIssueRequest updateIssueRequest, System.Threading.CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -175,6 +200,48 @@ namespace GotIssues.Client.Api
     }
 
     /// <summary>
+    /// The <see cref="IUpdateIssueApiResponse"/>
+    /// </summary>
+    public interface IUpdateIssueApiResponse : GotIssues.Client.Client.IApiResponse, IOk<GotIssues.Client.Model.Issue?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, INotFound<GotIssues.Client.Model.Problem?>, IInternalServerError<GotIssues.Client.Model.Problem?>
+    {
+        /// <summary>
+        /// Returns true if the response is 200 Ok
+        /// </summary>
+        /// <returns></returns>
+        bool IsOk { get; }
+
+        /// <summary>
+        /// Returns true if the response is 400 BadRequest
+        /// </summary>
+        /// <returns></returns>
+        bool IsBadRequest { get; }
+
+        /// <summary>
+        /// Returns true if the response is 401 Unauthorized
+        /// </summary>
+        /// <returns></returns>
+        bool IsUnauthorized { get; }
+
+        /// <summary>
+        /// Returns true if the response is 403 Forbidden
+        /// </summary>
+        /// <returns></returns>
+        bool IsForbidden { get; }
+
+        /// <summary>
+        /// Returns true if the response is 404 NotFound
+        /// </summary>
+        /// <returns></returns>
+        bool IsNotFound { get; }
+
+        /// <summary>
+        /// Returns true if the response is 500 InternalServerError
+        /// </summary>
+        /// <returns></returns>
+        bool IsInternalServerError { get; }
+    }
+
+    /// <summary>
     /// Represents a collection of functions to interact with the API endpoints
     /// </summary>
     public class IssuesApiEvents
@@ -217,6 +284,26 @@ namespace GotIssues.Client.Api
         internal void ExecuteOnErrorGetIssue(Exception exception)
         {
             OnErrorGetIssue?.Invoke(this, new ExceptionEventArgs(exception));
+        }
+
+        /// <summary>
+        /// The event raised after the server response
+        /// </summary>
+        public event EventHandler<ApiResponseEventArgs>? OnUpdateIssue;
+
+        /// <summary>
+        /// The event raised after an error querying the server
+        /// </summary>
+        public event EventHandler<ExceptionEventArgs>? OnErrorUpdateIssue;
+
+        internal void ExecuteOnUpdateIssue(IssuesApi.UpdateIssueApiResponse apiResponse)
+        {
+            OnUpdateIssue?.Invoke(this, new ApiResponseEventArgs(apiResponse));
+        }
+
+        internal void ExecuteOnErrorUpdateIssue(Exception exception)
+        {
+            OnErrorUpdateIssue?.Invoke(this, new ExceptionEventArgs(exception));
         }
     }
 
@@ -970,6 +1057,473 @@ namespace GotIssues.Client.Api
             /// <param name="requestedAt"></param>
             /// <param name="jsonSerializerOptions"></param>
             public GetIssueApiResponse(ILogger<GetIssueApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
+            {
+                Logger = logger;
+                OnCreated(httpRequestMessage, httpResponseMessage);
+            }
+
+            partial void OnCreated(global::System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage);
+
+            /// <summary>
+            /// Returns true if the response is 200 Ok
+            /// </summary>
+            /// <returns></returns>
+            public bool IsOk => 200 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 200 Ok
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Issue? Ok()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsOk
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Issue>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 200 Ok and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryOk([NotNullWhen(true)]out GotIssues.Client.Model.Issue? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Ok();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)200);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 400 BadRequest
+            /// </summary>
+            /// <returns></returns>
+            public bool IsBadRequest => 400 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 400 BadRequest
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? BadRequest()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsBadRequest
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 400 BadRequest and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryBadRequest([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = BadRequest();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)400);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 401 Unauthorized
+            /// </summary>
+            /// <returns></returns>
+            public bool IsUnauthorized => 401 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 401 Unauthorized
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Unauthorized()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsUnauthorized
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 401 Unauthorized and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryUnauthorized([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Unauthorized();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)401);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public bool IsForbidden => 403 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Forbidden()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsForbidden
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryForbidden([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Forbidden();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)403);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 404 NotFound
+            /// </summary>
+            /// <returns></returns>
+            public bool IsNotFound => 404 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 404 NotFound
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? NotFound()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsNotFound
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 404 NotFound and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryNotFound([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = NotFound();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)404);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public bool IsInternalServerError => 500 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? InternalServerError()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsInternalServerError
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryInternalServerError([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = InternalServerError();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)500);
+                }
+
+                return result != null;
+            }
+
+            private void OnDeserializationErrorDefaultImplementation(Exception exception, HttpStatusCode httpStatusCode)
+            {
+                bool suppressDefaultLog = false;
+                OnDeserializationError(ref suppressDefaultLog, exception, httpStatusCode);
+                if (!suppressDefaultLog)
+                    Logger.LogError(exception, "An error occurred while deserializing the {code} response.", httpStatusCode);
+            }
+
+            partial void OnDeserializationError(ref bool suppressDefaultLog, Exception exception, HttpStatusCode httpStatusCode);
+        }
+
+        partial void FormatUpdateIssue(ref string issueKey, UpdateIssueRequest updateIssueRequest);
+
+        /// <summary>
+        /// Validates the request parameters
+        /// </summary>
+        /// <param name="issueKey"></param>
+        /// <param name="updateIssueRequest"></param>
+        /// <returns></returns>
+        private void ValidateUpdateIssue(string issueKey, UpdateIssueRequest updateIssueRequest)
+        {
+            if (issueKey == null)
+                throw new ArgumentNullException(nameof(issueKey));
+
+            if (updateIssueRequest == null)
+                throw new ArgumentNullException(nameof(updateIssueRequest));
+        }
+
+        /// <summary>
+        /// Processes the server response
+        /// </summary>
+        /// <param name="apiResponseLocalVar"></param>
+        /// <param name="issueKey"></param>
+        /// <param name="updateIssueRequest"></param>
+        private void AfterUpdateIssueDefaultImplementation(IUpdateIssueApiResponse apiResponseLocalVar, string issueKey, UpdateIssueRequest updateIssueRequest)
+        {
+            bool suppressDefaultLog = false;
+            AfterUpdateIssue(ref suppressDefaultLog, apiResponseLocalVar, issueKey, updateIssueRequest);
+            if (!suppressDefaultLog)
+                Logger.LogInformation("{0,-9} | {1} | {2}", (apiResponseLocalVar.DownloadedAt - apiResponseLocalVar.RequestedAt).TotalSeconds, apiResponseLocalVar.StatusCode, apiResponseLocalVar.Path);
+        }
+
+        /// <summary>
+        /// Processes the server response
+        /// </summary>
+        /// <param name="suppressDefaultLog"></param>
+        /// <param name="apiResponseLocalVar"></param>
+        /// <param name="issueKey"></param>
+        /// <param name="updateIssueRequest"></param>
+        partial void AfterUpdateIssue(ref bool suppressDefaultLog, IUpdateIssueApiResponse apiResponseLocalVar, string issueKey, UpdateIssueRequest updateIssueRequest);
+
+        /// <summary>
+        /// Logs exceptions that occur while retrieving the server response
+        /// </summary>
+        /// <param name="exceptionLocalVar"></param>
+        /// <param name="pathFormatLocalVar"></param>
+        /// <param name="pathLocalVar"></param>
+        /// <param name="issueKey"></param>
+        /// <param name="updateIssueRequest"></param>
+        private void OnErrorUpdateIssueDefaultImplementation(Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, string issueKey, UpdateIssueRequest updateIssueRequest)
+        {
+            bool suppressDefaultLogLocalVar = false;
+            OnErrorUpdateIssue(ref suppressDefaultLogLocalVar, exceptionLocalVar, pathFormatLocalVar, pathLocalVar, issueKey, updateIssueRequest);
+            if (!suppressDefaultLogLocalVar)
+                Logger.LogError(exceptionLocalVar, "An error occurred while sending the request to the server.");
+        }
+
+        /// <summary>
+        /// A partial method that gives developers a way to provide customized exception handling
+        /// </summary>
+        /// <param name="suppressDefaultLogLocalVar"></param>
+        /// <param name="exceptionLocalVar"></param>
+        /// <param name="pathFormatLocalVar"></param>
+        /// <param name="pathLocalVar"></param>
+        /// <param name="issueKey"></param>
+        /// <param name="updateIssueRequest"></param>
+        partial void OnErrorUpdateIssue(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, string issueKey, UpdateIssueRequest updateIssueRequest);
+
+        /// <summary>
+        /// Change an issue&#39;s lifecycle fields. Changes any of an issue&#39;s type, status, priority or assignee. Every field is optional; omitting one leaves it as it was.  **Any declared status may follow any other.** There are no transition rules — an issue may move from &#x60;done&#x60; back to &#x60;open&#x60;. Configurable workflows and validated transitions are a later product goal, and enforcing them here would pre-empt that decision.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may change these fields; a token carrying neither receives 403. Moving an issue is not one of this system&#39;s administrative acts. 
+        /// </summary>
+        /// <param name="issueKey">The issue&#39;s key, for example &#x60;GOTI-1&#x60;.</param>
+        /// <param name="updateIssueRequest"></param>
+        /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
+        /// <returns><see cref="Task"/>&lt;<see cref="IUpdateIssueApiResponse"/>&gt;</returns>
+        public async Task<IUpdateIssueApiResponse?> UpdateIssueOrDefaultAsync(string issueKey, UpdateIssueRequest updateIssueRequest, System.Threading.CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await UpdateIssueAsync(issueKey, updateIssueRequest, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Change an issue&#39;s lifecycle fields. Changes any of an issue&#39;s type, status, priority or assignee. Every field is optional; omitting one leaves it as it was.  **Any declared status may follow any other.** There are no transition rules — an issue may move from &#x60;done&#x60; back to &#x60;open&#x60;. Configurable workflows and validated transitions are a later product goal, and enforcing them here would pre-empt that decision.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may change these fields; a token carrying neither receives 403. Moving an issue is not one of this system&#39;s administrative acts. 
+        /// </summary>
+        /// <exception cref="ApiException">Thrown when fails to make API call</exception>
+        /// <param name="issueKey">The issue&#39;s key, for example &#x60;GOTI-1&#x60;.</param>
+        /// <param name="updateIssueRequest"></param>
+        /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
+        /// <returns><see cref="Task"/>&lt;<see cref="IUpdateIssueApiResponse"/>&gt;</returns>
+        public async Task<IUpdateIssueApiResponse> UpdateIssueAsync(string issueKey, UpdateIssueRequest updateIssueRequest, System.Threading.CancellationToken cancellationToken = default)
+        {
+            UriBuilder uriBuilderLocalVar = new UriBuilder();
+
+            try
+            {
+                ValidateUpdateIssue(issueKey, updateIssueRequest);
+
+                FormatUpdateIssue(ref issueKey, updateIssueRequest);
+
+                using (HttpRequestMessage httpRequestMessageLocalVar = new HttpRequestMessage())
+                {
+                    uriBuilderLocalVar.Host = HttpClient.BaseAddress!.Host;
+                    uriBuilderLocalVar.Port = HttpClient.BaseAddress.Port;
+                    uriBuilderLocalVar.Scheme = HttpClient.BaseAddress.Scheme;
+                    uriBuilderLocalVar.Path = HttpClient.BaseAddress.AbsolutePath == "/"
+                        ? "/issues/{issueKey}"
+                        : string.Concat(HttpClient.BaseAddress.AbsolutePath, "/issues/{issueKey}");
+                    uriBuilderLocalVar.Path = uriBuilderLocalVar.Path.Replace("%7BissueKey%7D", Uri.EscapeDataString(issueKey.ToString()));
+
+                    httpRequestMessageLocalVar.Content = (updateIssueRequest as object) is System.IO.Stream stream
+                        ? httpRequestMessageLocalVar.Content = new StreamContent(stream)
+                        : httpRequestMessageLocalVar.Content = new StringContent(JsonSerializer.Serialize(updateIssueRequest, _jsonSerializerOptions));
+
+                    List<TokenBase> tokenBaseLocalVars = new List<TokenBase>();
+                    httpRequestMessageLocalVar.RequestUri = uriBuilderLocalVar.Uri;
+
+                    BearerToken bearerTokenLocalVar1 = (BearerToken) await BearerTokenProvider.GetAsync(cancellation: cancellationToken).ConfigureAwait(false);
+
+                    tokenBaseLocalVars.Add(bearerTokenLocalVar1);
+
+                    bearerTokenLocalVar1.UseInHeader(httpRequestMessageLocalVar, "");
+
+                    string[] contentTypes = new string[] {
+                        "application/json"
+                    };
+
+                    string? contentTypeLocalVar = ClientUtils.SelectHeaderContentType(contentTypes);
+
+                    if (contentTypeLocalVar != null && httpRequestMessageLocalVar.Content != null)
+                        httpRequestMessageLocalVar.Content.Headers.ContentType = new MediaTypeHeaderValue(contentTypeLocalVar);
+
+                    string[] acceptLocalVars = new string[] {
+                        "application/json",
+                        "application/problem+json"
+                    };
+
+                    string? acceptLocalVar = ClientUtils.SelectHeaderAccept(acceptLocalVars);
+
+                    if (acceptLocalVar != null)
+                        httpRequestMessageLocalVar.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(acceptLocalVar));
+
+                    httpRequestMessageLocalVar.Method = HttpMethod.Patch;
+
+                    DateTime requestedAtLocalVar = DateTime.UtcNow;
+
+                    using (HttpResponseMessage httpResponseMessageLocalVar = await HttpClient.SendAsync(httpRequestMessageLocalVar, cancellationToken).ConfigureAwait(false))
+                    {
+                        ILogger<UpdateIssueApiResponse> apiResponseLoggerLocalVar = LoggerFactory.CreateLogger<UpdateIssueApiResponse>();
+                        UpdateIssueApiResponse apiResponseLocalVar;
+
+                        switch ((int)httpResponseMessageLocalVar.StatusCode) {
+                            default: {
+                                string responseContentLocalVar = await httpResponseMessageLocalVar.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                                apiResponseLocalVar = new(apiResponseLoggerLocalVar, httpRequestMessageLocalVar, httpResponseMessageLocalVar, responseContentLocalVar, "/issues/{issueKey}", requestedAtLocalVar, _jsonSerializerOptions);
+
+                                break;
+                            }
+                        }
+
+                        AfterUpdateIssueDefaultImplementation(apiResponseLocalVar, issueKey, updateIssueRequest);
+
+                        Events.ExecuteOnUpdateIssue(apiResponseLocalVar);
+
+                        if (apiResponseLocalVar.StatusCode == (HttpStatusCode) 429)
+                            foreach(TokenBase tokenBaseLocalVar in tokenBaseLocalVars)
+                                tokenBaseLocalVar.BeginRateLimit();
+
+                        return apiResponseLocalVar;
+                    }
+                }
+            }
+            catch(Exception e)
+            {
+                OnErrorUpdateIssueDefaultImplementation(e, "/issues/{issueKey}", uriBuilderLocalVar.Path, issueKey, updateIssueRequest);
+                Events.ExecuteOnErrorUpdateIssue(e);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// The <see cref="UpdateIssueApiResponse"/>
+        /// </summary>
+        public partial class UpdateIssueApiResponse : GotIssues.Client.Client.ApiResponse, IUpdateIssueApiResponse
+        {
+            /// <summary>
+            /// The logger
+            /// </summary>
+            public ILogger<UpdateIssueApiResponse> Logger { get; }
+
+            /// <summary>
+            /// The <see cref="UpdateIssueApiResponse"/>
+            /// </summary>
+            /// <param name="logger"></param>
+            /// <param name="httpRequestMessage"></param>
+            /// <param name="httpResponseMessage"></param>
+            /// <param name="rawContent"></param>
+            /// <param name="path"></param>
+            /// <param name="requestedAt"></param>
+            /// <param name="jsonSerializerOptions"></param>
+            public UpdateIssueApiResponse(ILogger<UpdateIssueApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, string rawContent, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, rawContent, path, requestedAt, jsonSerializerOptions)
+            {
+                Logger = logger;
+                OnCreated(httpRequestMessage, httpResponseMessage);
+            }
+
+            /// <summary>
+            /// The <see cref="UpdateIssueApiResponse"/>
+            /// </summary>
+            /// <param name="logger"></param>
+            /// <param name="httpRequestMessage"></param>
+            /// <param name="httpResponseMessage"></param>
+            /// <param name="contentStream"></param>
+            /// <param name="path"></param>
+            /// <param name="requestedAt"></param>
+            /// <param name="jsonSerializerOptions"></param>
+            public UpdateIssueApiResponse(ILogger<UpdateIssueApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
             {
                 Logger = logger;
                 OnCreated(httpRequestMessage, httpResponseMessage);

@@ -77,4 +77,61 @@ public sealed class UpgradePathTests(PostgresContainerFixture postgres)
         var read = await client.GetAsync(new Uri("/issues/OLD-1", UriKind.Relative));
         Assert.Equal(HttpStatusCode.OK, read.StatusCode);
     }
+
+    /// <summary>The last migration before lifecycle fields existed.</summary>
+    private const string BeforeLifecycle = "20260831200135_AddIssues";
+
+    [Fact]
+    public async Task An_issue_that_predates_the_lifecycle_migration_reads_back_with_the_defaults()
+    {
+        // The same shape as the defect above, one table over and one ticket later:
+        // T-0006 adds four NOT NULL columns to a table that already holds rows. If the
+        // defaults lived only in the CLR initialiser, existing issues would backfill
+        // with whatever PostgreSQL chose for the type - and every other test migrates
+        // an empty schema, so nothing else would see it.
+        var connectionString = await postgres.CreateDatabaseAsync();
+        using var factory = new ApiFactory(connectionString, withTestAuthentication: true);
+
+        string issueKey;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+            var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+            await migrator.MigrateAsync(BeforeLifecycle);
+
+            // Seeded through SQL rather than the API: at this schema the application
+            // cannot start, because its model expects columns that do not exist yet.
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO projects ("Id", "Key", "Name", "CreatedAt", "NextIssueNumber")
+                VALUES ('11111111-1111-1111-1111-111111111111', 'OLD', 'Predates lifecycle', now(), 2);
+                INSERT INTO issues ("Id", "ProjectId", "Number", "Title", "Description", "CreatedAt")
+                VALUES ('22222222-2222-2222-2222-222222222222',
+                        '11111111-1111-1111-1111-111111111111', 1, 'Filed before lifecycle', NULL, now())
+                """);
+            issueKey = "OLD-1";
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+            await db.Database.MigrateAsync();
+        }
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.HeaderName, "upgrade-lifecycle");
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeaderName, "member");
+
+        var response = await client.GetAsync(new Uri($"/issues/{issueKey}", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var issue = document.RootElement;
+
+        Assert.Equal("task", issue.GetProperty("type").GetString());
+        Assert.Equal("open", issue.GetProperty("status").GetString());
+        Assert.Equal("normal", issue.GetProperty("priority").GetString());
+        Assert.Equal(JsonValueKind.Null, issue.GetProperty("assignee").ValueKind);
+    }
 }

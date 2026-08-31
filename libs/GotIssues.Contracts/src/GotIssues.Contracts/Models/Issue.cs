@@ -81,6 +81,33 @@ namespace GotIssues.Contracts.Models
         public string? Description { get; set; }
 
         /// <summary>
+        /// Gets or Sets Type
+        /// </summary>
+        [Required]
+        [DataMember(Name="type", EmitDefaultValue=true)]
+        public IssueType Type { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Status
+        /// </summary>
+        [Required]
+        [DataMember(Name="status", EmitDefaultValue=true)]
+        public IssueStatus Status { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Priority
+        /// </summary>
+        [Required]
+        [DataMember(Name="priority", EmitDefaultValue=true)]
+        public IssuePriority Priority { get; set; }
+
+        /// <summary>
+        /// Gets or Sets Assignee
+        /// </summary>
+        [DataMember(Name="assignee", EmitDefaultValue=true)]
+        public Assignee Assignee { get; set; }
+
+        /// <summary>
         /// When the issue was created, in UTC.
         /// </summary>
         /// <value>When the issue was created, in UTC.</value>
@@ -102,6 +129,10 @@ namespace GotIssues.Contracts.Models
             sb.Append("  Number: ").Append(Number).Append("\n");
             sb.Append("  Title: ").Append(Title).Append("\n");
             sb.Append("  Description: ").Append(Description).Append("\n");
+            sb.Append("  Type: ").Append(Type).Append("\n");
+            sb.Append("  Status: ").Append(Status).Append("\n");
+            sb.Append("  Priority: ").Append(Priority).Append("\n");
+            sb.Append("  Assignee: ").Append(Assignee).Append("\n");
             sb.Append("  CreatedAt: ").Append(CreatedAt).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
@@ -175,6 +206,26 @@ namespace GotIssues.Contracts.Models
                     Description.Equals(other.Description)
                 ) && 
                 (
+                    Type == other.Type ||
+                    
+                    Type.Equals(other.Type)
+                ) && 
+                (
+                    Status == other.Status ||
+                    
+                    Status.Equals(other.Status)
+                ) && 
+                (
+                    Priority == other.Priority ||
+                    
+                    Priority.Equals(other.Priority)
+                ) && 
+                (
+                    Assignee == other.Assignee ||
+                    Assignee != null &&
+                    Assignee.Equals(other.Assignee)
+                ) && 
+                (
                     CreatedAt == other.CreatedAt ||
                     
                     CreatedAt.Equals(other.CreatedAt)
@@ -203,6 +254,14 @@ namespace GotIssues.Contracts.Models
                     hashCode = hashCode * 59 + Title.GetHashCode();
                     if (Description != null)
                     hashCode = hashCode * 59 + Description.GetHashCode();
+                    
+                    hashCode = hashCode * 59 + Type.GetHashCode();
+                    
+                    hashCode = hashCode * 59 + Status.GetHashCode();
+                    
+                    hashCode = hashCode * 59 + Priority.GetHashCode();
+                    if (Assignee != null)
+                    hashCode = hashCode * 59 + Assignee.GetHashCode();
                     
                     hashCode = hashCode * 59 + CreatedAt.GetHashCode();
                 return hashCode;

@@ -28,6 +28,29 @@ public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> opti
             entity.HasIndex(e => new { e.ProjectId, e.Number }).IsUnique();
 
             entity.Property(e => e.Title).HasMaxLength(200);
+
+            // Stored as their names rather than ordinals: a column reading `InProgress`
+            // survives someone reordering the enum, and an integer does not. The
+            // default lives in the **database**, not only in the CLR initialiser —
+            // T-0005 shipped a migration that backfilled existing rows with a value the
+            // contract forbade precisely because that distinction was missed.
+            entity.Property(e => e.Type)
+                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssueType.Task);
+            entity.Property(e => e.Status)
+                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssueStatus.Open);
+            entity.Property(e => e.Priority)
+                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssuePriority.Normal);
+
+            entity.Property(e => e.AssigneeSubject).HasMaxLength(255);
+
+            // Restrict, not Cascade: deleting a person must never delete the work they
+            // were holding. Nothing deletes users yet, so this is a decision made now
+            // rather than discovered by whoever adds that.
+            entity.HasOne(e => e.Assignee)
+                .WithMany()
+                .HasForeignKey(e => e.AssigneeSubject)
+                .HasPrincipalKey(u => u.Subject)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.Description).HasMaxLength(10000);
             entity.Property(e => e.CreatedAt).IsRequired();
 

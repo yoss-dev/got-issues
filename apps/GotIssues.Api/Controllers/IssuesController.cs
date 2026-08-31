@@ -6,6 +6,12 @@ using GotIssues.Contracts.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+// The domain and the contract deliberately share these names — the vocabularies are the
+// same, the types are not, and mapping between them is what keeps a contract change from
+// becoming a schema change. Aliased rather than fully qualified so the mapping reads.
+using ContractPriority = GotIssues.Contracts.Models.IssuePriority;
+using ContractStatus = GotIssues.Contracts.Models.IssueStatus;
+using ContractType = GotIssues.Contracts.Models.IssueType;
 
 namespace GotIssues.Api.Controllers;
 
@@ -112,6 +118,101 @@ public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiCo
         return StatusCode(StatusCodes.Status201Created, ToContract(record, project.Key));
     }
 
+    /// <summary>
+    /// Changing an issue's lifecycle fields is open to any recognised role: `PROJECT.md`
+    /// §5 names three administrative acts and moving an issue is not one of them.
+    /// </summary>
+    [Authorize(Policy = AuthorizationPolicies.Member)]
+    public override async Task<IActionResult> UpdateIssue(
+        string issueKey, UpdateIssueRequest updateIssueRequest)
+    {
+        ArgumentNullException.ThrowIfNull(updateIssueRequest);
+
+        var cancellationToken = HttpContext.RequestAborted;
+        var (projectKey, number) = SplitKey(issueKey);
+
+        var record = await dbContext.Issues
+            .Include(i => i.Project)
+            .Include(i => i.Assignee)
+            .SingleOrDefaultAsync(
+                i => i.Project.Key == projectKey && i.Number == number, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (record is null)
+        {
+            return Problem(
+                type: "https://httpstatuses.io/404",
+                title: "Issue not found.",
+                statusCode: StatusCodes.Status404NotFound,
+                detail: $"No issue with key '{issueKey}' exists.");
+        }
+
+        // Null means "leave unchanged" for these three: an issue always has a type, a
+        // status and a priority, so there is nothing an explicit null could mean.
+        // No transition is checked — any declared status may follow any other (AC5),
+        // and adding a rule here would pre-empt a product decision nobody has made.
+        if (updateIssueRequest.Type is { } type)
+        {
+            record.Type = FromContract(type);
+        }
+
+        if (updateIssueRequest.Status is { } status)
+        {
+            record.Status = FromContract(status);
+        }
+
+        if (updateIssueRequest.Priority is { } priority)
+        {
+            record.Priority = FromContract(priority);
+        }
+
+        // Assignment is the one field where absent and null differ, which is why the
+        // contract wraps it in an object: a missing `assignment` leaves the holder
+        // alone, while `{"subject": null}` unassigns.
+        if (updateIssueRequest.Assignment is { } assignment)
+        {
+            if (assignment.Subject is null)
+            {
+                record.AssigneeSubject = null;
+                record.Assignee = null;
+            }
+            else
+            {
+                var assignee = await dbContext.Users
+                    .SingleOrDefaultAsync(u => u.Subject == assignment.Subject, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (assignee is null)
+                {
+                    // 400, not 404: the issue in the path exists, and the offending
+                    // value arrived in the body. Assigning to somebody this system has
+                    // never seen would produce an assignee no client could render.
+                    // `Type` set explicitly: this is the only hand-rolled problem
+                    // document in the codebase, and without it this one 400 would be
+                    // the single failure response in the API carrying no `type` —
+                    // including beside the framework's own 400s, which do. Not a
+                    // framework default; measured to one call site in review.
+                    return ValidationProblem(new ValidationProblemDetails(
+                        new Dictionary<string, string[]>(StringComparer.Ordinal)
+                        {
+                            ["Assignment.Subject"] =
+                                [$"No user with subject '{assignment.Subject}' is known to this system."],
+                        })
+                    {
+                        Type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    });
+                }
+
+                record.AssigneeSubject = assignee.Subject;
+                record.Assignee = assignee;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Ok(ToContract(record, projectKey));
+    }
+
     /// <summary>Reading an issue is open to any recognised role.</summary>
     [Authorize(Policy = AuthorizationPolicies.Member)]
     public override async Task<IActionResult> GetIssue(string issueKey)
@@ -119,13 +220,12 @@ public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiCo
         // The key's shape is enforced by the generated contract, so this split cannot
         // fail on a request that reaches here: a malformed key is a 400 before this
         // method runs.
-        var separator = issueKey.LastIndexOf('-');
-        var projectKey = issueKey[..separator];
-        var number = int.Parse(issueKey[(separator + 1)..], CultureInfo.InvariantCulture);
+        var (projectKey, number) = SplitKey(issueKey);
 
         var record = await dbContext.Issues
             .AsNoTracking()
             .Include(i => i.Project)
+            .Include(i => i.Assignee)
             .SingleOrDefaultAsync(
                 i => i.Project.Key == projectKey && i.Number == number,
                 HttpContext.RequestAborted)
@@ -143,6 +243,45 @@ public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiCo
         return Ok(ToContract(record, projectKey));
     }
 
+    /// <summary>
+    /// Splits a key into its project and number.
+    ///
+    /// Safe because the contract's pattern admits nothing else: a project key contains
+    /// no hyphen, so a valid issue key has exactly one, and a malformed key is rejected
+    /// with 400 before this method runs.
+    /// </summary>
+    private static (string ProjectKey, int Number) SplitKey(string issueKey)
+    {
+        var separator = issueKey.LastIndexOf('-');
+
+        return (
+            issueKey[..separator],
+            int.Parse(issueKey[(separator + 1)..], CultureInfo.InvariantCulture));
+    }
+
+    private static Data.IssueType FromContract(ContractType value) => value switch
+    {
+        ContractType.BugEnum => Data.IssueType.Bug,
+        ContractType.TaskEnum => Data.IssueType.Task,
+        _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
+    private static Data.IssueStatus FromContract(ContractStatus value) => value switch
+    {
+        ContractStatus.OpenEnum => Data.IssueStatus.Open,
+        ContractStatus.InProgressEnum => Data.IssueStatus.InProgress,
+        ContractStatus.DoneEnum => Data.IssueStatus.Done,
+        _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
+    private static Data.IssuePriority FromContract(ContractPriority value) => value switch
+    {
+        ContractPriority.LowEnum => Data.IssuePriority.Low,
+        ContractPriority.NormalEnum => Data.IssuePriority.Normal,
+        ContractPriority.HighEnum => Data.IssuePriority.High,
+        _ => throw new ArgumentOutOfRangeException(nameof(value)),
+    };
+
     private static Issue ToContract(IssueRecord record, string projectKey) => new()
     {
         Id = record.Id,
@@ -152,5 +291,29 @@ public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiCo
         Title = record.Title,
         Description = record.Description,
         CreatedAt = record.CreatedAt.UtcDateTime,
+        Type = record.Type switch
+        {
+            Data.IssueType.Bug => ContractType.BugEnum,
+            _ => ContractType.TaskEnum,
+        },
+        Status = record.Status switch
+        {
+            Data.IssueStatus.InProgress => ContractStatus.InProgressEnum,
+            Data.IssueStatus.Done => ContractStatus.DoneEnum,
+            _ => ContractStatus.OpenEnum,
+        },
+        Priority = record.Priority switch
+        {
+            Data.IssuePriority.Low => ContractPriority.LowEnum,
+            Data.IssuePriority.High => ContractPriority.HighEnum,
+            _ => ContractPriority.NormalEnum,
+        },
+        Assignee = record.Assignee is null
+            ? null
+            : new Assignee
+            {
+                Subject = record.Assignee.Subject,
+                DisplayName = record.Assignee.DisplayName,
+            },
     };
 }

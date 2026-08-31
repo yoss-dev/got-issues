@@ -111,6 +111,12 @@ namespace GotIssues.Client.Client
                 return boolean
                     ? "true"
                     : "false";
+            if (obj is IssuePriority issuePriority)
+                return IssuePriorityValueConverter.ToJsonValue(issuePriority);
+            if (obj is IssueStatus issueStatus)
+                return IssueStatusValueConverter.ToJsonValue(issueStatus);
+            if (obj is IssueType issueType)
+                return IssueTypeValueConverter.ToJsonValue(issueType);
             if (obj is ICollection collection)
             {
                 List<string?> entries = new();

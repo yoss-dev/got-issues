@@ -29,5 +29,27 @@ public sealed class IssueRecord
 
     public DateTimeOffset CreatedAt { get; init; }
 
+    /// <summary>What kind of work this is.</summary>
+    public IssueType Type { get; set; } = IssueType.Task;
+
+    /// <summary>Where the work stands. No transition rules — any value may follow any other.</summary>
+    public IssueStatus Status { get; set; } = IssueStatus.Open;
+
+    /// <summary>How urgent the work is.</summary>
+    public IssuePriority Priority { get; set; } = IssuePriority.Normal;
+
+    /// <summary>
+    /// The subject of the person holding this issue, or null when nobody does.
+    ///
+    /// <para>
+    /// Never-assigned and since-unassigned are deliberately the same state: assignment
+    /// history is not kept, and a tri-state here would imply an audit trail that does
+    /// not exist.
+    /// </para>
+    /// </summary>
+    public string? AssigneeSubject { get; set; }
+
+    public UserRecord? Assignee { get; set; }
+
     public ProjectRecord Project { get; init; } = null!;
 }

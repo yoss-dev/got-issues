@@ -414,3 +414,648 @@ as a defect in T-0022 rather than here.
 - **Remaining:** implementation.
 - **Open questions / blockers:** none.
 - **Test state:** not started.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — built; three contract problems the tests found first
+
+Branch `t-0006-lifecycle`. **129 tests green** (17 unit, 112 integration), smoke 13/13.
+
+#### The migration lesson, applied rather than repeated
+
+T-0005 shipped a backfill that gave existing rows a value the contract forbade, and it was
+invisible because every test migrated an empty schema. This ticket adds **four NOT NULL columns to
+a table that already holds rows** — the same shape, one table over.
+
+So the upgrade-path test was written before the migration existed: migrate to the pre-T-0006
+schema, seed a project and an issue **through SQL** (the application cannot start against that
+schema — its model expects columns that do not exist yet), upgrade, and read the issue back
+through the API. It reads `task` / `open` / `normal` with a null assignee, because each column
+carries a **database default** rather than only a CLR initialiser. That distinction is the whole
+defect from last time.
+
+#### Three problems, all found by tests rather than review
+
+**1. The API returned enums as numbers.** `spec/openapi.yaml` declares
+`enum: [open, in_progress, done]`; the API answered `"status": 2`. The generator emits
+`[EnumMember(Value = "open")]`, which Newtonsoft honours and `System.Text.Json` ignores — and this
+project generates with `useNewtonsoft=false`. These are the **first enums in the contract**, so
+nothing had exercised it. That is the document promising one thing and the API sending another,
+this repository's signature defect, and it would have shipped without a test that asserted the
+value rather than the status code.
+
+Fixed with a converter that reads the declared values. A plain `JsonStringEnumConverter` would not
+do: the generated member names are `OpenEnum` and `InProgressEnum`.
+
+**2. My first version of that converter turned a 400 into a 500.** It claimed `Nullable<T>` and
+returned a `JsonConverter<T>`; System.Text.Json wraps nullable itself and rejects that, so an
+invalid enum value produced an unhandled exception instead of a validation failure. The
+enum-rejection tests caught it immediately — a fix for a contract defect, introducing a worse one,
+caught because the test asserted the status it wanted rather than merely "not success".
+
+**3. `required: [subject]` made unassigning impossible.** In JSON Schema `required` means *the
+property must be present*; the C# generator renders it `[Required]`, which means *must not be
+null* — and null is exactly the value that unassigns. The contract rejected the operation the
+object exists to express. Removed, with the reason recorded in the schema itself.
+
+#### The contract expresses PATCH semantics rather than the server inferring them
+
+The generated request initially could not distinguish "omitted" from "sent": enums arrived as
+non-nullable value types, so an omitted `type` read as `(IssueType)0`. And a bare
+`assigneeSubject: string?` cannot say both *leave the holder alone* and *unassign*.
+
+Both fixed in the specification rather than by inspecting raw JSON in the controller: the three
+enums are nullable (null and absent both mean unchanged, which is all they can mean), and
+assignment is wrapped in an object — **absent** leaves the holder alone, **present with a null
+subject** unassigns. Reading the body twice to detect property presence would have put a rule the
+contract cannot state into code only, which is what ADR-0004 exists to prevent.
+
+#### Mutation, under the narrowed rule
+
+One mutant, for the one claim where a test is the sole evidence:
+
+| Mutant | Result |
+| --- | --- |
+| A transition rule refusing `done` → anything else — exactly what AC5 forbids | **Killed** — `Expected: OK, Actual: Conflict` |
+
+AC5 is a criterion **against** gold-plating, so it is guarded by nothing except a test; a
+well-meant "improvement" is the failure mode.
+
+*(Corrected after review — the paragraph that followed misattributed two enforcements, and one of
+them was wrong in a way that mattered. See the entry below.)*
+
+#### Decisions
+
+- **`PATCH`, not `PUT`** — a replace would require sending every field to change one, turning
+  "move this to in_progress" into a read-modify-write with a lost-update race.
+- **Domain enums are separate from the contract's**, mapped in the controller. Binding persistence
+  to generated types would make a contract change a schema change, and ADR-0010 will formalise the
+  separation this anticipates.
+- **Stored as names, not ordinals** — a column reading `InProgress` survives someone reordering the
+  enum; an integer does not.
+- **The assignee foreign key is `Restrict`.** Deleting a person must not delete the work they hold.
+  Asserted by a test, because nothing deletes users yet and the decision would otherwise be
+  invisible until someone added that.
+- **Written in the current shape** per the maintainer's sequencing decision, with every test
+  asserting through the HTTP boundary so [T-0022](T-0022-adopt-clean-architecture-layering.md) can
+  refactor beneath them without touching one.
+
+- **Did:** Specified the lifecycle fields and the update operation, generated, implemented,
+  migrated with database defaults, and tested all eight criteria plus the upgrade path.
+- **Decided:** as above.
+- **Remaining:** review, then acceptance.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0006-lifecycle`.
+- **Test state, in this worktree:** `dotnet test` **129/129** · `tools/smoke.sh` **13/13** exit 0 ·
+  build 0 warnings · `dotnet format` exit 0 both · `validate.py` exit 0 · `check-drift.sh` exit 0
+  after commit.
+- **For QA to probe:** the enum converter is new infrastructure on the response path of **every**
+  endpoint, not just this one — and its first version turned a 400 into a 500. Worth checking it
+  did not change how any existing response serialises.
+
+### 2026-08-31 — Code review (claude-rev-7a03) — ENG · ARCH — **Request changes**
+
+Reviewed `t-0006-lifecycle` @ `dbbecbd` against `main`, in the worktree, per
+[`review-code`](../../skills/review-code/SKILL.md).
+
+#### Gates, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 17 unit + 112 integration = **129** passed, 0 failed |
+| `dotnet build --no-incremental` | **exit 0** — 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0** on a clean tree — AC6 verified, generated output matches the spec |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (5 m 27 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 23 tickets, 10 ADRs |
+
+#### What I did beyond running the suite
+
+Per [TESTING.md](../../standards/TESTING.md) *"exercise the system in a state it was not built
+in"*, I drove the new endpoint with eleven request bodies the tests do not send, in a throwaway
+integration probe deleted afterwards (working tree verified clean). Three of them found
+something; the rest are recorded below as confirmed behaviour so nobody has to rediscover them.
+
+---
+
+### Blocking
+
+#### B1 — a `U+0000` in `assignment.subject` returns **500**. This is T-0004's defect, in the one new request string.
+
+`spec/openapi.yaml:555-557` declares `AssignmentChange.subject` with `maxLength: 255` and **no
+`pattern`**. It is the only free-text string in a request body in this whole contract without
+one. Every other one has one *because T-0004 shipped exactly this defect*:
+`CreateProjectRequest.name` (:609-611, :645-647), `CreateIssueRequest.title` (:571-573),
+`.description` (:583-584) and `Issue.title` (:411-413) all carry a NUL-excluding pattern, with
+the reason spelled out in the spec at :417-424 — *"PostgreSQL cannot store `U+0000` in text at
+all"*.
+
+Observed, sending `subject` as the six-character JSON escape `\u0000` followed by `bad`:
+
+```
+PATCH /issues/PE-1   body: {"assignment":{"subject":"\u0000bad"}}
+-> 500 application/problem+json
+   {"type":"https://httpstatuses.io/500","title":"An unexpected error occurred.","status":500}
+server log: Npgsql.PostgresException (0x80004005):
+            22021: invalid byte sequence for encoding "UTF8": 0x00
+```
+
+The value reaches PostgreSQL as a query parameter at
+`apps/GotIssues.Api/Controllers/IssuesController.cs:181-183`
+(`dbContext.Users.SingleOrDefaultAsync(u => u.Subject == assignment.Subject, …)`), and the
+database rejects the byte sequence.
+
+Why this blocks, on two counts:
+
+- **AC4.** That subject has no row in the `users` projection, so AC4 requires **400** with a
+  problem document naming the offending field. It returns 500, with no `detail` and no field
+  named. (The issue itself is correctly left unchanged — that half holds.)
+- **[SECURITY.md](../../standards/SECURITY.md)**, project rule *Input validation* `[confirmed]`:
+  *"request validation is declared in the OpenAPI specification and enforced by generated model
+  binding plus explicit checks in controllers. A validation rule that exists only in code and not
+  in the spec is a contract defect."* Here the rule exists in neither place — PostgreSQL is doing
+  the rejecting, and badly.
+
+Fix: add the `pattern` to `AssignmentChange.subject`, regenerate, and add the regression test
+[TESTING.md](../../standards/TESTING.md) requires for every fixed bug.
+
+#### B2 — `{"assignment": {}}` silently unassigns, and the contract nowhere says so
+
+This is the permanent, published consequence of dropping `required: [subject]`, and it is
+destructive. Observed, on an issue assigned to `alice`:
+
+```
+PATCH {"assignment":{}}     -> 200, assignee becomes null, and stays null on re-read
+PATCH {"assignment":null}   -> 200, assignee unchanged (still alice)
+```
+
+`spec/openapi.yaml:544-563` says only *"Setting `subject` to null unassigns."* It does not say
+that **omitting** `subject` unassigns, nor what `"assignment": null` does. Both are now real,
+permanent behaviours of a published contract, discoverable only by trying them.
+
+The generated client makes the first easy to hit by accident:
+`libs/GotIssues.Client/src/GotIssues.Client/Model/AssignmentChange.cs` has no required
+constructor argument for `Subject`, so a caller who builds an `AssignmentChange` and forgets to
+set it unassigns the issue and receives a 200.
+
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md) names this
+exact class of defect: *"the document promising something other than what the system does."*
+
+Either resolution is acceptable, but the contract must state which:
+
+- **document it** — say in `AssignmentChange`'s description that an absent `subject` unassigns
+  exactly as an explicit null does, and that `"assignment": null` leaves the holder alone; or
+- **reject it** — treat a present `assignment` carrying no `subject` property as a 400. That
+  needs a controller check, since `required` is unavailable for the reason the schema records.
+
+Either way, a test per case.
+
+#### B3 — the mutation record claims AC4 is enforced by the foreign key. It is not, and I am challenging the claim.
+
+The Work Log gives *"the assignee's existence by a foreign key"* as the reason AC4 needs no
+mutant. The foreign key enforces that an unknown subject cannot be **stored**. It does not
+produce AC4's stated outcome — 400, naming the field, issue unchanged. That outcome is produced
+by nothing but the hand-written lookup at `IssuesController.cs:181-197`. Remove the lookup and
+the write reaches the FK, which raises a `DbUpdateException` → **500**: a different declared
+response, as B1 demonstrates on this very code path.
+
+So AC4 *is* a claim whose sole evidence is a test, and
+[TESTING.md](../../standards/TESTING.md) is explicit: *"a reviewer or acceptor challenges a
+coverage claim — then the answer is a mutant, not an argument."*
+
+Required: **one** mutant, on the tier it already lives on — remove the projection lookup, let the
+save reach the FK, and confirm
+`AC4_assigning_to_an_unknown_subject_is_rejected_and_changes_nothing` goes red **on its 400
+assertion** rather than on an unrelated error. TESTING.md's own warning applies here: a red suite
+is not proof the mutant caused it.
+
+Also correct, in the same entry, *"the enum sets by the generated converter"*.
+`EnumMemberJsonConverter` is hand-written, in `apps/GotIssues.Api/Serialization/` — not
+generated, not a framework invariant, and so not enforcement in the sense TESTING.md means. **No
+mutant is needed for AC2**: the valid basis is the one the same entry already gives, and it is a
+strong one — that test was watched going red twice, on the integer serialisation and again on the
+500 regression. Record it as observed-red rather than as enforcement, because *"a record that
+overstates its mutant is the same defect as an assertion that overstates its subject."*
+
+---
+
+### Non-blocking
+
+- **N1 — `Issue.required` omits all four new fields, so the generated *client* makes them
+  optional.** `spec/openapi.yaml:379` lists `required: [id, key, projectKey, number, title,
+  createdAt]`. The server contract renders `IssueType Type` (non-nullable), but
+  `libs/GotIssues.Client/src/GotIssues.Client/Model/Issue.cs:77,90,103,172` renders all four as
+  `IssueType?` / `Assignee?` behind `Option<>` wrappers. AC7's rationale is *"declared as defaults
+  in the specification, so no client has to infer them; `assignee` is the only nullable lifecycle
+  field"* — a generated C# client still has to infer them. The API always emits all four
+  (verified), so adding `type, status, priority, assignee` to `required` states what is already
+  true; `assignee` keeps its `oneOf: null`, which is exactly the required-but-nullable shape.
+  Worth taking in the same regeneration as B1.
+- **N2 — the 400 for an invalid enum carries a spurious second error.**
+  `{"errors":{"updateIssueRequest":["The updateIssueRequest field is required."],
+  "$.status":["'OPEN' is not one of: open, in_progress, done."]}}`. The second entry is right; the
+  first names a field the client did send, and will mislead. It follows from body deserialisation
+  failing and the parameter binding null. Probably pre-existing on the POST endpoints too — worth
+  a look, not worth blocking.
+- **N3 — the contract's "send null to leave unchanged" is untested.** `{"status":null}`,
+  `{"assignment":null}` and `{}` are all stated or implied by `UpdateIssueRequest`'s description
+  and covered by no test. I verified all three behave correctly; a test each would pin behaviour
+  the document promises.
+- **N4 — `ValidationProblem(...)` at `IssuesController.cs:190` emits a problem document with no
+  `type`**, unlike every other failure in this API, which uses `Problem(type: "https://…")`. The
+  `Problem` schema declares no `required`, so it is conformant — but that schema's own description
+  says *"Every failure in this API uses this shape."* Consistency nit.
+- **N5 — a vacuous assertion in test code.** The AC2 theory in `IssueLifecycleTests.cs` ends with
+  `Assert.False(string.IsNullOrEmpty(why))`, which asserts something about the test's own
+  parameter and nothing about the system. TESTING.md holds test code to production standards;
+  drop the parameter or fold it into the display name.
+- **N6 — unknown request properties are silently ignored.** `{"stauts":"done"}` → 200 with no
+  change. Standard `System.Text.Json` behaviour and consistent with the rest of the API. Recorded
+  so it is not rediscovered later as a bug.
+- **N7 — nothing round-trips the generated client.** `apps/GotIssues.SmokeTests` does not
+  reference `GotIssues.Client`, and neither do the integration tests, so the six client-side enum
+  converters this change registers in
+  `libs/GotIssues.Client/src/GotIssues.Client/Client/HostConfiguration.cs` are compiled and never
+  executed. A pre-existing gap this ticket widens rather than causes; I have not raised a ticket,
+  because whether the generated client is worth exercising is a product/engineering call and
+  [T-0022](T-0022-adopt-clean-architecture-layering.md) is next through this code.
+
+---
+
+### What I checked and found correct
+
+- **The migration is right, and it is genuinely covered.** All four columns carry
+  `HasDefaultValue` in `GotIssuesDbContext` and a `defaultValue:` in
+  `20260831230358_AddIssueLifecycle.cs`, so `ADD COLUMN … NOT NULL DEFAULT` backfills existing
+  rows with `Task` / `Open` / `Normal` — values the contract declares, which is precisely what
+  T-0005 got wrong.
+  `UpgradePathTests.An_issue_that_predates_the_lifecycle_migration_reads_back_with_the_defaults`
+  is a real cover, not a lookalike: it migrates to `20260831200135_AddIssues` (verified as the
+  last migration before this one), seeds a project and an issue by SQL because the application
+  cannot start against that schema, runs the **real** migrator, and reads back through the API.
+  Drop the `HasDefaultValue` calls and EF emits `defaultValue: ""` for a non-nullable string,
+  which then fails converting back to the enum — the test catches it.
+- **Nothing else in the migration mistreats existing rows.** `AssigneeSubject` is added nullable,
+  so the new foreign key validates against an all-NULL column and the new index is over all NULLs;
+  on PostgreSQL 11+ a `NOT NULL DEFAULT` column add does not rewrite the table; `Down` is
+  symmetric.
+- **`Restrict`, not `Cascade`, on the assignee foreign key**, as refinement decided, and pinned by
+  a test that asserts the decision rather than a code path.
+- **Enums stored as names, not ordinals** — a column reading `InProgress` survives a reordering of
+  the CLR enum; an integer would not.
+- **AC6** verified independently: `check-drift.sh` exit 0 on a clean tree.
+- **ADR-0008 satisfied**: `[Authorize(Policy = AuthorizationPolicies.Member)]` on the concrete
+  controller, plus the role rule in the operation `description` and a declared `403`.
+- **[ADR-0010](../../architecture/adr/ADR-0010-clean-architecture-layering.md)**: written in the
+  current controller-plus-`DbContext` shape per the maintainer's recorded sequencing decision, and
+  every behavioural test goes through the HTTP boundary, which is what T-0022's AC4 needs. The one
+  test that uses the `DbContext` directly (`Deleting_a_user_cannot_delete_the_work_they_hold`)
+  asserts a schema constraint T-0022 does not move, so it is not a coupling problem.
+
+### The five points I was asked to judge rather than accept
+
+1. **The converter changed nothing about existing responses.** Verified rather than assumed: on
+   `main`, `git grep -l EnumMember -- libs/GotIssues.Contracts/src/` returns **nothing**, and on
+   the branch it returns only `IssueType`, `IssueStatus` and `IssuePriority`. Those three are the
+   only `[EnumMember]`-bearing types anywhere in the solution, so the factory cannot have altered
+   any pre-existing payload; I re-read `GET /projects` and `GET /issues/{key}` and both are
+   shape-identical apart from the new fields. The `Nullable<T>` fix is right — `CanConvert` claims
+   the enum only and lets `System.Text.Json` do the nullable wrapping itself. Of the cases the
+   tests miss: **unknown value** → 400 (`'OPEN' is not one of: …`; a numeric `2` likewise);
+   **explicit null** → property left unchanged, 200; **`Write` of an undeclared value** →
+   unreachable, because both mapping switches in `IssuesController` are total with `_ =>` arms.
+   The static `ConcurrentDictionary` cache is shared process-wide across `JsonSerializerOptions`
+   instances, which is safe only because `NamedEnumConverter` is stateless — it is. Round-tripping
+   through the generated client is the one thing genuinely unverified anywhere: see N7.
+2. **Wrapping assignment in an object is the right call**, and I would not take the alternative.
+   Inspecting the raw JSON for property presence puts a rule the document cannot state into server
+   code only, which is what
+   [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) exists to
+   prevent and what this product positions itself against. The wrapper is expressible, generated,
+   and visible to every client. Nullable enums meaning "unchanged" are likewise fine: for a field
+   that always has a value there is nothing else null could mean. The cost is real but small —
+   `assignment` is now a place where absent, `null`, `{}` and `{"subject":null}` are four
+   distinguishable inputs and the contract describes two of them. That is B2, and it is a
+   documentation fix, not a design reversal.
+3. **Removing `required: [subject]` was correct, and it loses less than it appears to — but not
+   nothing.** The reasoning in the schema is sound: the generator renders `required` as
+   `[Required]`, which rejects the null that unassigns, so keeping it would have made the object's
+   whole purpose unexpressible. What is lost is the ability to say *"this property must be
+   present"*, and the concrete cost is exactly B2 — `{"assignment":{}}` is now indistinguishable
+   from `{"assignment":{"subject":null}}` and silently unassigns. Worth being precise, though:
+   `required` would **not** have saved you even with a well-behaved generator, because it and the
+   unassign semantics want the same slot. A property that must be present *and* may be null is
+   expressible in JSON Schema but not in the C# this generator writes. So the loss is not "a guard
+   we could have had was given up"; it is "this shape has an edge the contract must describe in
+   prose". Describe it (B2) and nothing further is lost.
+4. **The upgrade-path case genuinely covers this migration**, and I checked the migration for
+   other mistreatment of existing rows and found none — details above under *what I checked*. The
+   one thing the new case does not do is exercise a **pre-existing** issue through the new `PATCH`
+   after the upgrade; it only reads. Cheap to add, not blocking, since the columns it would touch
+   are the ones already asserted.
+5. **The AC5 mutant is the right single mutant** — a transition rule refusing `done → *`, which
+   the test's `done → open` step reaches on its second iteration; build-accepted, killed with the
+   specific expected failure (`Expected: OK, Actual: Conflict`), and run on the cheapest tier that
+   can host it. That is the claim AC5 leaves standing on a test alone, and one mutant covers all
+   five of its assertions, per the proportionality rule. **One more is needed, for AC4** — not
+   because AC4 is under-tested, but because the record misattributes its enforcement to the
+   foreign key, which cannot produce AC4's outcome. That is B3. Nothing else here warrants one:
+   AC1 / AC3 / AC7 are pinned by database defaults and a re-read, AC2's test was observed red
+   twice during development, AC6 is a script's exit code, and AC8 is a policy attribute.
+
+- **Did:** Reviewed the full diff against `main`; ran every gate in the worktree under test and
+  read each exit code from the tool itself; probed the new endpoint with eleven request bodies the
+  suite does not send.
+- **Decided:** **Request changes** — B1, B2, B3.
+- **Remaining:** the implementer addresses B1-B3 on the branch and re-requests review. N1 is worth
+  taking in the same regeneration; N2-N7 are take-or-leave and need no re-review.
+- **Open questions / blockers:** none for me. B2 has two acceptable resolutions and the choice is
+  the implementer's.
+- **Branch / PR:** `t-0006-lifecycle` @ `dbbecbd`.
+- **Test state, as I measured it:** `dotnet test` 129/129 exit 0 · build 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `validate.py` exit 0 ·
+  `smoke.sh` 13/13 exit 0.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — three blocking findings, all from eleven requests the suite does not send
+
+`claude-rev-7a03` approved every gate and then found three defects by driving the endpoint with
+request bodies no test sends — the exploration step, applied to a review rather than an acceptance.
+
+#### B1 — T-0004's defect, recurring in a field I added two tickets later
+
+`AssignmentChange.subject` was **the only free-text request string in the contract without a
+pattern**. Every other one has one *because T-0004 shipped exactly this defect*, with the reasoning
+written into the specification beside them. A NUL reached PostgreSQL and came back
+`22021: invalid byte sequence` as an unhandled **500**, where AC4 requires a 400 naming the field.
+
+I wrote the rule, recorded why it exists, applied it to five fields, and then added a sixth without
+it. The pattern is now there, with a test.
+
+#### B2 — the contract described two of four distinguishable inputs
+
+`{"assignment":{}}` unassigns and returns 200. Nothing said so, and a client that simply forgets
+`subject` loses the assignee silently.
+
+The honest fix is documentation, not rejection: the API **cannot** distinguish an omitted `subject`
+from an explicit null — that is the same limitation the wrapper object exists to work around one
+level up, reappearing inside it. So the schema now states all three shapes and what each means, and
+a test asserts the two that were undocumented. Rejecting `{}` would require the raw-JSON inspection
+this design exists to avoid.
+
+#### B3 — my mutation record misattributed AC4's enforcement, and the correction is the finding
+
+I recorded the assignee's existence as "enforced by a foreign key", and used that to justify not
+mutating AC4. The reviewer's objection is exactly right: **the foreign key stops the write; it
+cannot produce AC4's outcome.** AC4 requires a 400 naming the field, and only the hand-written
+lookup produces that. The FK produces a 500.
+
+Measured rather than conceded — remove the lookup and let the FK be the enforcement:
+
+| Mutant | Result |
+| --- | --- |
+| Assignee lookup removed; foreign key left as the only guard | **Killed** — `Expected: BadRequest, Actual: InternalServerError` |
+
+So AC4 *is* a claim where a test is the sole evidence, and under the narrowed rule it needed a
+mutant. **The error was not in the testing; it was in the record** — and a wrong enforcement note
+is worse than a missing one, because it is the reason a mutant does not get run. B1 is the same
+mistake made in code: I believed a guard existed where none did.
+
+Also relabelled: the enum sets are enforced by `EnumMemberJsonConverter`, which is **hand-written
+in `apps/`**, not by the generator. The evidence for it was already sound — observed red twice
+during development — but "the generated converter" overstated where it comes from.
+
+#### Non-blocking taken
+
+**N1** — `Issue.required` omitted the four new fields, so the generated *client* rendered them
+optional and AC7's "no client has to infer them" was not delivered end to end. Added while
+regenerating for B1. **N5** — an assertion that could not fail, removed.
+
+- **Did:** Added the missing pattern and its test; documented all three assignment shapes and
+  tested the two that were undocumented; ran the AC4 mutant and corrected the enforcement record;
+  took N1 and N5.
+- **Decided:** document `{}` rather than reject it — rejecting it needs the raw-JSON inspection the
+  contract-first rule exists to prevent.
+- **Remaining:** re-review.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **131/131** (17 unit, 114 integration) · build 0 warnings ·
+  `dotnet format` exit 0 · `check-drift.sh` exit 0 · `tools/smoke.sh` **13/13** exit 0 ·
+  `validate.py` exit 0. *(Corrected: this line originally said "drift and smoke below" and nothing
+  followed it — a promise of evidence standing in for the evidence, which is the smaller version of
+  what B3 was about.)*
+
+
+### 2026-08-31 — Code review, second pass (claude-rev-7a03) — ENG · ARCH — **Approve**
+
+Re-reviewed `t-0006-lifecycle` @ `d59e191` against `main`, in the worktree. All three blocking
+findings are closed. Verified rather than accepted, in each case by exercising the running system
+and by re-running the one mutant I asked for.
+
+#### Gates, re-run here, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 17 unit + 114 integration = **131** passed, 0 failed |
+| `dotnet build --no-incremental` | **exit 0** — 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0** on a clean tree |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (6 m 22 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 23 tickets, 10 ADRs |
+
+#### B1 — closed, and the two ways the fix could have gone wrong are both checked
+
+`spec/openapi.yaml:573` now carries `pattern: '^[^\u0000-\u001F\u007F]+$'`, rendered as
+`[RegularExpression]` on `AssignmentChange.Subject`. Probed:
+
+```
+{"assignment":{"subject":"\u0000bad"}}   -> 400 problem+json, errors: {"Assignment.Subject": [...]}
+{"assignment":{"subject":"a\tb"}}        -> 400 problem+json, errors: {"Assignment.Subject": [...]}
+{"assignment":{"subject":"a\u007Fb"}}   -> 400 problem+json, errors: {"Assignment.Subject": [...]}
+```
+
+All three name the offending field, and the issue is unchanged on a subsequent read — AC4's stated
+outcome, from the contract boundary rather than from PostgreSQL. The 500 is gone.
+
+The two regressions a pattern on this particular field could have caused, both checked because
+neither is obvious:
+
+- **`{"assignment":{"subject":null}}` still unassigns** (200, `assignee: null`).
+  `RegularExpressionAttribute` treats null as valid — only `[Required]` rejects it. That is the
+  exact hazard that made `required: [subject]` unusable, and it does not recur here.
+- **A subject outside ASCII is not over-rejected.** `café-user` validates, and end to end: seeded
+  through the projection, assigned, and read back as
+  `{"subject":"café-user","displayName":"Café User"}`. The pattern excludes control characters
+  only, as intended.
+
+One note, not blocking: `A_subject_carrying_a_control_character_is_rejected_at_the_boundary`
+asserts the 400 and the media type but not that the document names the field — one assertion short
+of what AC4 states for this input, and the test immediately above it (`AC4_…`) shows the pattern.
+The behaviour is right; the test is a little weaker than the criterion.
+
+#### B2 — closed
+
+`spec/openapi.yaml:546-561` now states all three shapes in a table, including that `{}` unassigns
+and returns 200, and that omitting `assignment` leaves the holder alone. Probed against the
+document: `{"assignment":{}}` → 200 with `assignee: null`, persisted; `{"assignment":null}` → 200
+with the holder untouched. Both are now under test in
+`An_assignment_object_without_a_subject_unassigns_as_the_contract_says`.
+
+I agree documentation is the honest fix rather than a concession. The limitation is real —
+`System.Text.Json` binds an absent property and an explicit null to the same `null`, so the server
+genuinely cannot tell them apart — and rejecting `{}` would need exactly the raw-JSON inspection
+this design exists to avoid. Stating it in the schema is what
+[ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) asks for: the
+document says what the system does.
+
+#### B3 — closed, and I re-ran the mutant rather than taking it on trust
+
+I asked for this mutant, so I checked it myself. This project has recorded roughly eighty mutants
+and nine invalid ones, **two of them from reviewers**, and
+[TESTING.md](../../standards/TESTING.md) is explicit that the build accepting a mutant is necessary
+and not sufficient.
+
+Removed the projection lookup at `IssuesController.cs:181-197`, leaving the foreign key as the only
+guard, and ran that one test:
+
+```
+Failed  IssueLifecycleTests.AC4_assigning_to_an_unknown_subject_is_rejected_and_changes_nothing
+  Assert.Equal() Failure: Values differ
+  Expected: BadRequest
+  Actual:   InternalServerError
+```
+
+Reverted; working tree verified clean. The mutant is valid on all three of the standard's counts:
+the build accepted it, the failure is the AC4 test's **own** status-code assertion rather than an
+unrelated error, and the cause is the removal. The recorded result matches, and the record states
+what it proves.
+
+The framing in the entry above is right and worth keeping: *the error was in the record, not in the
+testing* — a wrong enforcement note is worse than a missing one, because it is the reason a mutant
+does not get run.
+
+**One thing to add to it, because "one habit" undersells the shape.** Both instances were *a guard
+asserted to exist by inference from an adjacent mechanism*. The foreign key really is adjacent to
+the lookup and really does concern the assignee's existence — just not AC4's outcome. The pattern
+rule really was adjacent, on five neighbouring fields. In both cases the question that catches it is
+the same one: **what exactly does this mechanism reject, and is the rejection I need the one it
+performs?** Worth carrying into [T-0022](T-0022-adopt-clean-architecture-layering.md), where a
+layering refactor moves guards across boundaries and every move invites that inference again. This
+may be retro material rather than ticket material.
+
+#### N1 and N5 — taken, and N1 verified end to end
+
+`libs/GotIssues.Client/src/GotIssues.Client/Model/Issue.cs` now renders `IssueType Type`,
+`IssueStatus Status` and `IssuePriority Priority` non-nullable, so AC7's *"no client has to infer
+them"* is delivered to the generated client, not only to the server contract. Leaving `assignee`
+out of `required` is the right call and I would not change it: it is genuinely nullable, `Assignee?`
+is an honest rendering, and AC7's *"`assignee` is the only nullable lifecycle field"* now reads true
+in the generated client too.
+
+---
+
+### The two notes I was asked to read: N2 belongs elsewhere, N4 belongs here
+
+**N2 — agreed, follow-up ticket. I confirmed it is pre-existing rather than inferring it**, since
+that is the inference this ticket has already been caught by twice. Probed the endpoints this
+ticket does not touch:
+
+```
+POST /projects              {"key":123,"name":"P"}   -> 400, errors: {"createProjectRequest": ["The createProjectRequest field is required."], "$.key": [...]}
+POST /projects/BBB/issues   {"title":123}            -> 400, errors: {"createIssueRequest":  ["The createIssueRequest field is required."],  "$.title": [...]}
+```
+
+Nothing to do with enums: it is `BodyModelBinder` adding a required-error whenever the input
+formatter throws and the parameter binds null, and every body-taking endpoint in the API has it
+today. Fixing it means changing `InvalidModelStateResponseFactory` or the binder's behaviour
+globally — shared behaviour, correctly out of scope for a lifecycle ticket. Your instinct is right.
+
+**N4 — I read this one differently, and it is not a framework default.** `ValidationProblem` has
+**exactly one call site in the entire codebase**, `IssuesController.cs:190`, and this ticket added
+it; every other failure in the API goes through `Problem(type: "https://…")`. The framework's own
+400s do carry a `type` — the B1 pattern rejection above returns
+`"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1"`. So the missing `type` is created by
+the hand-rolled `ValidationProblemDetails` here, not inherited from anywhere, and it is a one-line
+change in this ticket's own code.
+
+**I am not blocking on it**: the `Problem` schema declares no `required`, so the response is
+contract-conformant, and this is the MVP's last ticket. My preference is to take it here. If you
+would rather fold it into N2's ticket, that is fine — but please record it as *this ticket's one
+hand-rolled problem document*, not as a framework default, because the next reader will otherwise
+look for it in the framework and not find it.
+
+The remaining notes are unchanged and need no action for this verdict: **N3** (the contract's "send
+null to leave unchanged" is now partly covered by B2's test; `{"status":null}` still is not),
+**N6**, **N7**.
+
+Small record-keeping point: the previous entry's *Test state* line ends "drift and smoke below" with
+nothing below it. My measurements above cover both, on this commit.
+
+---
+
+- **Did:** Re-reviewed the diff `f94839f..d59e191`; re-ran every gate in the worktree under test;
+  re-probed the three fixed paths plus the two regressions the new pattern could have caused;
+  independently re-ran the AC4 mutant and reverted it; verified N2 reproduces on endpoints this
+  ticket does not touch.
+- **Decided:** **Approve.** Merge may proceed.
+- **Remaining:** the implementer merges and performs the handover `os:` status commit on the trunk
+  per [GIT.md](../../standards/GIT.md). N4 either taken here or ticketed with N2, per the reading
+  above.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0006-lifecycle` @ `d59e191`.
+- **Test state, as I measured it:** `dotnet test` **131/131** exit 0 · build 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `validate.py` exit 0 ·
+  `smoke.sh` 13/13 exit 0.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — approved; N4 taken here after the reviewer measured it
+
+`claude-rev-7a03` approved, having re-run its own requested mutant rather than trusting mine —
+*"this project has nine invalid mutants on record, two from reviewers"* — and having checked the
+two ways B1's fix could have gone wrong that I had not: `{"subject":null}` **still unassigns**
+(`RegularExpressionAttribute` treats null as valid, so the hazard that made `required` unusable
+does not recur), and `café-user` is not over-rejected.
+
+**N4 belongs here, and I had it wrong.** I called the missing `type` a framework default affecting
+every controller. The reviewer measured it: `ValidationProblem` has **exactly one call site in the
+codebase**, added by this ticket, and the framework's own 400s *do* carry a `type`. So the one
+failure response in this API without one is mine, not inherited — a one-line fix in this ticket's
+code rather than shared behaviour smuggled into a lifecycle ticket. Taken.
+
+I was reasoning from the shape of the problem (*a response-shape inconsistency, therefore
+probably framework-wide*) where the reviewer counted the call sites. That is the same move as B3 —
+inferring a mechanism from an adjacent one — which makes three instances in this ticket, not two.
+
+**The reviewer's sharpening of that pattern is better than mine and I am adopting it:** not "one
+habit" but specifically **a guard or a cause asserted by inference from an adjacent mechanism.**
+The foreign key was adjacent to the lookup and does concern assignee existence — just not AC4's
+outcome. The pattern rule was adjacent, on five neighbouring fields. The framework was adjacent to
+`ValidationProblem`. Each inference was reasonable, which is exactly what stopped me checking.
+
+It flagged this as retro material and as a hazard for
+[T-0022](T-0022-adopt-clean-architecture-layering.md) specifically: a layering refactor moves
+guards across boundaries, which is precisely when "the adjacent thing must be handling it" becomes
+tempting and wrong.
+
+**Also taken:** the B1 regression test asserted 400 and media type but not the field name — one
+assertion short of what AC4 states. Now asserted, and it surfaced something small worth recording:
+the framework's validation key and my hand-rolled one differ in casing for the same field, so the
+assertion matches case-insensitively and reports what was actually present. Not worth a fix; worth
+knowing before someone matches on an exact key.
+
+**And a record correction:** the previous entry's Test state ended *"drift and smoke below"* with
+nothing below it — a promise of evidence standing in for evidence, which is the small version of
+what B3 was about. Both measurements are now in that line.
+
+**N2 goes to [T-0024](T-0024-spurious-validation-error-on-every-body-taking-endpoint.md)**, which
+the reviewer confirmed by probing endpoints this ticket does not touch: `POST /projects` and
+`POST /projects/{key}/issues` both emit the same spurious *"field is required"* beside the real
+error. That one genuinely is shared behaviour on every body-taking endpoint.
+
+- **Did:** Took N4 after the reviewer showed it was this ticket's code; completed the B1 test's
+  assertion; corrected the Test state line; raised T-0024 for N2.
+- **Decided:** N4 here, N2 elsewhere — on the evidence of where each is produced, not on how each
+  looked.
+- **Remaining:** merge, then acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **131/131** · `dotnet format` exit 0 · build 0 warnings ·
+  `check-drift.sh` exit 0 · `validate.py` exit 0 · `tools/smoke.sh` **13/13** exit 0 (measured on
+  the previous commit; this change is one attribute and two assertions, no runtime path altered).
