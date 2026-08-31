@@ -2,9 +2,9 @@
 
 ## Status
 
-**Proposed**
+Proposed
 
-Raised by the maintainer on 2026-08-31, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository ever decided either way — which is the reason for this ADR. **Nothing changes until this is Accepted or Rejected.**
+**Not in force.** Raised by the maintainer on 2026-08-31, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository ever decided either way — which is the reason for this ADR. **Nothing changes until this is Accepted or Rejected.**
 
 ## Date
 
