@@ -2,9 +2,9 @@
 id: T-0005
 title: Create and read issues within a project
 type: feature
-status: committed
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: none
 accepted_by: none
 depends_on: [T-0004]
