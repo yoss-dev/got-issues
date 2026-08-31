@@ -174,3 +174,29 @@ evidence.
 - **Remaining:** refinement, where sizing is the open question.
 - **Open questions / blockers:** **one, for the maintainer** — whether this runs before [T-0006](T-0006-issue-lifecycle-fields.md), which is committed in SPRINT-003 and is the MVP's last ticket. Doing T-0006 first means building it in the old shape and migrating it twice; doing this first delays the MVP by however long this takes, and its size is not yet known. Recorded rather than assumed.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — Sequencing decided by the maintainer: T-0006 first (claude-sm-9d4e)
+
+The open question recorded at creation is answered: **[T-0006](T-0006-issue-lifecycle-fields.md)
+runs first, then this ticket.** The MVP finishes before the refactor starts.
+
+Two consequences this ticket now carries rather than discovers:
+
+1. **Scope grows by whatever T-0006 leaves behind.** This ticket was written against four
+   operations — `CreateProject`, `ListProjects`, `CreateIssue`, `GetIssue`. T-0006 adds lifecycle
+   mutation and assignment, so there will be a fifth, and its assignee validation reaches the
+   `users` projection — a third repository this ticket did not plan for. Refinement should size
+   against T-0006 **as built**, not against this description.
+2. **AC4 gets stronger, not weaker.** T-0006 will arrive with its own tests, and they are covered
+   by the same rule: **no test may be modified to accommodate the refactor.** A larger unchanged
+   suite is a better safety net, which is the one way this ordering helps rather than costs.
+
+The cost accepted, stated plainly: lifecycle code is written once in the current shape and moved
+once. That is the price of an MVP that ships sooner, and it was the maintainer's call to pay it.
+
+- **Did:** Recorded the sequencing decision and what it changes about this ticket's scope.
+- **Decided:** by the maintainer, as above.
+- **Remaining:** refinement — now explicitly after T-0006 is done, so it can size against real code.
+- **Open questions / blockers:** none. The question recorded at creation is answered.
+- **Test state:** n/a — not started.

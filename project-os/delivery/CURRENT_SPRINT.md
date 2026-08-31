@@ -84,6 +84,19 @@ Nine other tickets are `ready` and none is committed: T-0008, T-0012, T-0013, T-
 T-0017, T-0018, T-0019 and T-0007. That is a healthy buffer, and the reason none of them is
 here is that they do not serve this goal.
 
+### Sequencing decision — T-0006 before the layering refactor (2026-08-31)
+
+The maintainer adopted Clean Architecture layering mid-sprint
+([ADR-0010](../architecture/adr/ADR-0010-clean-architecture-layering.md), superseding ADR-0009)
+and created [T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md) for it. Asked
+whether that should precede [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md), the
+MVP's last committed ticket, they chose **T-0006 first**.
+
+The sprint's committed work is unchanged: T-0022 is not added to this sprint, and the goal still
+closes when T-0006 is done. T-0006 is written in the current shape on purpose — a half-migrated
+third shape would be worse for T-0022 than either endpoint. The cost accepted is that lifecycle
+code is written once and moved once.
+
 ### Governance change — mutation narrowed, exploration strengthened (2026-08-31)
 
 **Approved by the maintainer (human) on 2026-08-31**, raised by them mid-sprint: *"our current

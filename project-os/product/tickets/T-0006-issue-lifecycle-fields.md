@@ -294,3 +294,29 @@ I have not assumed either. Recorded in T-0022's Work Log as its one open questio
 - **Remaining:** unchanged; `committed`, not started, pending the sequencing answer.
 - **Open questions / blockers:** the sequencing question above.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — Sequencing decided: this ticket runs first (claude-sm-9d4e)
+
+The maintainer chose **T-0006 before [T-0022](T-0022-adopt-clean-architecture-layering.md)**: the
+MVP completes, then the layering refactor migrates what this ticket builds.
+
+**So this ticket is written in the current shape**, deliberately — controller plus `DbContext`, as
+[T-0004](T-0004-create-and-list-projects.md) and [T-0005](T-0005-create-and-read-issues.md) are.
+Not because that shape is preferred; [ADR-0010](../../architecture/adr/ADR-0010-clean-architecture-layering.md)
+says it is not. Writing it half-way toward the target would leave a third shape for T-0022 to
+migrate, which is worse than either.
+
+One thing this changes about how it should be built: **its tests are what will protect the
+refactor.** T-0022's AC4 forbids modifying any test to accommodate the new structure, so every
+test written here becomes part of the safety net for a change that touches everything. Tests that
+assert behaviour through the HTTP boundary survive the refactor; tests coupled to how the
+controller happens to work today would have to change, and under T-0022's AC4 that would register
+as a defect in the refactor rather than in this ticket. Prefer the former.
+
+- **Did:** Recorded the sequencing decision and its one implication for how this ticket is built.
+- **Decided:** by the maintainer; this ticket is written in the current shape rather than partly
+  migrated.
+- **Remaining:** unchanged — `committed`, eligible once T-0005 reaches `done`.
+- **Open questions / blockers:** none; the sequencing question is answered.
+- **Test state:** n/a — not started.
