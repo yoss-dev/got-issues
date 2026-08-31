@@ -17,7 +17,7 @@ All three are independent: none blocks another, and all three can start immediat
 | Ticket | Title | Status | Owner | Blocked by |
 | --- | --- | --- | --- | --- |
 | [T-0002](../product/tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | done | none | — |
-| [T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | in-acceptance | none | — |
+| [T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | done | none | — |
 | [T-0015](../product/tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | committed | none | — |
 
 ## Blockers & Escalations
@@ -36,7 +36,7 @@ All three are independent: none blocks another, and all three can start immediat
 
 **T-0015 discharges two recorded DoD deviations** — on [T-0001](../product/tickets/T-0001-runnable-compose-stack.md) and [T-0010](../product/tickets/T-0010-duende-identity-host.md). Both were approved on the explicit basis that this ticket would close them, so it carries more weight than a backlog-position reading suggests. Its AC4 (mutation-proven, not green-run-proven) is now also a standards requirement rather than the ticket's own idea of rigour.
 
-**T-0009 unblocks the product chain.** With it done, [T-0004](../product/tickets/T-0004-create-and-list-projects.md) needs only T-0002 — so a successful sprint leaves the first product capability fully unblocked for SPRINT-003.
+**T-0009 unblocks the product chain — now realised.** Done 2026-08-31; with T-0002 also done, [T-0004](../product/tickets/T-0004-create-and-list-projects.md) has no outstanding dependencies and is the first product capability eligible to start. That was the sprint's stated payoff and it has landed with [T-0015](../product/tickets/T-0015-compose-stack-smoke-test.md) still to run.
 
 **Not committed, deliberately:** [T-0004](../product/tickets/T-0004-create-and-list-projects.md) and [T-0005](../product/tickets/T-0005-create-and-read-issues.md), both `ready`. T-0004 depends on two tickets *in this sprint*, and T-0005 depends on T-0004 — committing either would stack dependent work behind unproven estimates, which SPRINT-001 explicitly avoided and which remains the right call while capacity is one data point.
 

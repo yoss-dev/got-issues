@@ -2,15 +2,15 @@
 id: T-0009
 title: Role-based authorisation and the user projection from token claims
 type: feature
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-7c21
 depends_on: [T-0003, T-0010]
 adrs: [ADR-0003, ADR-0005]
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 # T-0009: Role-based authorisation and the user projection from token claims
@@ -49,14 +49,14 @@ Unblocks assignment (T-0006) and comment authorship (T-0008), and makes "who may
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given a valid token carrying the `admin` role, when a caller requests an endpoint guarded by the admin policy, then the request is permitted.
-- [ ] AC2: Given a valid token carrying the `member` role, when a caller requests an endpoint guarded by the admin policy, then the API returns 403 — authenticated but not authorised, distinct from the 401 an invalid token produces.
-- [ ] AC3: Given a valid token of either role, when a caller requests an endpoint guarded by the member policy, then the request is permitted.
-- [ ] AC4: Given a valid token whose role claim is missing or holds an unrecognised value, when any guarded endpoint is requested, then the caller is treated as having no role and is refused — never silently promoted to `member` or `admin`.
-- [ ] AC5: Given an authenticated caller with no local user record, when they make a request, then a record is created from their token claims; and when they return later, then the existing record is updated rather than duplicated.
-- [ ] AC6: Given a user record, when it is inspected, then it holds no credential, secret, or role — the role is read from the token on every request and never persisted.
-- [ ] AC7: Given a request that creates or updates a user projection, when the log output emitted during that request is inspected, then it contains neither the display name nor the email address ([SECURITY.md](../../standards/SECURITY.md)).
-- [ ] AC8: Given a token whose subject is present but whose display-name claim is missing, when the caller makes a request, then the projection is still created and the caller is usable as an assignee — a missing optional claim does not fail the request.
+- [x] AC1: Given a valid token carrying the `admin` role, when a caller requests an endpoint guarded by the admin policy, then the request is permitted.
+- [x] AC2: Given a valid token carrying the `member` role, when a caller requests an endpoint guarded by the admin policy, then the API returns 403 — authenticated but not authorised, distinct from the 401 an invalid token produces.
+- [x] AC3: Given a valid token of either role, when a caller requests an endpoint guarded by the member policy, then the request is permitted.
+- [x] AC4: Given a valid token whose role claim is missing or holds an unrecognised value, when any guarded endpoint is requested, then the caller is treated as having no role and is refused — never silently promoted to `member` or `admin`.
+- [x] AC5: Given an authenticated caller with no local user record, when they make a request, then a record is created from their token claims; and when they return later, then the existing record is updated rather than duplicated.
+- [x] AC6: Given a user record, when it is inspected, then it holds no credential, secret, or role — the role is read from the token on every request and never persisted.
+- [x] AC7: Given a request that creates or updates a user projection, when the log output emitted during that request is inspected, then it contains neither the display name nor the email address ([SECURITY.md](../../standards/SECURITY.md)).
+- [x] AC8: Given a token whose subject is present but whose display-name claim is missing, when the caller makes a request, then the projection is still created and the caller is usable as an assignee — a missing optional claim does not fail the request.
 
 ## Examples / Scenarios
 
@@ -108,7 +108,7 @@ The role matrix (admin/member/unknown/absent × admin-policy/member-policy endpo
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked item by item on 2026-08-31 by `claude-qa-7c21`; no deviation required.
 
 ---
 
@@ -1981,3 +1981,71 @@ should not have to work that out.
 - **Test state:** 63/63 (17 unit, 46 integration); build **0 warnings**; `dotnet format`
   **exit 0**.
 - **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-4a7e`), `1d463ef`.
+
+### 2026-08-31 — QA / Scrum Master (claude-qa-7c21) — Definition of Done walk, ticket closed
+
+Acceptance passed at `6b4bb0b`; the two findings it raised (F1, F2) were fixed and reviewed
+before this walk, so the state assessed here is `main` @ `c2d2883`.
+
+**Universal items**
+
+1. **Implementation complete** — the four policies, the middleware, the projection table and
+   its migrations are present; the reviewer walked the diff against In Scope and found no
+   smuggled scope. Endpoint-specific rules stayed out, as the ticket intended.
+2. **Acceptance criteria verified independently** — all eight, by `claude-qa-7c21`, against
+   executed tests and adversarial probes, not by reading the Work Log. Boxes ticked above.
+3. **Automated tests** — 63 passing, 0 skipped (17 unit, 46 integration). No flaky-ignored
+   test. Coverage claims are mutation-proved per [TESTING.md](../../standards/TESTING.md):
+   twenty-plus mutants across implementation, review and acceptance, all killed.
+4. **No known unrecorded defects** — Q1–Q5, N1, F1 and F2 are all *fixed*, not deferred, so
+   item 4's deferral clause applies to only one residual: **AC5 and AC8 are proven in the
+   test host, not against a token this system can issue**, because the identity host issues
+   client-credentials tokens carrying no `sub`. Destination is **[T-0015](T-0015-compose-stack-smoke-test.md)
+   AC8**, and per item 4 I read the destination rather than trusting the pointer: T-0015's
+   In Scope names "the user projection against a token carrying a real subject (from T-0009)"
+   and states the line exists to accept this residual; AC8 restates it and requires a *named
+   successor* if it still cannot be proven. Its Out of Scope excludes only what the in-process
+   tier can already reach, which is precisely not this. **Not a false pointer** — checked
+   specifically because this project has been bitten by three.
+   **N3** (AC7's email assertion cannot fail, since nothing reads an email claim) is a known
+   limitation, not a defect: it is now labelled a tripwire in the code so the next reader
+   does not mistake it for a guard.
+5. **Code quality** — reviewed and approved by `claude-rev-4a7e` (ENG + ARCH) across three
+   passes; build 0 warnings under warnings-as-errors, `dotnet format` exit 0; no debug
+   scaffolding, dead code, or unreferenced TODOs. The one branch that is unreachable in
+   production (`ClaimTypes.NameIdentifier`) is deliberate, argued in the Work Log, and
+   covered by a test.
+6. **Documentation** — README and ARCHITECTURE were the *original* acceptance failure on this
+   ticket; both were re-verified against the code rather than read, including the claim about
+   which endpoints enforce roles.
+7. **Work Log complete** — decisions, verdicts, mutation evidence and the deferral all here.
+8. **State updated** — this commit.
+
+**Conditional items**
+
+- **Regression tests** — every defect fixed on this ticket has a test that fails without the
+  fix, each demonstrated by mutation rather than asserted.
+- **ADR** — no decision in the diff meets the ADR bar (reviewer checked); ADR-0003 and
+  ADR-0005 remain the governing ones.
+- **Security** — AC6 (no credential, secret or role persisted) and AC7 (no display name in
+  logs) are the ticket's own criteria and are tested; no secrets added; no dependency change.
+- **Observability** — the display-name trim is logged, lengths only, never the value.
+- **Migrations** — `AddUserProjection` and `WidenUserSubject` are scripted and applied by the
+  stack's migration step; `dotnet ef migrations has-pending-model-changes` reports none, so
+  the model and the deployed schema agree on the widths three tests depend on.
+- **Accessibility** — not applicable, no UI.
+- **Deployment** — no pipeline exists (`PROJECT.md` Q6); the change deploys through the
+  Compose stack's existing migration step, unchanged by this ticket.
+
+**Verdict: Done.** No DoD deviation required — the first ticket in this project to close
+with the deferral clause satisfied by a destination that was verified rather than assumed.
+
+- **Did:** Walked all eight universal items and every applicable conditional item against
+  repository state.
+- **Decided:** the AC5/AC8 residual is a genuine deferral with an accepting destination, not
+  an unrecorded defect.
+- **Remaining:** none.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged to `main` as `ece515d` and `c2d2883`; branches `t-0009-final-fixes`
+  and `t-0009-acceptance-followups` deleted after merge.
+- **Test state:** 63/63 green; build, format, drift and validator all exit 0.
