@@ -2,11 +2,11 @@
 id: T-0015
 title: Automated coverage for behaviour that needs the real Compose stack
 type: technical
-status: in-acceptance
+status: done
 priority: normal
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-9b3e
 depends_on: [T-0003, T-0010]
 adrs: [ADR-0003]
 created: 2026-08-30
@@ -115,7 +115,7 @@ AC4 is the criterion that keeps this honest: a stack check that has only ever be
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked item by item on 2026-08-31 by `claude-qa-9b3e`; no deviation required.
 
 ---
 
@@ -2004,3 +2004,67 @@ ticket owed, so nothing is left pointing nowhere.
 - **Open questions / blockers:** none.
 - **Test state:** documentation-only change to one comment; build 0 warnings, `dotnet format`
   exit 0, and the full suite re-run below.
+
+### 2026-08-31 — QA / Scrum Master (claude-qa-9b3e) — Definition of Done walk, ticket closed
+
+State assessed: `main` @ `921bf95`.
+
+**Universal items**
+
+1. **Implementation complete** — twelve checks driving the real `compose.yaml`; the reviewer
+   walked the diff against In Scope across five passes and found no scope drift. The two
+   things that could have been smuggled in were not: the clock-skew default became
+   [T-0019](T-0019-token-clock-skew.md) rather than a quiet fix, and AC8's provisioning
+   question became [T-0018](T-0018-user-subject-tokens.md) rather than an invented grant type.
+2. **Acceptance criteria verified independently** — AC1–AC7 by `claude-qa-9b3e`, each broken
+   on purpose and watched to fail, including AC6 re-derived with an independent RSA keypair
+   and token minter rather than the shipped `TokenFactory`. AC8 is deferred, not passed.
+3. **Automated tests** — smoke 12/12 exit 0 (~3m30s), root suite 63/63 exit 0 and unchanged
+   in duration (AC5). Nothing skipped. Coverage claims are mutation-proved throughout, and
+   two mutation records were **corrected** when they overstated what a mutant proved.
+4. **No known unrecorded defects** — the acceptance findings F1, F2, F3 and F4 were **fixed,
+   not deferred**, so nothing points anywhere. F5 was assessed as not a defect (the identity
+   check claims the configuration store is queryable and proves exactly that; AC6 covers the
+   outcome), so no ticket is owed. L1 and L2 are limits of new coverage, not regressions, and
+   are documented on the assertion itself. The single deferral is **AC8 → T-0018**, whose In
+   Scope and AC2 both carry the criterion verbatim — verified by reading T-0018, twice, by
+   two sessions.
+5. **Code quality** — approved by `claude-rev-6d21` after five passes; build 0 warnings under
+   warnings-as-errors; `dotnet format` exit 0 for the solution **and** for the smoke project,
+   which the solution does not contain.
+6. **Documentation** — README documents `tools/smoke.sh`, `--build-only`, why the tier is
+   separate, and the compose policy the check now enforces; ARCHITECTURE's state banner names
+   the tier. The assertion's own limits are stated where someone deciding whether to trust it
+   will read them.
+7. **Work Log complete** — every finding, verdict, mutation and correction, including the ones
+   that were mine.
+8. **State updated** — this commit.
+
+**Conditional items**
+
+- **Regression tests** — every defect found on this ticket has a check that fails without the
+  fix, each demonstrated rather than asserted.
+- **ADR** — none required; the reviewer confirmed no decision in the diff meets the bar.
+- **Security** — no auth code changed, no key material tracked, the one new package clean, and
+  the credential-shaped literals in the harness renamed. The clock-skew observation went to
+  T-0019 precisely so that a change to token validation gets the Security review SECURITY.md
+  requires, rather than arriving under a coverage ticket.
+- **Observability, Migrations, Accessibility, Deployment** — not applicable; this ticket adds
+  verification and changes no runtime behaviour, no schema and no deployment path.
+
+**Verdict: Done.** No deviation required.
+
+**And it discharges two.** T-0001's DoD deviation (AC1 cold start, AC6 non-destructive
+restart, AC7 slow database — verified by hand, twice, and only by hand) and T-0010's (token
+validation against a real issuer, and the identity host's no-migrate-on-startup property) are
+now AC1–AC3 and AC6–AC7 here. Both were approved on the explicit basis that this ticket would
+close them, and both are discharged by criteria that were broken on demand and watched to fail.
+
+- **Did:** Walked every universal item and every applicable conditional item against repository
+  state at `921bf95`.
+- **Decided:** F5 needs no ticket; L1 and L2 are documented limits rather than defects.
+- **Remaining:** none. SPRINT-002 is drained.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged as `7bda6bc`, `d32d3cb`, `921bf95`; all worktrees and branches removed.
+- **Test state:** smoke 12/12 · root 63/63 · build 0 warnings · format 0 (both) · drift 0 ·
+  validate 0 · no leaked containers or volumes.
