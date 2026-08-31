@@ -1884,3 +1884,159 @@ The list from the FAIL stands, with two additions and one removal:
   `validate.py` exit 0. I changed no implementation, test or specification code; the temporary
   probe was deleted and both mutants reverted, all three verified byte-identical against `HEAD`
   with `git show HEAD:<path> | cmp -`, and `git status` is clean.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-3e77) — review of `t-0004-stale-comment` @ `a9ef413`
+
+Comment-only diff, reviewed per [GIT.md](../../standards/GIT.md) because it touches `apps/`.
+Reviewer is not the implementer.
+
+**Verdict: Approve.** The replacement justification is not invented to keep something you like —
+I proved it, and the proof is stronger than the sentence claims. One recommendation worth taking
+before merge, which needs no re-review, and my read on both open notes.
+
+#### Gates, run in this worktree, exit codes read directly from the tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | 87 passed — 17 unit, 70 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean first, so a real drift pass |
+| `./tools/smoke.sh` | 0 | 13/13 |
+| `python3 tools/validate-project-os/validate.py` | 0 | 19 tickets, 8 ADRs |
+
+#### The justification is real, and I measured it
+
+You asked whether this is a rationale invented to keep something you like. It is not, and the
+test is cheap: bring the stack up, take a token, stop the database, and ask both endpoints.
+
+```
+/health/authenticated (postgres UP)    -> 200  {"status":"authenticated"}
+/projects             (postgres UP)    -> 200  {"items":[],...}
+stopping postgres
+/health/authenticated (postgres DOWN)  -> 200  {"status":"authenticated"}
+/projects             (postgres DOWN)  -> 500  {"type":"https://httpstatuses.io/500",...}
+```
+
+The endpoint genuinely fails for one reason; `/projects` demonstrably does not. And the
+consequence is concrete rather than aesthetic: four smoke cases —
+`AC6_a_token_the_identity_host_issued_is_accepted`, and the expired, wrong-audience and
+unknown-key refusals — call this endpoint through `TokenFactory.CallAuthenticatedAsync`. Point
+them at `/projects` and the positive case returns 500 whenever the database is slow or down,
+which is indistinguishable from a token defect in a suite whose entire job is telling those
+apart. `ResourceServerTests` uses it for the same reason at lines 54 and 117.
+
+So: keep the endpoint, and replacing the justification rather than deleting the sentence was the
+right call. Deleting the endpoint would have been the honest alternative only if nothing depended
+on the property, and four smoke cases do.
+
+#### One recommendation — the new justification has an unstated expiry
+
+It is true today for a reason the comment does not give. I decoded the token the stack issues:
+
+```
+token claims present: ['aud', 'client_id', 'exp', 'iat', 'iss', 'jti', 'nbf', 'role', 'scope']
+has 'sub'? False
+```
+
+No `sub`. `UserProjectionMiddleware` sits in `UseGotIssuesAuthentication`, which runs *before*
+this endpoint, and it queries and writes `users` — but only when the principal carries a subject.
+The endpoint is database-free because client-credentials tokens have none, which is exactly what
+[ADR-0007](../../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md) documents
+and what [T-0018](T-0018-user-subject-tokens.md) exists to change. **T-0018 is `ready`.** When it
+ships, this endpoint starts touching the database on every call, and the sentence "asserts the
+round trip *without* a database" becomes false — silently, and with the four smoke cases quietly
+losing the property they were placed here for.
+
+That is the same class as the defect this branch fixes: a justification that is true only under a
+condition it does not name. The original said "no product endpoint exists yet" and went stale when
+one did; this one says "without a database" and will go stale when tokens carry a subject. The
+difference is that this one is true now, which is why it is a recommendation and not a finding.
+
+Suggested addition, and no re-review needed if you take it:
+
+> *This holds because client-credentials tokens carry no `sub`, so `UserProjectionMiddleware`
+> does not run. [T-0018](T-0018-user-subject-tokens.md) makes tokens carry one; when it lands, this endpoint will touch the
+> database and this justification needs revisiting — along with the four smoke cases that depend
+> on the property.*
+
+The value is that the next reader can tell *when* the reason expires, which is the thing neither
+version of this comment has offered so far.
+
+#### Note 1 — the uncorrelatable 500: a ticket is right, and an instinct is not yet a deferral
+
+The observation is correct and I saw it in my own probes: every other problem document in this API
+carries `traceId` — the 400s, 401, 403, 409, 415 and 405 all did — and the 500 is
+`{"type":…,"title":…,"status":500}` with nothing to join on. It is the only response that cannot
+be correlated from either end, on the response where correlation matters most. Acceptance is right
+that it is a defect in the fix this ticket shipped.
+
+**A ticket is the right route**, for a reason worth stating rather than assuming: T-0004 has
+passed acceptance, so changing behaviour now costs a re-review and a re-acceptance of a branch
+that is currently comment-only. The fix is small, but the cost of landing it *here* is not, and
+diagnosability is genuinely a different concern from the contract conformance this ticket was
+about.
+
+**But the DoD makes the route conditional.** Item 4 requires that every defect found is *"either
+fixed or captured as a bug ticket linked from this one, with the PO persona accepting the
+deferral"*, and that the deferral is captured *"only when the destination ticket's scope actually
+accepts it"*. So the ticket has to exist and be linked from T-0004 before `complete-ticket`, not
+after. An instinct toward a small ticket is not yet a captured deferral — and this ticket has
+already produced two records that were described and not made, which is why I am being explicit
+rather than assuming.
+
+Two things worth putting in it: the correlation id belongs in the log line as well as the
+response, since a `traceId` the caller can quote is only useful if the server wrote it down too;
+and it interacts with the undeclared-`traceId` question already sitting on T-0017 — the new ticket
+adds `traceId` for consistency with every other response, and T-0017 decides whether the `Problem`
+schema should declare it. Cross-link them so neither reads as covering the other.
+
+#### Note 2 — the unguarded 500 declaration: confirmed, and it is the stronger instance
+
+I did not take this one on trust either. Removing both `'500'` declarations from
+`spec/openapi.yaml`, regenerating, and committing spec and output together — which is how a real
+change would land, and the only way the drift check will run — gives:
+
+| Gate | Exit under the mutant |
+| --- | --- |
+| `dotnet build --no-incremental` | 0, 0 warnings |
+| `dotnet test` | 0 — 87/87 |
+| `dotnet format --verify-no-changes` | 0 |
+| `./tools/check-drift.sh` | **0** |
+| `python3 tools/validate-project-os/validate.py` | 0 |
+| `./tools/smoke.sh` (`UnhandledFailureTests`) | 0 |
+
+Every gate green. The declaration is completely unguarded.
+
+One methodological note, because it nearly misled me: run that mutant *without* committing and
+`check-drift.sh` exits **2** — which looks like a caught mutant and is not. Exit 2 is the guard
+refusing to run at all (*"libs/ has uncommitted changes"*), an artifact of how the mutation was
+applied rather than a detection. That is the same shape as the `PendingModelChangesWarning` row
+from two rounds ago: a non-zero exit that is not the exit you were testing for. It only becomes
+evidence once the mutant is committed the way a real change would be, and then it is green.
+
+**Citing it on T-0017 next to the 403 is right**, and it is worth saying there that this instance
+is the *stronger* one, because the two fail in opposite directions. The 403 case is a policy
+enforced in code that the contract might not declare. This one is the reverse: the contract
+silently stops promising something the API still does, and every gate — including the drift check,
+which is the thing that makes contract-first real — agrees. Together they show the gap is not one
+edge case but a symmetric hole, which is a better argument for the ADR than either alone.
+
+Neither note is a blocking finding on this branch, and neither should hold up the merge: note 2 is
+recorded work, and note 1 needs a ticket that `complete-ticket` will require anyway.
+
+- **Did:** Reviewed the comment-only diff. Ran all seven gates. Proved the replacement
+  justification by stopping the database under a live stack (`/health/authenticated` 200,
+  `/projects` 500) and decoded the issued token to find why. Verified note 2 by removing both 500
+  declarations, regenerating, committing, and running every gate — all green.
+- **Decided:** **Approve** — merge may proceed, then `complete-ticket`. The precondition sentence
+  is a recommendation, not a condition of approval.
+- **Remaining:** create and link the 500-correlation ticket before `complete-ticket` (DoD item 4);
+  cite note 2 on T-0017. Optionally name the `sub` precondition in the comment.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0004-stale-comment` @ `a9ef413`.
+- **Test state:** verified here — 87/87, smoke 13/13, build 0 warnings, both format runs, drift
+  and the validator all exit 0. I changed no committed code: the spec mutant and its scratch
+  commit were reset with `git reset --hard a9ef413`, the spec verified byte-identical to a
+  pre-mutation copy, and the tree left clean.

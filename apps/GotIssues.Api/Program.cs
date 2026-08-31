@@ -160,9 +160,24 @@ if (!string.IsNullOrWhiteSpace(authority))
     // cannot drift — see AuthenticationPipeline.
     app.UseGotIssuesAuthentication();
 
-    // Operational endpoint proving the token round trip end to end. Outside the API
-    // contract by ADR-0005 — no product endpoint exists yet, and inventing one to be
-    // authenticated against would be product surface built only for a test.
+    // Operational endpoint proving the token round trip end to end, outside the API
+    // contract by ADR-0005.
+    //
+    // It was originally justified by there being no product endpoint to authenticate
+    // against. That stopped being true when T-0004 shipped /projects, and the
+    // justification is kept for a different reason: this endpoint asserts the round
+    // trip *without* a database, a schema or a role, so it still fails for exactly one
+    // reason. A product endpoint used in its place would fail for several, and the four
+    // smoke cases that reach this endpoint — issued, expired, wrong-audience,
+    // unknown-key — exist precisely to tell those apart.
+    //
+    // **The precondition, so the next reader can tell when this expires.** It is
+    // database-free only because the tokens this system issues carry no `sub`, so
+    // UserProjectionMiddleware finds no subject and never writes. T-0018 makes tokens
+    // carry a subject; on the day it lands, this endpoint starts touching the database
+    // and this justification becomes false — in the same quiet way the one it replaced
+    // did. Whoever implements T-0018 should either re-establish the property or move
+    // those four smoke cases somewhere that still has it.
     app.MapGet("/health/authenticated", () => Results.Ok(new { status = "authenticated" }))
         .RequireAuthorization();
 }
