@@ -2,7 +2,9 @@
 
 Maintained by the Software Architect persona. This is the current-state map of the system; the *history and rationale* of decisions lives in [`adr/`](adr/README.md). When this overview and an Accepted ADR disagree, the ADR wins and this file has a bug — fix it.
 
-> **State: designed, not yet built.** No application code exists yet (2026-08-30). Everything below describes the intended shape agreed at bootstrap and recorded in [ADR-0003](adr/ADR-0003-initial-technology-stack.md) and [ADR-0004](adr/ADR-0004-contract-first-openapi-code-generation.md). Implementers: where this file and the code disagree once code exists, the code is the truth and this file is a defect.
+> **State: partly built (2026-08-30).** [T-0001](../product/tickets/T-0001-runnable-compose-stack.md) delivered the runnable core — the API service, PostgreSQL, and the explicit migration step, under Docker Compose — so the *Compose stack*, *API service*, and *Database* rows below describe code that exists. Everything else is still the intended shape agreed at bootstrap: no API specification or generated contracts (T-0002), no identity host (T-0010), no roles or user projection (T-0009), no product endpoints.
+>
+> Where this file and the code disagree, **the code is the truth and this file is a defect** — fix it. This banner was itself stale for one merge (found in T-0001's acceptance as part of the same class of defect as the README's); keep it current as components land.
 
 Keep this file short enough to actually read: a map, not a specification. Detail belongs in ADRs, standards, or the code.
 
