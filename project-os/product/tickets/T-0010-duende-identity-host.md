@@ -2,11 +2,11 @@
 id: T-0010
 title: Duende IdentityServer host in the stack, with the API as resource server
 type: technical
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-3f7c
 depends_on: [T-0001]
 adrs: [ADR-0003, ADR-0005]
 created: 2026-08-30
@@ -117,7 +117,7 @@ Never disable authentication to make a test pass ([SECURITY.md](../../standards/
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked 2026-08-31. Items 1–2 and 4–8 pass. **Item 3 is an explicitly approved PO deviation** — see the closing entry.
 
 ---
 
@@ -634,3 +634,41 @@ The PO's rejection of the scope deviation is vindicated twice over: AC9 became a
 Proceed to `complete-ticket`, which owes two things before `done`: the **DoD item 3 deviation** naming T-0015 AC6/AC7 as owner, and — a recommendation rather than a gate — **adding D1's measured five-minute clock-skew window to T-0015's expired-token risk**, so the criterion that inherits this residual is not implemented into a false pass.
 
 Status left at `in-acceptance`; `accepted_by` deliberately not set.
+
+### 2026-08-31 — Scrum Master (claude-sm-9d4e) — complete-ticket: **done**
+
+**Definition of Done, walked literally.**
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | Pass — In Scope satisfied *as written*, including the schema the earlier deviation would have dropped |
+| 2 All AC verified independently | Pass — AC1–AC10 by `claude-qa-3f7c`, by mutation, on a clean clone |
+| 3 Automated tests exist and pass | **DEVIATION — approved by the human PO** (below) |
+| 4 No known unrecorded defects | Pass — D1 (the `ClockSkew` window) recorded in T-0015's AC6 risk with the measured numbers |
+| 5 Code quality | Pass — approved by `claude-rev-2c8d` after three rounds; format 0, build 0/0 |
+| 6 Documentation updated | Pass — README covers obtaining a token and the secret-rotation footgun |
+| 7 Work Log complete | Pass — including the deviation I proposed, the PO rejecting it, and the rework |
+| 8 State updated | Pass — this commit |
+
+Conditional items: **Security** — no key material or plaintext secret tracked or in history; secrets stored hashed (a plaintext query returned 0 rows); container non-root; signing key on a volume owned by `app`. **Migrations** — applied by an explicit step; ordinary startup verified to create nothing. **ADR** — none required; ADR-0005 covers the protected operational endpoint.
+
+## DoD item 3 — recorded deviation
+
+**Approved by the human PO, 2026-08-31**, choosing "Approve the deviation, complete T-0010".
+
+**What is deviated from:** this ticket's headline behaviour — token validation against a real issuer — is verified manually, not automatically. The accepted token and the expired / wrong-audience / unknown-key refusals all need the identity host running, which `WebApplicationFactory` cannot provide.
+
+**Why it is bounded:** [T-0015](T-0015-compose-stack-smoke-test.md) owns it under **AC6** and **AC7**, and — unlike the first attempt at this hand-off — the acceptor verified T-0015 *accepts* it by reading the ticket rather than the pointer. The three integration tests added here cover what the in-process harness genuinely can reach.
+
+**What the manual verification was worth:** the acceptor isolated the two refusals the review had concluded were impossible to separate by hand, by using the database-backed store as the lever — renaming the persisted `ApiResources.Name` to mint a genuinely-signed token differing only in `aud`, and setting `AccessTokenLifetime` to 1 second for a genuinely-expired one. **Both constructions exist only because the PO rejected the config-based design.** A second, unplanned dividend of that decision.
+
+## What the PO's rejection actually bought
+
+Recorded because it is the clearest lesson in this ticket: I proposed dropping the schema when Duende's EF migrations would not scaffold, and the obstacle turned out to be a solvable API detail — the contexts resolve store options from the application service provider attached to `DbContextOptions`. Rejecting the deviation produced (1) In Scope satisfied as written, (2) **AC9 as a property that can fail**, tested from four independent angles including two the acceptor invented, and (3) the two AC4 refusals above. All three were unavailable under the design I proposed.
+
+## Findings that outlived this ticket
+
+- **D1 — the `ClockSkew` trap.** No `ClockSkew` is configured, so the framework's ~5-minute default applies: **200 at 268 s past `exp`, 401 at 328 s**. Recorded in T-0015's AC6 risk with the numbers, because a note saying "use a short-lived token" without them leads an implementer straight into a false pass.
+- **The API's Dockerfile `.editorconfig` copy is preventive, not load-bearing** — the acceptor tested both directions and found removing it still builds today. The claim that the API "will hit the same wall as its migrations grow" is therefore accurate rather than assumed.
+
+**Unblocking:** [T-0009](T-0009-role-authorisation-and-user-projection.md) listed T-0003 and T-0010 in `depends_on`. Both are now `done`, so **T-0009 is eligible** — it consumes the `role` claim this ticket emits. [T-0015](T-0015-compose-stack-smoke-test.md) is also eligible.
