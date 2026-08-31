@@ -2,11 +2,11 @@
 id: T-0002
 title: Contract-first pipeline — OpenAPI spec, code generation, and drift check
 type: technical
-status: in-progress
+status: done
 priority: high
-owner: claude-sm-9d4e
+owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-5a71
 depends_on: [T-0001, T-0011]   # both done 2026-08-30/31
 adrs: [ADR-0004, ADR-0005]
 created: 2026-08-30
@@ -129,7 +129,7 @@ The drift check is itself a test and a merge gate ([TESTING.md](../../standards/
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked 2026-08-31. All eight universal items met; **no deviation required**.
 
 ---
 
@@ -820,3 +820,43 @@ The generated tree changed since my acceptance, so I did not carry my earlier ru
 - **Branch / PR:** merged; verified on `main` @ `f1f6d81`.
 - **Test state:** all gates green as listed above.
 - **Acceptance verdict:** **PASS stands; D1 closed** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
+
+### 2026-08-31 — Scrum Master (claude-sm-9d4e) — complete-ticket: **done**
+
+**Definition of Done, walked literally.** Unusually for this project, **no item needed a deviation.**
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | Pass — In Scope built; the placeholder resource is deliberately disposable and T-0004 removes it |
+| 2 All AC verified independently | Pass — AC1–AC6 and AC8–AC10 by `claude-qa-5a71` (there is no AC7; the numbering skips it) |
+| 3 Automated tests exist and pass | Pass — 26 tests, and the drift check is itself a test of the pipeline's central property |
+| 4 No known unrecorded defects | Pass — D1 fixed at source; N2 → [T-0017](T-0017-automated-contract-conformance-tier.md), N4 → [T-0016](T-0016-generation-output-ownership.md), N1 → [T-0012](T-0012-pin-container-base-images.md) (widened today to accept it); N3 expressly not a defect |
+| 5 Code quality | Pass — approved by `claude-rev-8b4f` after four rounds; build 0 warnings / 0 errors, format clean |
+| 6 Documentation updated | Pass — README, `PROJECT.md` §5 and `ARCHITECTURE.md` corrected; `DOCUMENTATION.md`'s JDK line routed to T-0014, widened to accept it |
+| 7 Work Log complete | Pass — including an entry describing a fix that had not happened, left standing with its correction |
+| 8 State updated | Pass — this commit |
+
+Conditional items: **ADR recorded** — [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) is Accepted and was correctly left immutable; [ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md) governs the exempt operational endpoints. **Security** — no vulnerable packages in any of the six projects, verified after the retarget that had been shipping one. **Migrations** — the placeholder's `Label` column ships with the change that needs it.
+
+## What this ticket actually established
+
+[ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) governed every ticket from bootstrap without once being exercised. It now is: the specification is hand-authored, code is generated from it, no hand-written controller declares a route, and a merge gate fails when the two disagree.
+
+**Six contract defects were found and fixed here.** Every one was the same shape — the document and the system disagreeing:
+
+| # | Defect | Found by |
+| --- | --- | --- |
+| 1 | Page sizes: prose said capped, schema said maximum | a test failing |
+| 2 | `GET` declared 200/401 while returning 400 — a test asserted the undeclared code | review |
+| 3 | `page`'s minimum enforced only by a `Math.Max` in the controller | review |
+| 4 | `label` declared non-nullable while returning `null` | review |
+| 5 | `401` declared a problem document and returned an empty body | review |
+| 6 | The spec claimed generated clients enforce the bounds; they do not | acceptance |
+
+**Five of the six were found by exercising the system; one by reading the document.** That is the argument for the pipeline, made by the pipeline — and the argument for [T-0017](T-0017-automated-contract-conformance-tier.md), since four of them were mechanically detectable by a tier `TESTING.md` has defined since bootstrap and nothing implements.
+
+**The most serious thing that happened here was mine, not the code's.** I committed a Work Log entry describing the D1 fix while the specification was unchanged: a `grep` chained with `&&` before the edit matched nothing (case-sensitive, phrase wrapping a line), returned non-zero, and cancelled it — after which regeneration, build, tests and the drift check all passed against unchanged code and I read that as confirmation. Ninth instance on this project of a green signal measured from the wrong source, and the only one to produce a false *record* rather than a false *check*. Both entries are left in place.
+
+The generalisable part is small: **regenerate/build/test passing is not evidence that an edit landed — only the artefact is.** The acceptor's closing check is the sharper version of the same idea: text being *present* in generated output is weak, while `check-drift.sh` passing proves it was *produced by* the source document.
+
+**Unblocking:** [T-0004](T-0004-create-and-list-projects.md) listed T-0002, T-0003 and T-0009 in `depends_on`; two are now `done`, leaving T-0009. [T-0016](T-0016-generation-output-ownership.md) and [T-0017](T-0017-automated-contract-conformance-tier.md) become eligible.
