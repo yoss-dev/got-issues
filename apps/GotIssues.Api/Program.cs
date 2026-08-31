@@ -5,6 +5,7 @@ using GotIssues.Api.Authorization;
 using GotIssues.Api.Data;
 using GotIssues.Api.Health;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -77,6 +78,40 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
 
 var app = builder.Build();
+
+// An unhandled exception must still answer with the shape the contract declares.
+// UseStatusCodePages below only fills in responses that have a status and no body;
+// an exception escaping a controller produces neither, so the caller received a
+// 500 with a zero-length body and no Content-Type — a response the specification
+// never declared, found by acceptance on a project name containing U+0000
+// (PostgreSQL SQLSTATE 22021, which is not a unique violation and so correctly
+// escaped the controller's narrow catch).
+//
+// The narrow catch is right. What was missing is a destination for everything it
+// deliberately does not catch.
+app.UseExceptionHandler(handler => handler.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    context.Response.ContentType = "application/problem+json";
+
+    // Serialised explicitly rather than with WriteAsJsonAsync, which overwrites
+    // Content-Type with `application/json` — the exact defect this handler exists to
+    // end, committed by the handler itself. Caught by the smoke check below, and only
+    // after that check was fixed to reach its own assertion.
+    //
+    // Nothing from the exception reaches the caller: the message can carry the
+    // offending value, and a project name is user-supplied text (SECURITY.md).
+    var problem = JsonSerializer.Serialize(
+        new ProblemDetails
+        {
+            Type = "https://httpstatuses.io/500",
+            Title = "An unexpected error occurred.",
+            Status = StatusCodes.Status500InternalServerError,
+        },
+        new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    await context.Response.WriteAsync(problem).ConfigureAwait(false);
+}));
 
 app.UseStatusCodePages();
 

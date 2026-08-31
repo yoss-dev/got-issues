@@ -77,6 +77,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       summary: List projects.
       tags:
       - Projects
@@ -116,6 +118,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       summary: Create a project.
       tags:
       - Projects
@@ -141,6 +145,20 @@ components:
       description: |
         The credentials were valid, but the caller's role does not permit this
         operation. Distinct from 401: the caller is known, and still refused.
+    InternalServerError:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The request could not be completed because of an unexpected failure.
+
+        Declared because the API can return it: an operation that reaches the
+        database can fail in ways no validation anticipates, and a contract that
+        lists only the outcomes it likes is as wrong as one that promises a body it
+        does not send. The response is a problem document like every other failure —
+        never an empty body, which is what a caller received before this was
+        declared.
     Conflict:
       content:
         application/problem+json:
@@ -197,8 +215,18 @@ components:
             The project's display name. Names need not be unique — the key is the
             identifier, and requiring unique names would be a constraint on people
             rather than on data.
+
+            C0 control characters and DEL are excluded. Two reasons, and they are
+            not the same reason: PostgreSQL cannot store `U+0000` in text at all, so
+            a name carrying one fails as an unhandled error rather than as
+            validation; and the rest of the range carries tabs and line breaks, which
+            a display name has no use for.
+
+            This is not full Unicode line-break normalisation — `U+0085` and `U+2028`
+            are accepted. The constraint is deliberately the narrow, checkable one.
           maxLength: 200
           minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
           type: string
         createdAt:
           description: "When the project was created, in UTC."
@@ -223,9 +251,13 @@ components:
           pattern: "^[A-Z][A-Z0-9]{1,9}$"
           type: string
         name:
-          description: The project's display name.
+          description: |
+            The project's display name. C0 control characters and DEL are excluded:
+            `U+0000` cannot be stored by PostgreSQL at all, and the rest of the range
+            carries tabs and line breaks a display name has no use for.
           maxLength: 200
           minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
           type: string
       required:
       - key

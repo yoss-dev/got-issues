@@ -106,6 +106,63 @@ public sealed class ProjectsTests(PostgresContainerFixture postgres) : IAsyncLif
     }
 
     [Fact]
+    public async Task A_name_containing_a_control_character_is_rejected_by_the_contract()
+    {
+        // Found by acceptance (claude-qa-4d18): a name containing U+0000 produced an
+        // HTTP 500 with a zero-length body and no Content-Type — a sixth response from
+        // an operation whose contract declares five, and the exact outcome this
+        // ticket's Examples rule out by name ("400 with a problem document, not a 500").
+        //
+        // PostgreSQL rejects U+0000 in text with SQLSTATE 22021. That is not a unique
+        // violation, so it correctly escaped the controller's narrow catch and reached
+        // no handler at all. The fix is at the contract boundary, where a validation
+        // rule belongs: the specification now excludes control characters from a name,
+        // so the request never reaches the database.
+        using var client = Admin();
+
+        var response = await client.PostAsync(
+            new Uri("/projects", UriKind.Relative),
+            Json("{\"key\":\"NUL\",\"name\":\"bad\\u0000name\"}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        AssertNamesField(await response.Content.ReadAsStringAsync(), "name");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        Assert.Equal(0, await db.Projects.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("\\u0001", "another C0 control character")]
+    [InlineData("\\u007F", "delete")]
+    [InlineData("\\n", "a newline — a display name is one line")]
+    [InlineData("\\u001F", "the last C0 control character")]
+    public async Task Other_control_characters_are_rejected_too(string jsonEscape, string _)
+    {
+        // The acceptance finding isolated U+0000 as the only character that reached the
+        // database. Rejecting only U+0000 would have fixed the crash and left a display
+        // name able to carry a newline or a DEL — so the contract excludes the class,
+        // not the one member of it that happened to be found.
+        //
+        // The parameter is a JSON *escape sequence*, not the character itself. A raw
+        // control character inside a JSON string is invalid JSON, so embedding one
+        // makes the parser reject the request before the model is ever bound — the test
+        // would pass with no pattern at all, proving only that the JSON parser works.
+        // Mutation caught exactly that: with the pattern removed, two of these cases
+        // still passed.
+        using var client = Admin();
+
+        var response = await client.PostAsync(
+            new Uri("/projects", UriKind.Relative),
+            Json($"{{\"key\":\"CTRL\",\"name\":\"bad{jsonEscape}name\"}}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        AssertNamesField(await response.Content.ReadAsStringAsync(), "name");
+    }
+
+    [Fact]
     public async Task AC1c_a_key_already_in_use_is_rejected_with_409()
     {
         using var client = Admin();

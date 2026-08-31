@@ -35,7 +35,7 @@ namespace GotIssues.Client.Model
         /// </summary>
         /// <param name="id">The project&#39;s identifier.</param>
         /// <param name="key">The project&#39;s key: 2-10 characters, uppercase letters and digits, starting with a letter. Unique across the deployment and immutable once set. </param>
-        /// <param name="name">The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data. </param>
+        /// <param name="name">The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data.  C0 control characters and DEL are excluded. Two reasons, and they are not the same reason: PostgreSQL cannot store &#x60;U+0000&#x60; in text at all, so a name carrying one fails as an unhandled error rather than as validation; and the rest of the range carries tabs and line breaks, which a display name has no use for.  This is not full Unicode line-break normalisation — &#x60;U+0085&#x60; and &#x60;U+2028&#x60; are accepted. The constraint is deliberately the narrow, checkable one. </param>
         /// <param name="createdAt">When the project was created, in UTC.</param>
         [JsonConstructor]
         public Project(Guid id, string key, string name, DateTime createdAt)
@@ -64,9 +64,9 @@ namespace GotIssues.Client.Model
         public string Key { get; set; }
 
         /// <summary>
-        /// The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data. 
+        /// The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data.  C0 control characters and DEL are excluded. Two reasons, and they are not the same reason: PostgreSQL cannot store &#x60;U+0000&#x60; in text at all, so a name carrying one fails as an unhandled error rather than as validation; and the rest of the range carries tabs and line breaks, which a display name has no use for.  This is not full Unicode line-break normalisation — &#x60;U+0085&#x60; and &#x60;U+2028&#x60; are accepted. The constraint is deliberately the narrow, checkable one. 
         /// </summary>
-        /// <value>The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data. </value>
+        /// <value>The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data.  C0 control characters and DEL are excluded. Two reasons, and they are not the same reason: PostgreSQL cannot store &#x60;U+0000&#x60; in text at all, so a name carrying one fails as an unhandled error rather than as validation; and the rest of the range carries tabs and line breaks, which a display name has no use for.  This is not full Unicode line-break normalisation — &#x60;U+0085&#x60; and &#x60;U+2028&#x60; are accepted. The constraint is deliberately the narrow, checkable one. </value>
         [JsonPropertyName("name")]
         public string Name { get; set; }
 
@@ -132,6 +132,16 @@ namespace GotIssues.Client.Model
             if (this.Name != null && this.Name.Length < 1)
             {
                 yield return new ValidationResult("Invalid value for Name, length must be greater than 1.", new [] { "Name" });
+            }
+
+            if (this.Name != null) {
+                // Name (string) pattern
+                Regex regexName = new Regex(@"^[^\u0000-\u001F\u007F]+$", RegexOptions.CultureInvariant);
+
+                if (!regexName.Match(this.Name).Success)
+                {
+                    yield return new System.ComponentModel.DataAnnotations.ValidationResult("Invalid value for Name, must match a pattern of " + regexName, new [] { "Name" });
+                }
             }
 
             yield break;

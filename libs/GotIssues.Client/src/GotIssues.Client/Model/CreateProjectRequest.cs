@@ -34,7 +34,7 @@ namespace GotIssues.Client.Model
         /// Initializes a new instance of the <see cref="CreateProjectRequest" /> class.
         /// </summary>
         /// <param name="key">The key this project&#39;s issues are numbered under, for example &#x60;GOTI&#x60;. Cannot be changed afterwards, so it is worth choosing deliberately. </param>
-        /// <param name="name">The project&#39;s display name.</param>
+        /// <param name="name">The project&#39;s display name. C0 control characters and DEL are excluded: &#x60;U+0000&#x60; cannot be stored by PostgreSQL at all, and the rest of the range carries tabs and line breaks a display name has no use for. </param>
         [JsonConstructor]
         public CreateProjectRequest(string key, string name)
         {
@@ -53,9 +53,9 @@ namespace GotIssues.Client.Model
         public string Key { get; set; }
 
         /// <summary>
-        /// The project&#39;s display name.
+        /// The project&#39;s display name. C0 control characters and DEL are excluded: &#x60;U+0000&#x60; cannot be stored by PostgreSQL at all, and the rest of the range carries tabs and line breaks a display name has no use for. 
         /// </summary>
-        /// <value>The project&#39;s display name.</value>
+        /// <value>The project&#39;s display name. C0 control characters and DEL are excluded: &#x60;U+0000&#x60; cannot be stored by PostgreSQL at all, and the rest of the range carries tabs and line breaks a display name has no use for. </value>
         [JsonPropertyName("name")]
         public string Name { get; set; }
 
@@ -112,6 +112,16 @@ namespace GotIssues.Client.Model
             if (this.Name != null && this.Name.Length < 1)
             {
                 yield return new ValidationResult("Invalid value for Name, length must be greater than 1.", new [] { "Name" });
+            }
+
+            if (this.Name != null) {
+                // Name (string) pattern
+                Regex regexName = new Regex(@"^[^\u0000-\u001F\u007F]+$", RegexOptions.CultureInvariant);
+
+                if (!regexName.Match(this.Name).Success)
+                {
+                    yield return new System.ComponentModel.DataAnnotations.ValidationResult("Invalid value for Name, must match a pattern of " + regexName, new [] { "Name" });
+                }
             }
 
             yield break;

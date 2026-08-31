@@ -37,10 +37,11 @@ namespace GotIssues.Contracts.Models
         public string Key { get; set; }
 
         /// <summary>
-        /// The project&#39;s display name.
+        /// The project&#39;s display name. C0 control characters and DEL are excluded: &#x60;U+0000&#x60; cannot be stored by PostgreSQL at all, and the rest of the range carries tabs and line breaks a display name has no use for. 
         /// </summary>
-        /// <value>The project&#39;s display name.</value>
+        /// <value>The project&#39;s display name. C0 control characters and DEL are excluded: &#x60;U+0000&#x60; cannot be stored by PostgreSQL at all, and the rest of the range carries tabs and line breaks a display name has no use for. </value>
         [Required]
+        [RegularExpression("^[^\\u0000-\\u001F\\u007F]+$")]
         [StringLength(200, MinimumLength=1)]
         [DataMember(Name="name", EmitDefaultValue=false)]
         public string Name { get; set; }

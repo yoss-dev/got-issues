@@ -87,7 +87,7 @@ namespace GotIssues.Client.Api
     /// <summary>
     /// The <see cref="ICreateProjectApiResponse"/>
     /// </summary>
-    public interface ICreateProjectApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Project?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, IConflict<GotIssues.Client.Model.Problem?>
+    public interface ICreateProjectApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Project?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, IConflict<GotIssues.Client.Model.Problem?>, IInternalServerError<GotIssues.Client.Model.Problem?>
     {
         /// <summary>
         /// Returns true if the response is 201 Created
@@ -118,12 +118,18 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <returns></returns>
         bool IsConflict { get; }
+
+        /// <summary>
+        /// Returns true if the response is 500 InternalServerError
+        /// </summary>
+        /// <returns></returns>
+        bool IsInternalServerError { get; }
     }
 
     /// <summary>
     /// The <see cref="IListProjectsApiResponse"/>
     /// </summary>
-    public interface IListProjectsApiResponse : GotIssues.Client.Client.IApiResponse, IOk<GotIssues.Client.Model.ProjectPage?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>
+    public interface IListProjectsApiResponse : GotIssues.Client.Client.IApiResponse, IOk<GotIssues.Client.Model.ProjectPage?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, IInternalServerError<GotIssues.Client.Model.Problem?>
     {
         /// <summary>
         /// Returns true if the response is 200 Ok
@@ -148,6 +154,12 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <returns></returns>
         bool IsForbidden { get; }
+
+        /// <summary>
+        /// Returns true if the response is 500 InternalServerError
+        /// </summary>
+        /// <returns></returns>
+        bool IsInternalServerError { get; }
     }
 
     /// <summary>
@@ -650,6 +662,44 @@ namespace GotIssues.Client.Api
                 return result != null;
             }
 
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public bool IsInternalServerError => 500 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? InternalServerError()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsInternalServerError
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryInternalServerError([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = InternalServerError();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)500);
+                }
+
+                return result != null;
+            }
+
             private void OnDeserializationErrorDefaultImplementation(Exception exception, HttpStatusCode httpStatusCode)
             {
                 bool suppressDefaultLog = false;
@@ -1015,6 +1065,44 @@ namespace GotIssues.Client.Api
                 } catch (Exception e)
                 {
                     OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)403);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public bool IsInternalServerError => 500 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 500 InternalServerError
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? InternalServerError()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsInternalServerError
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 500 InternalServerError and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryInternalServerError([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = InternalServerError();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)500);
                 }
 
                 return result != null;

@@ -1147,3 +1147,451 @@ one field and somebody should reconcile them; that is `evolve-governance`'s call
   `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `smoke.sh` exit 1 (environment DNS) then
   exit 0, 12/12 · `validate.py` exit 0. I changed no implementation, test or specification code;
   all four mutants were reverted and verified byte-identical against `HEAD`.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — acceptance FAIL addressed; the fix committed the defect it was fixing
+
+`claude-qa-4d18`'s two findings are both real, and Finding 1 is this ticket's own named defect
+class in its strongest form: the Examples say *"Create with a missing or empty name: 400 with a
+problem document, **not a 500**"*, and a name containing `U+0000` produced HTTP 500 with a
+**zero-length body and no Content-Type** — a sixth response from an operation declaring five.
+
+#### Finding 1, fixed in two places because it has two halves
+
+**The boundary.** PostgreSQL rejects `U+0000` in text (SQLSTATE 22021), which is not a unique
+violation and so correctly escaped the controller's narrow catch. The catch is right; the input
+should never have reached the database. `name` now declares a pattern in the specification
+excluding `U+0000`–`U+001F` and `U+007F`, so the rule lives in the contract and reaches generated
+clients — a validation rule enforced only in a controller is exactly what ADR-0004 exists to
+prevent. **The class, not the character:** rejecting only `U+0000` would have fixed the crash and
+left a display name able to carry a newline or a DEL.
+
+**The destination.** The narrow catch deliberately does not catch everything, and what it does
+not catch had nowhere to go: `UseStatusCodePages` only fills in responses that carry a status and
+no body, and an escaping exception produces neither. `UseExceptionHandler` now returns a problem
+document for anything unanticipated, and `500` is **declared in the contract** for both
+operations — the API can return it, and a contract listing only the outcomes it likes is as wrong
+as one promising a body it does not send.
+
+#### Three times in this one fix, a test or a mutant failed to reach what it was aimed at
+
+1. **The integration test I wrote for the exception handler was testing the test host.** The
+   stack trace showed `AuthenticationMiddleware` then `UserProjectionMiddleware` sitting *above*
+   my handler: in the integration host, authentication is injected by an `IStartupFilter`, which
+   runs before anything in `Program.cs`. The codebase already knew this — `GeneratedContractTests`
+   says so about the 401 body, and review's N1 said it about the 403 — and I wrote the same test
+   anyway. Moved to the **smoke tier**, the only tier whose pipeline is the real one.
+2. **Two of my four control-character cases passed with the fix removed.** They embedded raw
+   control characters in JSON, which is *invalid JSON*, so the parser rejected them before the
+   model was bound: they proved the JSON parser works. The parameter is now a JSON escape
+   sequence, and with the pattern removed all five cases die.
+3. **My first M8 result was not evidence.** The smoke test failed under the mutant — and failed
+   the same way without it, because the API could not fetch issuer metadata once postgres was
+   stopped, so every request was 401. I read a red test as a kill for the second time on this
+   ticket. The test now warms the metadata with an authenticated 200 *before* stopping the
+   database, so the failure it observes is the one it is about.
+
+**And the fix committed the defect it was fixing.** Once the smoke check could reach its
+assertion, it found the handler returning `application/json`: `WriteAsJsonAsync` overwrites
+`Content-Type`. The safety net built to end "declares one thing, returns another" was doing
+exactly that. Serialised explicitly now.
+
+#### Mutation evidence — every mutant reaches its assertion
+
+| Mutant | Result |
+| --- | --- |
+| `name` pattern removed from the spec, regenerated | **Killed** — all five control-character cases (two of which were vacuous until fixed) |
+| `UseExceptionHandler` removed | **Killed** — smoke: `Content-Type` `Actual: null`, the acceptance finding reproduced |
+
+#### Finding 2 — the documentation described a resource that no longer exists
+
+`README.md` (banner, *Not here yet*, and the role paragraph claiming **no shipped endpoint uses
+the policies**) and `ARCHITECTURE.md`'s state banner all described the placeholder as what
+exists. Corrected, and the role paragraph now points at
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md).
+
+Worth naming: **deleting the placeholder was In Scope and the documentation saying so was not
+updated in the same change.** That is the SPRINT-001 pattern — a ticket falsifying a status claim
+without updating it — recurring in the sprint whose retro was about verification. The banner even
+says updating it is part of the ticket that changes the state.
+
+- **Did:** Declared the name constraint and the 500 in the contract; added the exception handler;
+  moved the unhandled-failure check to the tier that can host it; corrected README and
+  ARCHITECTURE.
+- **Decided:** exclude the control-character class rather than the one character found; declare
+  `500` rather than pretend the API cannot return it.
+- **Remaining:** re-review, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state, measured in this worktree:** `dotnet test` **87/87** (17 unit, 70 integration) ·
+  `tools/smoke.sh` **13/13** exit 0 · build 0 warnings · `dotnet format` exit 0 both ·
+  `validate.py` exit 0.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-3e77) — review of `t-0004-acceptance-fixes` @ `7733c3e`
+
+Review of the acceptance-failure fixes, branched from `main` @ `9f89ddd`. Reviewer is not the
+implementer.
+
+**Verdict: Request changes.** Both acceptance findings are genuinely fixed — I verified each
+against a real Compose stack rather than through the suite — and the three self-caught failures
+are real fixes, not restatements. Two blocking findings remain, and both are the same shape as the
+one that cost this ticket its first review round: something the implementer knows, recorded
+somewhere it will not be read, or recorded as fact when it is not.
+
+#### Gates, re-run in this worktree, exit codes read directly from the tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | 87 passed — 17 unit, 70 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean first, so a real drift pass |
+| `./tools/smoke.sh` | 0 | 13/13 |
+| `python3 tools/validate-project-os/validate.py` | 0 | 19 tickets, 8 ADRs |
+
+Round-two follow-ups are done: `adrs:` now lists ADR-0008, the *Relevant ADRs* section links it,
+and `ProjectsController`'s comment cites it instead of re-arguing it.
+
+#### What I measured
+
+**Finding 1's boundary half works, and the mutant is now real.** Against a live stack, `U+0000`,
+`U+001F`, `U+007F` and a newline in `name` all return 400 `application/problem+json` with `errors`
+keyed on `Name`. Removing the pattern from `spec/openapi.yaml` and regenerating kills all five
+cases — four on `Expected: BadRequest, Actual: Created`, and the `U+0000` case on **`Actual:
+InternalServerError`**, which is the acceptance defect reproduced exactly. Every one reached its
+assertion. The vacuous-JSON problem is genuinely fixed.
+
+**Finding 1's destination half works.** Holding a token taken while the stack was healthy, then
+stopping postgres: `500`, `application/problem+json`, a 91-byte body, and no `Npgsql`, `password`,
+`connection`, stack frame or exception text in it. (My first attempt at this probe fetched the
+token *after* stopping postgres — the identity host uses the same database, so everything was 500
+for an unrelated reason. That is the implementer's item 3 as a live rehearsal; I record it because
+this ticket's thread is about exactly that error, and I made it too.)
+
+**The smoke test genuinely catches a regression.** I restored `WriteAsJsonAsync` in the handler
+and ran only `UnhandledFailureTests`: `Expected: "application/problem+json", Actual:
+"application/json"`. It got past the warm-up and the status assertion and died on the media type,
+so the mutant reached the assertion it was aimed at. Item 3's fix holds.
+
+**I checked for a second escape route and found none.** The fix's stated principle is *the class,
+not the character*, so I asked which other inputs could reach the database and throw something the
+narrow catch does not handle. Lone surrogates are the obvious candidate — `UserProjectionMiddleware`
+documents them causing an `EncoderFallbackException` inside `DbUpdateException`, which is not a
+unique violation. Measured: `\ud800` and `\udc00` in `name` return 400, rejected by
+System.Text.Json before model binding. No hazard. Worth stating as a negative result, because the
+class argument invites the question.
+
+**Finding 2's corrections are accurate.** README and ARCHITECTURE now describe projects as built
+and the policies as in use; the only surviving mention of the placeholder is a correct historical
+one. Naming the SPRINT-001 pattern in the Work Log — a ticket falsifying a status banner and not
+updating it — is the right observation to have made out loud.
+
+#### Blocking findings
+
+**C1 — `UnhandledFailureTests.cs:12-19` records a false claim about the test architecture, as
+guidance.** It says the test lives in the smoke tier *"because the integration tier structurally
+cannot host it"*, since a pipeline failure *"reaches the test client as a thrown exception rather
+than as the API's own response."*
+
+I measured the opposite. With the `name` pattern mutated out, the `U+0000` request in the
+**integration** host returns:
+
+```
+PROBE status=500 ctype=application/problem+json
+body={"type":"https://httpstatuses.io/500","title":"An unexpected error occurred.","status":500}
+```
+
+That is the API's own `UseExceptionHandler` output, byte for byte, reached and fully assertable in
+the integration tier. The claim is wrong.
+
+It is wrong because it over-generalises my N1. 401 and 403 bypass the application's pipeline
+because they are produced by *authentication and authorisation middleware inside the
+`IStartupFilter`*, upstream of `UseStatusCodePages`. An exception thrown during **endpoint
+execution** is a different path: it unwinds into the application's own middleware, where
+`UseExceptionHandler` is waiting. "Auth refusals bypass the app pipeline" does not generalise to
+"all failures do", and the diff cites my review as authority for the generalisation.
+
+**Keeping the test in the smoke tier is right** — it exercises a real dependency failure against
+the real stack, which the integration tier cannot do faithfully — so this is not a request to move
+it. It is a request to correct the stated reason, because the sentence as written tells the next
+engineer that response-shape assertions are impossible in the habitual tier. On a project whose
+signature recurring defect is missing response-shape assertions, that is an expensive thing to
+leave on the record. The honest version is narrower: the integration tier can assert this
+response; what it cannot easily do is *provoke* the failure without a fault-injection seam.
+
+**C2 — the T-0005 hazard is still written nowhere a T-0005 implementer will look.** The handover
+message says so plainly, and I confirmed it: `T-0005-create-and-read-issues.md` contains no
+mention of control characters, `U+0000`, or this pattern, while its Scope line 37 already commits
+to *"Title and description handling, with validation declared in the spec"* and its description is
+legitimately multi-line.
+
+Both ways of getting this wrong are live. Copy `name`'s pattern to `description` and newlines are
+forbidden in a field that needs them. Copy nothing and `description` reproduces the `U+0000` 500
+this round exists to fix. The distinction the next implementer needs is that the pattern is doing
+**two** jobs — *storability* (`U+0000`, which PostgreSQL refuses in any text column, so it applies
+to every text field including a description) and *single-line-ness* (the rest of the C0 class,
+which applies only to names and titles) — and only the first is universal.
+
+This is round one's B2 again: a known cross-ticket consequence left unrecorded, which is a false
+pointer of the family DoD item 4 exists to prevent. It needs a Work Log entry on T-0005, on the
+trunk with an `os:` message per [GIT.md](../../standards/GIT.md) lane 1.
+
+#### Non-blocking findings
+
+**NC1 — the pattern does not fully deliver its stated rationale, measured.** The contract says
+control characters are excluded because *"a display name spans one line"*. Against the live stack,
+`U+0085` (NEL) and `U+2028` (LINE SEPARATOR) in `name` both return **201**. Both are Unicode line
+breaks, so a display name can still carry one. The crash class is fully closed — `U+0000` is the
+only character PostgreSQL refuses — but the single-line claim is not. Either widen the pattern or
+soften the sentence; I would soften it, because chasing every Unicode line break is not worth it
+for a display name. Recorded mainly because it is the evidence behind C2: "control characters" is
+a proxy for two goals, and it only fully achieves one.
+
+**NC2 — `415` and `405` are undeclared responses from the declared operations.** Measured: `POST
+/projects` with `Content-Type: text/plain` returns **415**, and `PUT`/`DELETE /projects` return
+**405**, all as `application/problem+json`. Neither is in the contract. The acceptance finding's
+own principle — *"a sixth response from an operation declaring five"* — applies to them
+identically; they are now the seventh and eighth. This is not a defect introduced here and I am
+not asking for it to be fixed in this ticket, but it is the sharpest available evidence for the
+judgement call below.
+
+**NC3 — a vacuous assertion in the new theory.** `ProjectsTests.cs:164`:
+`Assert.False(string.IsNullOrEmpty(why), why);`. `why` is an `[InlineData]` compile-time constant,
+so this can never fail; it exists only to consume the parameter. Harmless — three real assertions
+precede it — but it is literally the "satisfied by anything" shape this ticket has been pulled up
+on twice, sitting in the file where both corrections landed. Drop it, or fold `why` into a real
+assertion's failure message.
+
+#### The two calls put to my judgement
+
+**1. Declaring `500` is right, and ADR-0005's exemption is the wrong analogy.** ADR-0005 exempts
+*operational endpoints* on an explicit audience test: *"if a client would generate code against
+it, it belongs in the specification."* A 500 from `POST /projects` is returned to precisely the
+client that generates from this document, so ADR-0005's own test points toward declaring it. The
+`Problem` schema already promises that *"every failure in this API uses this shape"*, and an
+undeclared 500 makes that sentence false — which is defect 5's family, and it is what acceptance
+actually found. A generated client modelling five outcomes and meeting a sixth is the failure
+mode; declaring it is the fix.
+
+The instinct that it is *"a contract-shaping call that may belong in ADR-0008's family"* is also
+right, and NC2 is why: once the reason for declaring 500 is "the API can return it", 415 and 405
+have identical standing and are not declared. The project now has three tiers with no stated rule
+— declared (400/401/403/409/500), produced-but-undeclared (405/415), and deliberately outside the
+contract (ADR-0005). That boundary has no owner.
+
+**I considered blocking on this and decided not to, and the distinction matters for consistency
+with round one.** There I blocked because a decision was *made and implemented in the diff* while
+binding every future endpoint, with its requirement on future work recorded nowhere. Here the
+narrow decision — declare 500 on these two operations — is correct, is a faithful application of a
+principle ADR-0008 already states, and errs toward *more* contract honesty, which is the safe
+direction. What is missing is the answer to a *general question this ticket raises and does not
+answer*: which framework-produced responses must a contract declare? An unasked question becomes a
+ticket or an ADR of its own; it does not become a blocking finding against the ticket that
+surfaced it. I would open it as an ADR in ADR-0008's family, with NC2's measurements as its
+evidence.
+
+**2. The control-character pattern must not be copied wholesale — and that is C2.** Agreed
+entirely, including that it is not yet written down. See C2 for the split I would record: `U+0000`
+is a storability constraint on every text column; the rest of the C0 class is a single-line
+constraint that belongs on names and titles and not on a description.
+
+#### On the three self-caught failures
+
+All three are genuine, and the second and third are the more valuable pair: a test that passed for
+the wrong reason, and a mutant that failed for the wrong reason. The generalisation from the last
+round holds and has now earned a third instance — **the question is never "did it go red", it is
+"did the thing I changed cause the thing I observed"**. Item 3 is that question answered "no" by
+someone who checked. That the handler then turned out to be committing the very defect it existed
+to prevent, and that only the *fixed* check could see it, is the strongest argument in this ticket
+for why the check-your-instrument habit pays.
+
+- **Did:** Reviewed `t-0004-acceptance-fixes` @ `7733c3e` against both acceptance findings, the
+  scope, and ADR-0004/0005/0008. Re-ran all seven gates. Probed every declared and undeclared
+  response against a real Compose stack with attribution confirmed. Ran three mutants: the `name`
+  pattern removed and regenerated (all five cases killed, each reaching its assertion), the
+  handler reverted to `WriteAsJsonAsync` (smoke killed on media type), and a probe of the
+  integration host's 500.
+- **Decided:** **Request changes** — C1 (a false architectural claim recorded as guidance) and
+  C2 (the T-0005 hazard still unrecorded). NC1–NC3 are optional.
+- **Remaining:** correct C1's comment; write C2's entry on T-0005 on the trunk. Then re-review is
+  not needed for NC1–NC3.
+- **Open questions / blockers:** one raised, not blocking — which framework-produced responses the
+  contract must declare (NC2). Recommend an ADR in ADR-0008's family.
+- **Branch / PR:** `t-0004-acceptance-fixes` @ `7733c3e`.
+- **Test state:** verified in this worktree — 87/87, smoke 13/13, build 0 warnings, both format
+  runs, drift and the validator all exit 0. The recorded test state is accurate; it omits
+  `check-drift.sh`, which I ran and which passes. I changed no implementation, test or
+  specification code; all three mutants were reverted, regenerated, and verified byte-identical
+  against pre-mutation copies, with the drift check clean afterwards.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — C1: I wrote a false generalisation as guidance
+
+**C1 is the one worth having.** My comment said the integration tier *"structurally cannot host"*
+a response-shape assertion. `claude-rev-3e77` measured otherwise: with the pattern mutated out,
+the integration host returns `status=500`, `application/problem+json`, with the handler's exact
+body. An exception thrown during **endpoint execution** unwinds into `UseExceptionHandler` there
+exactly as in production.
+
+What is actually true is narrower. The integration host injects authentication through an
+`IStartupFilter`, so the authentication middleware — and `UserProjectionMiddleware` with it — runs
+*above* the application's own pipeline. My original test failed because the database failure
+happened **there**, upstream of the handler, not because the tier cannot assert response shapes.
+
+I over-generalised the reviewer's own N1 into a rule, and the rule was wrong in the worst
+available direction: it tells the next engineer that response-shape assertions are impossible in
+the habitual tier, **on the project whose signature defect is missing response-shape
+assertions**. Keeping this test in the smoke tier is still right — it stops the database under a
+live stack and so needs the real pipeline — but the comment now says that rather than the false
+thing.
+
+Worth naming for the retro: this is the third distinct instance on this ticket of *a claim about
+where evidence can come from, made without measuring*. The other two were a mutant killed by the
+compiler and a mutant killed by a fixture guard. All three had the same shape — I reasoned about
+what a tool would do instead of watching it.
+
+#### The rest
+
+**NC1 taken.** `U+0085` and `U+2028` are accepted, so "a display name spans one line" claimed more
+than the pattern delivers. The specification now says what the constraint actually is — C0 and
+DEL, for two distinct reasons — and states plainly that it is not full Unicode line-break
+normalisation. A rationale that overstates its rule is the same defect as a test that overstates
+its mutant.
+
+**NC3 taken** — `Assert.False(string.IsNullOrEmpty(why), why)` could never fail. Removed rather
+than repaired: the parameter documents the case, and a test does not need an assertion to justify
+a parameter's existence.
+
+**NC2 recorded, not decided.** `415` and `405` are undeclared responses from declared operations,
+and the reviewer is right that once "the API can return it" is the reason to declare `500`, they
+have identical standing. That is a contract-shaping rule rather than this ticket's call, and it
+now sits on [T-0017](T-0017-automated-contract-conformance-tier.md) with three candidate answers
+— because that tier's AC4 will meet both on its first run, and the temptation then is to weaken
+AC4 rather than answer the question.
+
+**C2 recorded** on [T-0005](T-0005-create-and-read-issues.md): the pattern does two jobs and only
+one generalises. `U+0000` is unstorable in any text column, including a description; the rest of
+C0 is about single-line-ness and must not touch multi-line free text, or a description with a
+paragraph break in it gets rejected.
+
+- **Did:** Corrected the comment to what is measurably true; softened the specification's
+  rationale to what the pattern delivers; removed an assertion that could not fail; recorded the
+  T-0005 hazard and the T-0017 question on the trunk (`92dde24`).
+- **Decided:** keep the test in the smoke tier for the correct reason rather than move it on the
+  strength of a wrong one.
+- **Remaining:** re-review, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state, in this worktree:** `dotnet test` **87/87** · build 0 warnings · `dotnet format`
+  exit 0 both · `validate.py` exit 0 · `check-drift.sh` and `tools/smoke.sh` below.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-3e77) — re-review of `t-0004-acceptance-fixes` @ `e6a1f50`
+
+Fourth pass on this ticket, second on the acceptance fixes. Reviewer still not the implementer.
+
+**Verdict: Approve.** C1 and C2 are closed, NC1 and NC3 taken, NC2 correctly recorded rather than
+decided. I measured the *replacement* claim in C1 rather than accepting it, because a corrected
+claim about where evidence can come from deserves the same treatment as the wrong one it replaced.
+
+#### Gates, re-run in this worktree, exit codes read directly from the tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | 87 passed — 17 unit, 70 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean first, so a real drift pass |
+| `./tools/smoke.sh` | 0 | 13/13 |
+| `python3 tools/validate-project-os/validate.py` | 0 | 19 tickets, 8 ADRs |
+
+The branch is one commit behind `main` (`92dde24`), which touches only T-0005 and T-0017 — files
+this branch does not modify — so there is no conflict and the diff reads clean.
+
+#### C1 — closed, and the new claim is measured rather than argued
+
+The corrected comment makes a specific, falsifiable claim: that what the integration tier cannot
+reach is a failure raised *upstream of the application's own pipeline*, because the startup filter
+puts authentication and `UserProjectionMiddleware` above `UseExceptionHandler`. That is a claim of
+exactly the kind that was wrong twice on this ticket, so I made it fail. Throwing from
+`UserProjectionMiddleware.InvokeAsync` and running an integration test:
+
+```
+System.InvalidOperationException : reviewer probe: upstream failure
+   at GotIssues.Api.Authentication.UserProjectionMiddleware.InvokeAsync(...)
+   at Microsoft.AspNetCore.Authentication.AuthenticationMiddleware.Invoke(HttpContext context)
+   at Microsoft.AspNetCore.TestHost.HttpContextBuilder...RunRequestAsync...
+```
+
+The client receives a **thrown exception**, and there is no `UseExceptionHandler` frame between
+the throw and the test host. Both halves of the comment are now confirmed by measurement rather
+than by reasoning:
+
+| Failure raised | Integration tier observes | Measured |
+| --- | --- | --- |
+| During **endpoint execution** | `500` + `application/problem+json` + the handler's body | round three, via the pattern mutant |
+| **Upstream** of the app pipeline (auth / projection) | a thrown exception, no HTTP response | this round, via the middleware mutant |
+
+The comment now says the true, narrower thing, keeps the test in the smoke tier for the reason
+that actually holds — it stops the database under a live stack, so it needs the real pipeline —
+and explicitly warns against the inference it previously invited. That last part matters more than
+the correction: it leaves the next engineer better informed than a comment that had simply never
+been wrong.
+
+#### The rest, checked
+
+- **C2 closed** (`92dde24`). T-0005's entry separates the two concerns in a table — `U+0000` as
+  storability across every text column including a description, the rest of C0 as single-line-ness
+  that must not touch multi-line free text — names the direction each mistake fails in, carries
+  the `U+0085`/`U+2028` limit forward, and reminds the implementer the constraint goes in the
+  specification rather than a guard clause. It is written for someone who has not read this
+  ticket, which is the test that matters.
+- **NC1 taken.** The specification now gives the two distinct reasons and states plainly that this
+  is not full Unicode line-break normalisation, naming `U+0085` and `U+2028`. That is the
+  measurement I took, written into the contract as a limit rather than left as an overstatement.
+- **NC3 taken**, and removed rather than repaired — the right call. A parameter does not need an
+  assertion to justify its existence.
+- **NC2 recorded, not decided** (`92dde24`, on T-0017). Three candidate answers, including the
+  ADR-0005 option, and an explicit "Decided: nothing — deliberately", with the reason: that tier's
+  AC4 meets `415` and `405` on its first run and the temptation is to weaken AC4 rather than
+  answer the question. Declining to invent a decision inside an implementation ticket is correct
+  and consistent with how T-0018's grant type was handled. I agree it wants an ADR in ADR-0008's
+  family; whoever refines T-0017 is the right author, because they will have the conformance
+  evidence in front of them.
+
+#### On the pattern across all four rounds
+
+The implementer's retro framing is right and I would sharpen it slightly. The three instances —
+a mutant killed by the compiler, a mutant killed by a fixture guard, and a claim about which tier
+can observe what — are not three mistakes about mutation testing. They are three instances of one
+thing: **substituting a prediction about a tool's behaviour for an observation of it.** The
+compiler, the EF migration validator, and the ASP.NET middleware ordering each did something other
+than what was expected, and in all three cases the expectation was reasonable. Reasonable is the
+problem; it is what makes the check feel unnecessary.
+
+That it is not personal is worth recording, and I am the evidence: my own first probe of the 500
+fetched its token after stopping the database, which is precisely the item-3 error, made by the
+reviewer who had just written it up. That is the same doubling the retro found in SPRINT-001,
+where the second port-collision false pass was made by the person who had documented the first.
+The habit that survives contact with this is not "be careful" — it is the mechanical one this
+ticket has now demonstrated four times: **before believing a red or a green, confirm the thing you
+changed is the thing that caused it.**
+
+The ticket is in good shape. The contract declares what the API returns, the constraint is in the
+specification rather than in code, the failure path has a destination and a guard that catches its
+regression, the documentation describes what exists, and three cross-ticket consequences are
+recorded where they will be read. Nothing outstanding blocks acceptance.
+
+- **Did:** Re-reviewed `t-0004-acceptance-fixes` @ `e6a1f50`. Re-ran all seven gates. Measured the
+  corrected C1 claim by throwing from `UserProjectionMiddleware` and confirming the integration
+  client receives a thrown exception with no handler frame. Verified C2's, NC1's, NC2's and NC3's
+  landings, and confirmed the branch merges cleanly.
+- **Decided:** **Approve** — merge may proceed, then the `os:` status commit on the trunk and
+  re-acceptance by QA.
+- **Remaining:** nothing from review. NC2's ADR belongs to T-0017's refinement, not to this
+  ticket.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0004-acceptance-fixes` @ `e6a1f50`.
+- **Test state:** verified here — 87/87, smoke 13/13, build 0 warnings, both `dotnet format` runs,
+  drift and the validator all exit 0. The recorded test state is accurate. I changed no
+  implementation, test or specification code; the one mutant was reverted and verified
+  byte-identical, with a clean tree and a clean drift check afterwards.

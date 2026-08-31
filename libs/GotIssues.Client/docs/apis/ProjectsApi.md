@@ -44,6 +44,7 @@ Creates a project with a name and a key.  **Requires the `admin` role.** Creatin
 | **401** | No credentials were supplied, or they were not valid. |  -  |
 | **403** | The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused.  |  -  |
 | **409** | The request conflicts with something that already exists — for a project, a key already in use.  |  -  |
+| **500** | The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared.  |  -  |
 
 [[Back to top]](#) [[Back to API list]](../../README.md#documentation-for-api-endpoints) [[Back to Model list]](../../README.md#documentation-for-models) [[Back to README]](../../README.md)
 
@@ -84,6 +85,7 @@ Returns a page of projects, newest first.  Any caller holding a recognised role 
 | **400** | The request was malformed or failed validation. |  -  |
 | **401** | No credentials were supplied, or they were not valid. |  -  |
 | **403** | The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused.  |  -  |
+| **500** | The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared.  |  -  |
 
 [[Back to top]](#) [[Back to API list]](../../README.md#documentation-for-api-endpoints) [[Back to Model list]](../../README.md#documentation-for-models) [[Back to README]](../../README.md)
 
