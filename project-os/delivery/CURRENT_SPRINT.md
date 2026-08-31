@@ -16,7 +16,7 @@ All three are independent: none blocks another, and all three can start immediat
 
 | Ticket | Title | Status | Owner | Blocked by |
 | --- | --- | --- | --- | --- |
-| [T-0002](../product/tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | in-progress | claude-sm-9d4e | — |
+| [T-0002](../product/tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | in-acceptance | none | — |
 | [T-0009](../product/tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | committed | none | — |
 | [T-0015](../product/tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | committed | none | — |
 
