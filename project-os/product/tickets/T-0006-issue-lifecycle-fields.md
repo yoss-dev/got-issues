@@ -2,7 +2,7 @@
 id: T-0006
 title: Track an issue's lifecycle — type, status, priority, assignee
 type: feature
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
@@ -34,7 +34,7 @@ Sam can see what is in flight and who holds it — the question a flat list cann
 ### In Scope
 
 - Specification of the lifecycle fields on the issue schema, and the operation(s) that change them.
-- A fixed set of types, statuses, and priorities, declared as enumerations in the specification so clients get them generated.
+- A fixed set of types, statuses, and priorities, declared as enumerations in the specification so clients get them generated. **Decided by the maintainer 2026-08-31** — `type`: `bug`, `task` · `status`: `open`, `in_progress`, `done` · `priority`: `low`, `normal`, `high`. Defaults: `task`, `open`, `normal`.
 - Assignment to a user, and unassignment.
 - The EF Core migration adding the fields.
 - Unit and integration tests, including rejection of values outside the declared sets.
@@ -49,12 +49,12 @@ Sam can see what is in flight and who holds it — the question a flat list cann
 ## Acceptance Criteria
 
 - [ ] AC1: Given an existing issue, when an authenticated caller changes its status, priority, or type to a value within the declared set, then the change is persisted and reflected on subsequent reads.
-- [ ] AC2: Given a value outside the declared set, when it is submitted, then the API returns 400 with an `application/problem+json` body — enum violations are rejected at the contract boundary, not stored.
+- [ ] AC2: Given a value outside the declared set — `type` ∈ {`bug`, `task`}, `status` ∈ {`open`, `in_progress`, `done`}, `priority` ∈ {`low`, `normal`, `high`} — when it is submitted, then the API returns 400 with an `application/problem+json` body; enum violations are rejected at the contract boundary, not stored.
 - [ ] AC3: Given an existing user, when an issue is assigned to them by their `subject`, then the assignment is persisted; and when the issue is unassigned, then `assignee` reads as null. **An issue never assigned and an issue since unassigned are indistinguishable** — refinement decided this on 2026-08-31 (see Technical Notes).
 - [ ] AC4: Given an assignee `subject` with no row in the `users` projection ([T-0009](T-0009-role-authorisation-and-user-projection.md)), when assignment is attempted, then the API returns **400** with an `application/problem+json` body naming the offending field, and the issue is unchanged on a subsequent read.
 - [ ] AC5: Given any two declared statuses, when an issue moves directly between them, then the API permits it — transition validation is explicitly out of scope and must not be implemented ahead of the workflow goal.
 - [ ] AC6: Given the specification, when generation and the drift check run, then the diff is empty.
-- [ ] AC7: Given an issue whose lifecycle fields have never been set, when it is read, then each field holds the declared default from the specification — no field is null except `assignee`, and no client has to infer a default the contract does not state.
+- [ ] AC7: Given an issue whose lifecycle fields have never been set, when it is read, then `type` is `task`, `status` is `open` and `priority` is `normal` — declared as defaults in the specification, so no client has to infer them; `assignee` is the only nullable lifecycle field.
 - [ ] AC8: Given a caller with the `member` role, when they change any lifecycle field or assign any issue, then the request is permitted — lifecycle changes are not an admin act ([PROJECT.md](../../PROJECT.md) §5 names the three admin acts, and none of them is this).
 
 ## Examples / Scenarios
@@ -90,7 +90,8 @@ AC5 is a deliberate constraint against gold-plating: transition rules are a *lat
 
 ## Risks / Unknowns
 
-- **Which types, statuses, and priorities? — the one blocking question.** Still unanswered ([IDEA-002](../IDEAS.md)). Changing a declared enumeration after clients have generated against it is a breaking contract change. AC2 and AC7 are not verifiable until the sets exist, which is what keeps this ticket out of `ready`. A proposal is recorded in the Work Log for the maintainer to accept or replace.
+- ~~Which types, statuses, and priorities?~~ — **answered by the maintainer, 2026-08-31** (see Work Log). The asymmetry remains worth remembering for anyone tempted to extend the sets: adding a value is additive, renaming or removing one is a breaking contract change for every generated client.
+- **`in_review` was considered and deliberately left out.** It is the state a software team most obviously distinguishes, and it is also the first one that invites the transition rules AC5 forbids. If it is wanted, adding it later is the additive direction.
 - **Assignment depends on the user projection from T-0009.** Resolved as a dependency rather than an unknown (2026-08-30), but if T-0009 slips, this ticket cannot proceed — assignment to a subject with no local record has nothing to point at.
 - Whether status-change history is worth keeping is open. Not building it is cheap now; adding it retroactively cannot recover the history that was never recorded — a genuine one-way door worth a deliberate decision.
 
@@ -110,7 +111,7 @@ Assignment tests seed `users` directly (see Technical Notes). A test that assign
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — checked during refinement; note applied exceptions here.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`; the one failing item (item 3, verifiable criteria — the enumerations were undeclared) was closed the same day by the maintainer's answer. All nine universal items now hold. Item 5: depends on T-0005 and T-0009; T-0009 is `done`. Conditional items: security/privacy — assignment stores a subject already held by T-0009 and the read model returns a display name governed by `PROJECT.md` Q8; data-shape impact identified (four columns and a non-cascading foreign key); no UX; no ADR-bar decision. No exceptions applied.
 
 ## Definition of Done
 
@@ -203,5 +204,29 @@ is expensive to remove.
   be verified without them.
 - **DoR verdict:** **not ready** — DoR item 3 (verifiable criteria) fails while the declared
   sets are undeclared. Everything else holds.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Product Owner decision, recorded verbatim (maintainer, via `refinement-session`)
+
+Asked in-session with the asymmetry stated — adding a value later is additive, renaming or
+removing one is a breaking contract change for every generated client — and answered:
+
+> **Minimal.** `type`: `bug`, `task` · `status`: `open`, `in_progress`, `done` ·
+> `priority`: `low`, `normal`, `high`. Defaults: `task`, `open`, `normal`.
+
+The alternatives offered were a Jira-shaped set (adding `story`, `epic`, `in_review`, `closed`,
+`critical`) and minimal-plus-`in_review`. The minimal set was chosen over both.
+
+This closes the only DoR failure on this ticket. AC2 and AC7 now name concrete values, Scope
+carries the sets, and `in_review`'s deliberate absence is recorded in Risks so the next reader
+knows it was considered rather than overlooked.
+
+- **Did:** Put the decision to the maintainer with its cost asymmetry; transcribed the answer
+  into Scope, AC2, AC7 and Risks.
+- **Decided:** by the maintainer, as above.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready** — the item-3 failure recorded earlier today is closed.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

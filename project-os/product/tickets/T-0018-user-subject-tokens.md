@@ -2,13 +2,13 @@
 id: T-0018
 title: Issue tokens that carry a user subject, so the projection has something to project
 type: technical
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
 accepted_by: none
 depends_on: [T-0010]
-adrs: [ADR-0003]
+adrs: [ADR-0003, ADR-0007]
 created: 2026-08-31
 updated: 2026-08-31
 ---
@@ -71,7 +71,8 @@ the test host.
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given the Compose stack, when a token is requested for a seeded test person, then the token carries a `sub` claim identifying that person.
+- [ ] AC1: Given the Compose stack **with the grant explicitly enabled**, when a token is requested for a seeded test person, then the token carries a `sub` claim identifying that person.
+- [ ] AC1b: Given the stack with the grant **not** enabled — its default — when the same request is made, then it is refused. The gate is the whole safety argument of [ADR-0007](../../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md), and a gate whose default is only documented is not a gate; **proven by mutation**, not by reading the configuration.
 - [ ] AC2: Given such a token, when an authenticated request is made, then a user projection is created for that subject; and when the same token is used again, then the record is updated rather than duplicated (T-0015 AC8, T-0009 AC5/AC8).
 - [ ] AC3: Given a token carrying a subject and a role, when a guarded endpoint is requested, then the existing role policies permit or refuse it exactly as they do for a client token — the subject must not change the authorisation outcome.
 - [ ] AC4: Given the seeded test people, when the repository is inspected, then no real employee's name or email address is present (`PROJECT.md` Q8, [SECURITY.md](../../standards/SECURITY.md)).
@@ -120,13 +121,14 @@ asserting that *a* row exists rather than that *this caller's* row does.
 
 ## Relevant ADRs & Documentation
 
+- [ADR-0007](../../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md) — **the decision this ticket implements**: a test-only extension grant, gated off by default, deferring a real login model
 - [ADR-0003](../../architecture/adr/ADR-0003-initial-technology-stack.md) — Duende as the identity provider
 - [T-0009](T-0009-role-authorisation-and-user-projection.md) — the projection this finally exercises
 - [T-0015](T-0015-compose-stack-smoke-test.md) — AC8, the criterion deferred to here
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold. The failing conditional recorded earlier today — an architectural decision at the ADR bar — is closed by [ADR-0007](../../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md), **Accepted**. Item 7 (sizing): fits the guideline under the chosen option, which is one of the reasons it was chosen. Conditional items: security named (token issuance, seeded personal-data-shaped identities, the default-off gate) and carried by AC1b and AC4; no UX — deferring it is the point of the ADR; no data-shape change beyond seeded rows.
 
 ## Definition of Done
 
@@ -194,5 +196,32 @@ Another reason the decision comes first.
 - **DoR verdict:** **not ready** — the architectural conditional fails. Every universal item
   holds; if the answer is the recommended option, this becomes `ready` as soon as the ADR is
   `Proposed`.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Product Owner decision, recorded verbatim (maintainer, via `refinement-session`)
+
+The blocking question — the grant type — was put to the maintainer with all three candidates
+and their consequences, and answered:
+
+> **Test-only extension grant.** A custom Duende grant issuing tokens for seeded test people,
+> refused unless an explicit config flag is set.
+
+Authorization-code-with-a-login-page and resource-owner-password were both offered and both
+declined. Recorded as **[ADR-0007](../../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md)**,
+Accepted — the options were genuinely material in cost and consequence, so the ADR carries the
+comparison rather than only the conclusion.
+
+**AC1b added as a direct consequence.** The ADR's entire safety argument is that the grant is
+off by default, and this project has just spent a sprint learning that a claim with no failing
+test behind it is not evidence. A gate whose default is only documented is not a gate, so its
+refusal is now a criterion and must be mutation-proved.
+
+- **Did:** Transcribed the decision; wrote and indexed ADR-0007; added AC1b; linked the ADR in
+  frontmatter and in Relevant ADRs.
+- **Decided:** by the maintainer, as above.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready** — the architectural conditional recorded earlier today is closed.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
