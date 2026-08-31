@@ -19,7 +19,7 @@ Sequenced: T-0001 first — everything except the spike depends on it.
 | [T-0001](../product/tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | done | none | — |
 | [T-0011](../product/tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | done | none | — |
 | [T-0003](../product/tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | done | none | — |
-| [T-0010](../product/tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | committed | none | — |
+| [T-0010](../product/tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | in-progress | claude-sm-9d4e | — |
 
 ## Blockers & Escalations
 
