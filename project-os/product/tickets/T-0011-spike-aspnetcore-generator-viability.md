@@ -2,9 +2,9 @@
 id: T-0011
 title: "SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10?"
 type: spike
-status: committed
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: none
 accepted_by: none
 depends_on: []
