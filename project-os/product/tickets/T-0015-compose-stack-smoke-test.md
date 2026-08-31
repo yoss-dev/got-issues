@@ -1750,3 +1750,209 @@ marker docker also emits. None was a defect in what the check tests; all were de
 the check would accept as evidence. That is the pattern for the retrospective.
 
 **Approved for merge.** Merge, then `complete-ticket`.
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-9b3e) — confirmation of F1–F4 at `d32d3cb`
+
+Asked to confirm closure before `complete-ticket`, and to answer two questions independently.
+**F1, F2, F3 and F4 are closed — verified by re-running my own reproductions against a live
+stack, not by reading the diff.** Two questions answered at the end: yes, I can construct a gap
+in the scratch-database comparison, and it does not reopen F1; and yes, DoD item 4 holds with no
+deviation, subject to one two-line documentation correction named below.
+
+#### Gates re-run on the merged trunk at `d32d3cb`, each exit code read from its own tool
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `./tools/smoke.sh` | **0** | 12 passed, 0 failed, **3 m 27 s** |
+| `dotnet test` (root) | **0** | 17 + 46 = **63**, 12.3 s — AC5 still holds |
+| `dotnet build --no-incremental` | **0** | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **0** | solution |
+| `dotnet format apps/…SmokeTests.csproj --verify-no-changes` | **0** | smoke project |
+| `./tools/check-drift.sh` | **0** | no drift |
+| `python3 tools/validate-project-os/validate.py` | **0** | 19 tickets, 6 ADRs |
+| `./tools/smoke.sh --build-only` | **0** | rot guard |
+
+**No leaks, and the reference database does not become one.** Docker baseline before the run —
+2 foreign projects, **28** volumes, **33** containers — is identical after it. No `gs-*` project,
+no `smoke_schema_reference` survivor (it lives in the volume `down --volumes` destroys), and no
+leftover `compose run` container: `--rm` cleans up and `down --remove-orphans` would catch a
+straggler. I repeated the check after my own five hand-built stacks — back to 28 / 33 exactly.
+
+#### F1 — closed. Both of my reproductions re-run against a live stack
+
+I rebuilt the check's comparison outside the harness (same signature query, same set difference)
+and drove it against a real stack, green before each mutation and green again after restoring:
+
+| Reproduction | Reference rows | Live rows | Result |
+| --- | --- | --- | --- |
+| *(baseline, unmutated)* | 9 | 9 | **GREEN** |
+| **B — `drop table placeholder_records cascade`** | 9 | 6 | **RED** — `Missing: placeholder_records.CreatedAt timestamp with time zone, placeholder_records.Id uuid, placeholder_records.Label text` |
+| *(restored)* | 9 | 9 | **GREEN** |
+| **A — `Subject` rolled back to `varchar(200)` + its history row deleted** | 9 | 9 | **RED** — `Missing: users.Subject character varying(255)` / `Unexpected: users.Subject character varying(200)` |
+| *(restored)* | 9 | 9 | **GREEN** |
+
+Reproduction B is the one that mattered: it was **not** disclosed before acceptance, and under the
+old assertion it passed with every service healthy and `/health` returning 200. It is now caught
+by name. The diagnosis in the fix entry is the right one — an enumerated list of tables is a claim
+about its author's memory — and the replacement needs nothing anticipated.
+
+#### F2 — closed, and load-bearing rather than cosmetic
+
+I added a sixth service (`rogue`, long-running, no healthcheck) through an override and ran the
+stack:
+
+- `docker compose config --services` lists **six** services — nobody updated a list;
+- `docker compose up --wait` exits **0**, so `--wait` cannot catch it;
+- the new predicate `(IsRunning && IsHealthy) || ExitedCleanly` **fails** on `rogue` alone
+  (`state=running health='' exit=0`), while all five real services pass.
+
+Under the hard-coded list this service was invisible in both places. The fix is what caught it.
+
+**One behavioural consequence worth stating plainly, since it is a policy and not a bug:** a
+long-running service that declares no healthcheck now fails the smoke check. I agree with the fix
+entry that this is the right pressure — `compose ps` has nothing else to read — but it is a new
+constraint on `compose.yaml`, and the next person to add a sidecar will meet it.
+
+#### F3 — closed, and the marker is genuinely attributable
+
+I traced the whole chain for mutant 1 rather than trusting that it ends where it should:
+
+- `up --wait` exits **0** — setup succeeds, so a harness fault cannot masquerade as the catch;
+- `AssertStackHealthyAsync` **passes on all five services**, so it is not what fires;
+- `docker compose run --rm --no-deps … migrator` **inherits the neutered entrypoint** and exits
+  **0**, so `EnsureSucceeded("migrating the reference database")` passes too;
+- the reference database ends with **0 column rows**, so the assertion that fires is exactly the
+  one carrying `produced no schema at all`.
+
+For mutant 2, `up --wait` exits 0 and `api` reports `health=''`, so the predicate in
+`AssertStackHealthyAsync` is what fails, carrying `Every service must either be running and
+healthy`.
+
+**The B6 collision is real and the new markers are clean.** Across every byte of docker output I
+captured this session (33 147 bytes, five stacks, both mutations):
+
+| String | Occurrences in raw docker output |
+| --- | --- |
+| `health` | **33** |
+| `unhealthy` | 0 *(in this corpus; the reviewer observed it in a startup failure)* |
+| `produced no schema at all` | **0** |
+| `Every service must either be running and healthy` | **0** |
+
+`"health"` really would have matched docker's own vocabulary 33 times over. Both replacements are
+sentences only these assertions emit.
+
+#### F4 — closed. `HostPortAsync` now rejects a parsed `0` with a message naming the raw output.
+
+#### F5 — my judgement, so the DoD walk does not have to leave it open
+
+**F5 is not a defect and needs no ticket.** `ConfigurationStoreHealthCheck` claims that reading a
+client proves the schema exists and is queryable; it does exactly that, and that is the failure
+T-0010's review added it for. It never claimed clients are seeded. I could not reach the
+zero-client state by hand — deleting every client and restarting `identity` re-runs
+`identity-migrator` through the declared dependency and re-seeds — and AC6's accepted-token test
+covers the outcome regardless. Recorded as a narrowness of that check for whoever revisits it,
+**not** as an unowned residual. Nothing is owed on it under DoD item 4.
+
+---
+
+### Question 1 — yes, I can construct a gap, and it does not reopen F1
+
+**L1 (new, constructible) — the migration step is its own oracle, so a defect *in the step* is
+invisible.** The reference is produced by `compose run … migrator`, which uses the same service
+definition, image and command as the live migration step. If the step is wrong, the reference is
+wrong in the same way and the difference is empty.
+
+I built it rather than argued it. An override replaces `migrator` with a reduced step that creates
+`__EFMigrationsHistory` (one row) and `users`, but **not `placeholder_records`** — the API's only
+product table. Against that stack:
+
+| Check | Result |
+| --- | --- |
+| `docker compose up --wait` | exit **0** |
+| `AssertStackHealthyAsync` (all six declared services) | **PASS** — api/identity/postgres healthy, both one-shots exited 0 |
+| reference built by the stack's own step | **7 rows** — so `expected.Count > 0` **passes** |
+| live schema | **7 rows** |
+| set difference | **empty → the whole check is GREEN** |
+| live tables actually present | `__EFMigrationsHistory`, `users` — **no `placeholder_records`** |
+| `GET /health` | **200** |
+| `select count(*) from placeholder_records` | `ERROR: relation "placeholder_records" does not exist` |
+
+**Why this is not F1 returning.** F1 was *the live database diverges from a correct migration and
+the check says green* — closed, both reproductions now red. L1 is *the step and the database agree
+because both are wrong*, which is a different statement and, by construction, one no
+live-versus-reference comparison can make. Worth noting that the design I originally suggested —
+comparing applied migration ids against the migrations on disk — **would** catch L1 (four ids on
+disk, one recorded) and would **not** catch reproduction B. The two are complementary and the
+chosen one is strictly better on what I actually reproduced; I am not asking for mine back.
+
+The system is not undefended either: the 46 integration tests exercise the EF model against a real
+database built by these same migrations, so a missing table breaks them. The smoke tier alone
+cannot see it.
+
+**L2 (new, constructible) — precision and scale sit outside the signature, and outside the
+disclosed limit.** The signature selects `data_type` and `character_maximum_length` only.
+`information_schema.columns` also carries `numeric_precision`, `numeric_scale` and
+`datetime_precision`, none of which is read. Verified on a live stack:
+
+`alter table placeholder_records alter column "CreatedAt" type timestamp(0) with time zone`
+→ reference 9 rows, live 9 rows, **GREEN**. The column now truncates sub-second precision and the
+check cannot see it. The same holds for `numeric(18,2) → numeric(5,2)`; there is no `numeric`
+column in the schema today, which is why `timestamptz` is the demonstrable case.
+
+This matters because the doc comment's limit sentence names only *"indexes, constraints, defaults
+or nullability"*, which reads as "type changes are covered" — and width changes are, but precision
+and scale are not.
+
+**The disclosed limits are exactly as stated, confirmed one by one** — each applied to a live
+stack, each **GREEN**: nullability (`DisplayName` set NOT NULL), constraints (`PK_users` dropped),
+indexes (index dropped), defaults (`Label` given a default). No overstatement anywhere in that
+sentence.
+
+**What I am asking for, and it is two lines of prose, not code.** `StackCheck.cs:52-58` currently
+says a missing table, a missing column, a rolled-back width change *and an unapplied migration*
+all differ. The last is true only when the live database is **behind** the step, not when the step
+is behind the repository — L1. Amend the limit paragraph to name both: that the reference is
+produced by the step under test, so a defect the step reproduces identically cancels out; and that
+the signature excludes precision and scale as well as indexes, constraints, defaults and
+nullability. Under TESTING.md a coverage claim is evidence, so a comment claiming one span more
+than its evidence is the failure this ticket has spent three review rounds retiring. Correcting it
+is cheaper than the sentence that describes it.
+
+### Question 2 — DoD item 4 holds, with no deviation recorded
+
+**Confirmed, and `complete-ticket` may cite this.** Taking item 4 literally — *every defect found
+is either fixed or captured as a bug ticket linked from this one, with the PO persona accepting
+the deferral*:
+
+- **F1, F2, F3, F4 — fixed, not deferred**, and I verified each closure by reproduction above.
+  Nothing is pointing anywhere.
+- **F5 — judged not a defect** (reasoning above), so there is nothing to capture.
+- **F6, F7 — need nothing**, as recorded at acceptance.
+- **AC8 — deferred, and the destination accepts it.** Verified at acceptance by reading
+  [T-0018](T-0018-user-subject-tokens.md) itself: In Scope carries *"Proving **T-0015 AC8** with
+  such a token"*, AC2 carries the criterion in the same words, Out of Scope disowns nothing
+  relevant, and the ticket file exists and is registered. Re-affirmed here, unchanged.
+- **L1 and L2 are limits of new coverage, not defects.** Nothing regressed and nothing is broken
+  that was working; they bound what a check that did not exist last week can see. This ticket's
+  own convention — set when the index/constraint limit went into the doc comment rather than only
+  a Work Log entry — is that such limits are recorded in the source. My confirmation is therefore
+  **conditional on that one amendment**, and the condition sits under DoD item 6 (documentation
+  accurate) rather than item 4. If the PO prefers to leave the code untouched, recording L1 and L2
+  in this Work Log is a weaker but defensible close, and this entry already does it.
+
+**So: no PO deviation is required on item 3 or item 4.** The discharge of T-0001's and T-0010's
+deviations that I confirmed at acceptance is unaffected — F1's fix strengthens AC1's schema
+assertion and touches neither deviation's subject, and I re-ran the full suite green after it.
+
+- **Did:** Re-ran all eight gates at `d32d3cb`; re-ran both F1 reproductions against a live stack
+  (red, then green after restore); proved F2 load-bearing with a sixth service `up --wait` cannot
+  catch; traced F3's marker chain end to end for both mutants and counted marker collisions across
+  33 KB of real docker output; confirmed all four disclosed schema limits; constructed L1 and L2.
+- **Decided:** F1–F4 closed; F5 is not a defect; DoD item 4 holds with no deviation.
+- **Remaining:** `complete-ticket` — amend the two lines of the limit comment (or accept this entry
+  as the record), then `status: done`, `accepted_by: claude-qa-9b3e`, sprint and backlog updated.
+- **Open questions / blockers:** none.
+- **Test state:** `tools/smoke.sh` **12/12** exit 0, 3m27s, Docker byte-identical before and after
+  (28 volumes / 33 containers) · root `dotnet test` **63/63** exit 0, 12.3 s · build 0 warnings ·
+  `dotnet format` exit 0 (solution and smoke project) · `check-drift.sh` exit 0 · `validate.py`
+  exit 0 · `smoke.sh --build-only` exit 0.
