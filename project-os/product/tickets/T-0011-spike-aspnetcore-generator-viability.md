@@ -2,11 +2,11 @@
 id: T-0011
 title: "SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10?"
 type: spike
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-5e19
 depends_on: []
 adrs: [ADR-0004, ADR-0006]
 created: 2026-08-30
@@ -80,7 +80,7 @@ Requires either a host JDK (25 verified present, 2026-08-30) or the generator's 
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — for spikes: the question is answered (or the time box expired with findings), the findings are in this ticket, and follow-up tickets/ADRs are created and linked.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — spike DoD walked 2026-08-30. Question answered (and corrected); time box honoured; findings recorded with the working generator configuration; follow-ups created and linked (ADR-0006, Rejected — a terminal state, not a dangling Proposal).
 
 ---
 
@@ -235,3 +235,24 @@ which is invalid C# — `error CS1994: The 'async' modifier can only be used in 
 **Verdict: PASS.** The question posed is answered directly and correctly, the answer is now supported by evidence I reproduced independently rather than by assertion, the follow-up ADR exists and is correctly Rejected rather than left dangling as Proposed, ADR-0004 is intact, and no spike code shipped. The self-correction — and preserving the wrong reasoning as the record instead of quietly rewriting it — is exactly what the DoD's spike clause is for.
 
 Acceptor identity for the record: **`claude-qa-5e19`** (≠ `implemented_by: claude-sm-9d4e`, so the independence gate is satisfied). I left `accepted_by: none` and `status: in-acceptance` deliberately: this framework assigns both fields to `complete-ticket` at `done` (`templates/TICKET_TEMPLATE.md` — *“set by complete-ticket at done”*), `acceptance-test`'s State Changes do not include `accepted_by`, and the validator rejects `accepted_by` set on any status but `done`. `complete-ticket` should set `accepted_by: claude-qa-5e19` as it closes this ticket.
+
+### 2026-08-30 — Scrum Master (claude-sm-9d4e) — complete-ticket: **done**
+
+Spike DoD walked item by item:
+
+- **Question answered** — yes, and answered *correctly* only after the maintainer challenged the first verdict. The generator is viable with `operationIsAsync` **and** `operationResultTask`; ADR-0004 stands.
+- **Time box honoured** — the question was settled well inside 4 hours.
+- **Findings in the ticket** — including the exact working configuration for [T-0002](T-0002-contract-first-codegen-pipeline.md) to inherit, and four surviving non-blocking findings.
+- **Follow-ups created and linked** — [ADR-0006](../../architecture/adr/ADR-0006-nswag-for-server-contracts.md) is `Rejected`, a terminal state with its body preserved as the record of what was proposed and why it was wrong. No dangling Proposal.
+- **No spike code shipped** — verified by the acceptor: no tracked `.cs`/`.csproj`, no spike branch. The DoD's spike rule holds.
+
+**`accepted_by: claude-qa-5e19`** — the independent acceptance session (verdict PASS, commit `21b06c4`). It differs from `implemented_by: claude-sm-9d4e`, so independence is genuine, not nominal. That session reached the corrected verdict from its own generator runs *before* seeing my correction, which is the strongest form this check could have taken. It also correctly declined to set this field itself, since the validator reserves it for completion.
+
+Two findings from acceptance are carried forward rather than lost:
+
+1. **`buildTarget=library` is load-bearing, not cosmetic.** Removing it from the same option set makes the generator emit `public abstract async Task<...>` — invalid C# (`CS1994`). T-0002 must pin the whole option string rather than cherry-pick from it.
+2. **The `csharp` client half of the recorded configuration is asserted, not verified.** T-0002 should confirm it on first use.
+
+Both are recorded here and belong to T-0002, which reads this ticket.
+
+**Unblocking:** T-0002 lists `depends_on: [T-0001, T-0011]`. T-0011 is now `done`; T-0002 remains gated on T-0001 alone.
