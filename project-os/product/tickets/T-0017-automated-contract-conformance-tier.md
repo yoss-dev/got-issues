@@ -282,3 +282,42 @@ recorded on [T-0004](T-0004-create-and-list-projects.md).
 - **Remaining:** unchanged.
 - **Open questions / blockers:** none.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-5c14) — a blind spot in this ticket's own scope, found on T-0005
+
+Recorded from [T-0005](T-0005-create-and-read-issues.md)'s review, where it came up twice as a
+non-blocking note and has no other home. Not a scope change — a hole in the scope as written,
+worth having before implementation rather than after.
+
+**AC1 says "Given a response from any endpoint *exercised by the integration suite*".** That is the
+right boundary for a validator, and it leaves a gap that this project's signature defect walks
+straight through: **a declared response that no test ever produces is invisible to the tier.** The
+validator can only judge responses that happen; it cannot notice the ones that never do.
+
+Measured on T-0005's two new operations, whose declared set is 400/401/403/404/500 each:
+
+| Declared | Exercised by the integration suite? |
+| --- | --- |
+| `403` on `createIssue` | Yes — one test, status code only |
+| `403` on `getIssue` | **No test at all** |
+| `500` on either | **No** — reached only under mutation, and in the smoke tier by stopping the database |
+
+So a tier built exactly to AC1 would report green on a contract half of whose declared responses
+nothing has ever produced — including the `403` whose body already has no guard in any tier (noted
+above from T-0004's review). The two gaps compound: the body is unguarded *and* the response is
+unexercised, so nothing would ever discover either.
+
+This is the same asymmetry recorded above, in a third direction: **declared, enforced, and never
+exercised.** The check that closes it is coverage-shaped rather than validation-shaped — enumerate
+the responses the specification declares per operation, and fail when the suite never produced one
+— so it is a genuinely separate mechanism from AC1–AC4, not a widening of them.
+
+Refinement should decide whether it belongs here or in its own ticket. Recording it either way,
+because the alternative is that a fourth reviewer finds it.
+
+- **Did:** Recorded the unexercised-response gap in AC1's boundary, with the T-0005 measurements.
+- **Decided:** nothing — whether this is in scope is refinement's call.
+- **Remaining:** unchanged; this ticket stays `ready`.
+- **Open questions / blockers:** none.
+- **Test state:** n/a — not started.
