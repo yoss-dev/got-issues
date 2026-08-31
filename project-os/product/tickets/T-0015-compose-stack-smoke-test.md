@@ -1956,3 +1956,51 @@ assertion and touches neither deviation's subject, and I re-ran the full suite g
   (28 volumes / 33 containers) · root `dotnet test` **63/63** exit 0, 12.3 s · build 0 warnings ·
   `dotnet format` exit 0 (solution and smoke project) · `check-drift.sh` exit 0 · `validate.py`
   exit 0 · `smoke.sh --build-only` exit 0.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — L1 and L2: the comment claimed more than the check delivers
+
+`claude-qa-9b3e` confirmed F1–F4 closed and DoD item 4 holding with no deviation, then did
+the thing worth more than the confirmation: it constructed a gap and demonstrated it.
+
+**L1 — the migration step is its own oracle.** The reference database is migrated by the
+*same service definition* as the live one, so a defect **in the step** appears identically on
+both sides and cancels. With a reduced migrator that omits `placeholder_records`: `up --wait`
+0, every service healthy, reference 7 rows (so the non-empty guard passes), live 7 rows,
+difference empty — **the whole check green** against a stack where the table does not exist.
+
+This is not F1 returning. F1 was *the database diverges from a correct migration and the
+check says green*, and that is closed. L1 is *both are wrong together*, which **no**
+live-versus-reference comparison can see by construction. My comment said the check catches
+"an unapplied migration", which is true only when the database is behind the step and false
+when the step is behind the repository — precisely the case L1 names. The check compares the
+database against the step, not against the repository's intent, and now says so.
+
+Worth recording because it cuts against my own fix: the acceptor's original suggestion —
+migration ids against the migrations on disk — **would** have caught L1 and would **not** have
+caught the dropped table. Neither formulation dominates. It declined to ask for its own design
+back on the grounds that mine is better on what it actually reproduced, which is the right way
+to settle it and not the way it usually goes.
+
+**L2 — precision and scale are outside the signature.** `numeric_precision`,
+`numeric_scale` and `datetime_precision` are not read, so `timestamp(0)` against `timestamp`
+passes. My disclosure named indexes, constraints, defaults and nullability, which reads as
+"type changes are covered". Lengths are; precision is not. The distinction is now explicit.
+
+Both are limits of new coverage rather than defects, and nothing regressed — but a limit
+stated too narrowly is a claim outrunning evidence in the same way a missing test is, which is
+this project's whole recurring theme. Amended in the doc comment where the decision to trust
+the check gets made.
+
+**F5 closed as not-a-defect** on the acceptor's explicit assessment: the identity check claims
+the configuration store is queryable and proves exactly that; the zero-client state is
+unreachable by hand because the declared dependency re-seeds; AC6 covers the outcome. No
+ticket owed, so nothing is left pointing nowhere.
+
+- **Did:** Amended the documented limits to name L1 and L2 and corrected the "unapplied
+  migration" claim.
+- **Decided:** state the oracle problem in the code rather than only in a Work Log entry —
+  someone deciding whether to trust this check will read the method, not this ticket.
+- **Remaining:** `complete-ticket`.
+- **Open questions / blockers:** none.
+- **Test state:** documentation-only change to one comment; build 0 warnings, `dotnet format`
+  exit 0, and the full suite re-run below.

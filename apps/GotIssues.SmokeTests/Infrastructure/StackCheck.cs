@@ -50,13 +50,24 @@ public static class StackCheck
     ///
     /// This migrates a scratch database with the stack's own migration step and compares
     /// full column signatures: every table, column, type and length. A missing table, a
-    /// missing column, a rolled-back width change and an unapplied migration all differ.
-    /// The reference must be non-empty, or a migration step that does nothing would agree
-    /// with a database where nothing was done.
+    /// missing column and a rolled-back width change all differ. The reference must be
+    /// non-empty, or a migration step that does nothing would agree with a database where
+    /// nothing was done.
     ///
-    /// Known limit: the signature is <c>information_schema.columns</c> only — no indexes,
-    /// constraints, defaults or nullability — so a migration that adds only an index
-    /// produces an identical signature and would not be detected.
+    /// <para><b>What this compares, precisely.</b> The live database against <i>the
+    /// migration step as it exists in this stack</i> — not against the repository's
+    /// intent. So it catches the database being behind the step, and not the step being
+    /// behind the repository: a step that omits a table produces a reference missing that
+    /// table too, the two agree, and the check passes. The step is its own oracle here,
+    /// which no live-versus-reference comparison can see by construction. The integration
+    /// tier is what defends that; this one cannot. Demonstrated by `claude-qa-9b3e` with a
+    /// reduced migrator, 2026-08-31.</para>
+    ///
+    /// <para><b>Known limits.</b> The signature is <c>information_schema.columns</c> only:
+    /// no indexes, constraints, defaults or nullability, so a migration adding only an
+    /// index produces an identical signature. Nor does it read <c>numeric_precision</c>,
+    /// <c>numeric_scale</c> or <c>datetime_precision</c> — lengths are covered, precision
+    /// is not, so <c>timestamp(0)</c> against <c>timestamp</c> passes.</para>
     /// </summary>
     public static async Task AssertSchemaMigratedAsync(ComposeProject stack)
     {
