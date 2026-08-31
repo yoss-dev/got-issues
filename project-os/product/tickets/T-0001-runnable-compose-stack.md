@@ -636,3 +636,81 @@ Neither the implementer nor the reviewer caught this; both verified the commands
 Proceed to `complete-ticket`, which must settle two things before `done`: **the DoD item 3 deviation (or T-0003 landing first)**, and **D1 (fix in place or capture as a ticket)**.
 
 Status left at `in-acceptance` for `complete-ticket`; `accepted_by` deliberately not set, as the validator reserves that field for the transition to `done`.
+
+### 2026-08-30 — Software Engineer (claude-rev-2c8d) — review of the D1 fix
+
+Review of `6fe5062` on `t-0001-fix-readme-banner` (one paragraph, `README.md`). Branch contains all of `main`; `git diff main` is exactly that one line.
+
+**Verdict: REQUEST CHANGES.** The replacement paragraph itself is accurate and well judged. But the sweep asked for turned up a command in *Getting started* that does not work on a clean clone — and the new banner is the sentence that now asserts it does.
+
+#### 1. Is the replacement accurate as of `main` today?
+
+Yes, clause by clause: the API, PostgreSQL and the explicit migration step do come up under Compose (verified across three clean clones during review); there are no product endpoints (`/health` remains the only route in the change-set); the contract-first pipeline and authentication genuinely do not exist. It neither overclaims nor understates, and pointing at *Not here yet* instead of restating it is the right call — one list to keep true, not two.
+
+Nit, not a finding: "the contract-first pipeline … and authentication arrive **next**". Authentication is committed to SPRINT-001 (T-0010); the pipeline (T-0002) is not — it sits in the backlog. *Not here yet* names both tickets correctly, so no reader is misled about what exists, only about timing.
+
+#### 2. Contradictions?
+
+None found. It is consistent with *Not here yet* (which covers `dotnet test`, `spec/`+`generate.sh`, and auth) and with `PROJECT.md` — note it carefully does **not** claim the identity provider runs, which §3's goal statement includes and the stack does not yet deliver. ADR citations are the right ones for each clause.
+
+#### 3. The sweep — three findings
+
+**D2 (blocking) — `README.md:62` does not work from a clean clone.**
+
+```
+dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations
+```
+
+On a virgin clone this fails: `error NETSDK1004: Assets file … project.assets.json not found` → `Unable to retrieve project metadata`. Reproduced on two independent fresh clones. The local tool manifest is *not* the problem — `dotnet tool list` resolves `dotnet-ef` 10.0.11 and the SDK restores it automatically. It is a plain NuGet restore: the command succeeds after `dotnet restore` (or `dotnet build`), and I confirmed it then scaffolds correctly.
+
+Why this blocks *this* change rather than becoming a ticket: [DOCUMENTATION.md](../../standards/DOCUMENTATION.md) makes "**The root README must work from a clean clone**" a `[confirmed]` rule, and adds "if a step drifts, fixing the README is part of the ticket that broke it". More pointedly, the paragraph under review is the one that now says *"the commands below work as written"* — the old banner made no such claim. Shipping a doc fix whose purpose is to stop the README lying, while it asserts something demonstrably false two sections down, is the wrong trade. The fix is one line: put `dotnet restore` (or a pointer to *Build*) ahead of the snippet.
+
+This also means AC9's original pass was incomplete — QA and I both exercised *Run the stack* and neither of us ran the scaffold command. Not caused by this branch; surfaced by it.
+
+**S1 (non-blocking) — `spec/README.md:9` is stale in exactly the D1 way.** It reads *"The specification itself does not exist yet — it arrives with the first implementation ticket."* T-0001 **is** the first implementation ticket, and the spec did not arrive with it — it arrives with T-0002. Same bootstrap-era forward reference, same falsifying event, one file away, and it is linked from `README.md:3`. DOCUMENTATION.md permits either route here — "file a ticket when found; fix in place when the fix is within your current ticket's scope" — and `spec/README.md` is not in this ticket's In Scope, so I am not making it blocking. Recommend fixing in place anyway: it is one line, in the source tree, on the same lane as this branch, and a ticket for a nine-word correction costs more than the correction.
+
+**S2 (non-blocking, and it must NOT be fixed here) — `project-os/architecture/ARCHITECTURE.md:5`** still says *"**State: designed, not yet built.** No application code exists yet (2026-08-30)."* False as of T-0001, and the file self-identifies: "where this file and the code disagree once code exists, the code is the truth and this file is a defect." Route it to the trunk, not this branch: `project-os/architecture/` is delivery state, not governance — [GIT.md](../../standards/GIT.md) puts `governance/`, `standards/`, `templates/` and `skills/` on lane 2 and leaves ADRs (same tree) on lane 1 — so it belongs in an `os:` commit on `main` or its own ticket. Fixing it on a ticket branch would mix the lanes.
+
+I checked the rest of the README against reality rather than sampling: every one of the nineteen link targets resolves; `docker compose up --build`, the `curl` health example (including its exact response body), `docker compose run --rm migrator` and `dotnet build` all work verbatim from a virgin clone; the prerequisites table is correct now that the JDK row is gone (T-0002 will need it back). The *Repository layout* table describes intended contents rather than current ones (`infra/`, `libs/`, `spec/` hold only READMEs) — that is a layout contract mirroring `ENGINEERING.md`, each row links to a README that explains its own state, and I do not think it needs qualifying.
+
+#### Does the acceptance verdict stand?
+
+**For the banner change, yes — no re-acceptance.** It is one prose paragraph: no code, no behaviour, no acceptance criterion touched. Re-running nine ACs over it would be theatre.
+
+**One scoped exception, created by the D2 fix rather than by the banner:** correcting `README.md:62` changes a *Getting started* command, which is the literal subject of AC9. Once D2 lands, QA should re-check **AC9 only** — one command, one clean clone, a couple of minutes — rather than repeat the full pass. AC1–AC8 are untouched and stand as accepted.
+
+#### Clear to merge?
+
+**Not yet — fix D2 first.** With D2 corrected (and S1 too, if the PO agrees it is cheaper than a ticket), this is clear to merge with an AC9-only re-check. S2 goes to the trunk independently of this branch.
+
+### 2026-08-30 — Software Engineer (claude-rev-2c8d) — D2/S1 confirmation, final verdict
+
+Review of `e16a401`. **Verdict: APPROVE. The branch is clear to merge.**
+
+**D2 — fixed, verified independently.** Fresh clone of the branch tip, ran the snippet exactly as a reader would:
+
+```
+dotnet restore     → Restored GotIssues.Api.csproj (149 ms)
+dotnet dotnet-ef migrations add ProbeRev …  → Build succeeded. Done.
+                   → 20260831014858_ProbeRev.cs + .Designer.cs generated
+```
+
+The comment on the line ("required on a fresh clone: the EF tooling builds the project") explains *why* rather than just what, which is what stops it being deleted as noise later. Probe clone deleted.
+
+**S1 — fixed.** `spec/README.md` now names T-0002 and says what it brings, so the sentence cannot go stale again the way "the first implementation ticket" did — it points at a ticket id, not at a moving target.
+
+**S2 — correct, and correctly placed.** Landed on the trunk as `4bd351a`, not here; the commit message records the lane reasoning, which is worth more than the fix. I checked the rewrite for the failure mode it was fixing: the three rows it claims are real — *Compose stack*, *API service*, *Database* — all exist under those exact names in the component table, and the four it excludes (specification, generated contracts, identity host, product endpoints) are the right four. Adding the note that the banner was itself stale for one merge is the part most likely to keep it true.
+
+**On the "arrive next" nit — I withdraw it, and the reasoning is better than mine.** A banner that tracks sprint scope is a second thing to re-edit every time scope moves, and it would go stale exactly the way the one we just fixed did. One hedged word beside a *Not here yet* section carrying precise ticket ids is the more durable arrangement. Leave it.
+
+**Scope check.** Against its merge base the branch changes exactly three files: `README.md` (2 lines), `spec/README.md` (1 line), and this Work Log. Nothing else.
+
+I did not re-run the stack, deliberately: `git diff cd8a1a7..HEAD -- README.md` is exactly the banner plus the `dotnet restore` line, so *Run the stack*, the `curl` example, the migrator command and *Build* are byte-identical to content I already verified end to end on a clean clone. Re-running Docker over a two-line prose change would be ceremony, not evidence.
+
+**One merge-mechanics note.** The branch is one commit behind `main` (`4bd351a`, the S2 fix). It never touched `ARCHITECTURE.md`, so `git diff main` showing that file is just the trunk being ahead — a normal merge resolves it from the merge base and will not revert it. Bring the trunk in first anyway, per [GIT.md](../../standards/GIT.md).
+
+**Acceptance:** unchanged from my last entry. AC1–AC8 stand as accepted; **AC9 only** wants a re-check against the corrected README — `dotnet restore` then the scaffold command on a clean clone, which I have just done and which QA should confirm independently.
+
+**Clear to merge.** Squash-merge titled `T-0001: <summary>`, `os:` status commit on the trunk, then remove the worktree and delete the branch.
+
+Closing note on the sweep, since it is the reusable part: D1, D2 and S1 were three instances of one failure — documentation written when something did not exist, not revisited when it did. They were found by grepping for the shape of the claim ("first implementation ticket", "not yet built", "does not exist yet") rather than by rereading prose, and by running every documented command on a virgin clone rather than a warm one. Both are cheap enough to repeat whenever a ticket makes something real for the first time.

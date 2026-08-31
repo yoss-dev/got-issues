@@ -4,7 +4,7 @@ A self-hosted, API-first issue and task tracker for the company's own engineerin
 
 This is a **proof of concept** — a step toward running the company's development tooling in-house (self-hosted git being the eventual prize) and a test of whether contract-first delivery holds up in practice. Full project facts, constraints, and their confidence levels are in [`project-os/PROJECT.md`](project-os/PROJECT.md).
 
-> **Status: bootstrapped, not yet built.** The stack and the way of working are decided ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md), [ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)); no application code exists yet. The commands below describe the intended shape and become real with the first implementation ticket.
+> **Status: the stack runs.** The API, PostgreSQL, and an explicit migration step come up under Docker Compose ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)); the commands below work as written. There are no product endpoints yet — the contract-first pipeline ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)) and authentication arrive next. See *Not here yet* below for what does not exist.
 
 ## Repository layout
 
@@ -59,6 +59,7 @@ docker compose run --rm migrator
 To scaffold a new migration after changing the model:
 
 ```bash
+dotnet restore     # required on a fresh clone: the EF tooling builds the project
 dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations
 ```
 

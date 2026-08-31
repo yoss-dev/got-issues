@@ -6,4 +6,4 @@ Server contracts and clients are generated from this file into [`libs/`](../libs
 
 Because the specification *is* the product's user-facing documentation ([documentation standards](../project-os/standards/DOCUMENTATION.md)), every operation and schema carries a description written for someone who has never seen the code.
 
-> The specification itself does not exist yet — it arrives with the first implementation ticket.
+> The specification itself does not exist yet — it arrives with [T-0002](../project-os/product/tickets/T-0002-contract-first-codegen-pipeline.md), which builds the generation pipeline around it.
