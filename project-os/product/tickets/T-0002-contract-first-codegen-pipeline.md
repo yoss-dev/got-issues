@@ -764,3 +764,59 @@ I am not doing the rebase myself: it is the implementer's step, and performing i
 - **Branch / PR:** `t-0002-fix-client-claim` @ `180a57d` — **approved, pending rebase**.
 - **Test state:** all gates green except `validate.py`, red solely from the branch being one commit behind `main`.
 - **Review verdict:** **Approve** — ENG (`claude-rev-8b4f`).
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-5a71) — D1 confirmed closed
+
+Targeted re-check of **D1 only**, on `main` @ `f1f6d81`. My acceptance PASS on the nine criteria stands and was not re-derived. Everything below was checked against artefacts; I did not read the fix entry, the correction entry or the review until after I had run the checks, precisely because the failure this ticket keeps producing is a record that outruns the repository.
+
+**D1 is closed.**
+
+#### 1. The false claim is absent from everything that ships
+
+Searched **every** file under `spec/`, `libs/`, `apps/`, `tools/` and the root README — 119 files — with all whitespace collapsed to single spaces first, so the YAML line wrap that hid the phrase from a naive `grep` (and produced the false Work Log entry) could not hide it from me either. Three phrasings of the old claim searched, case-insensitively: **0 occurrences**.
+
+I then swept **every tracked file in the repository**. Four occurrences survive, and all four are in *this ticket's Work Log*: the two original assertions, the reviewer's quotation of one, and the implementer's own quotation in the correction entry. Each sits adjacent to text identifying it as false — including the `> Correction (2026-08-31)` block now directly beneath the claim in the *Three findings* section, which was the reviewer's second non-blocking item and is the right treatment: the record shows what was believed and when, without a reader being able to take it as current.
+
+Nothing that ships to a client author carries the claim.
+
+#### 2. The corrected wording reached the generated output — proven by regeneration, not by presence
+
+The new sentences are present in all four generated artefacts: `libs/GotIssues.Client/api/openapi.yaml`, `docs/apis/PlaceholderApi.md`, the client's `Api/PlaceholderApi.cs`, and `libs/GotIssues.Contracts/.../Controllers/PlaceholderApi.cs` — twice each for the two parameters, and eight times in the client API where every overload documents both.
+
+But presence is the weaker check, and this ticket has already shown why: text can be present because someone put it there. So the one that settles it — **`./tools/check-drift.sh` → exit 0**, run by me on the current tip. The committed `libs/` tree regenerates byte-identically from the corrected `spec/openapi.yaml`, which means the wording in `libs/` is *produced by* the source spec rather than pasted alongside it. That is the property that cannot be faked by an edit in the wrong place, and it is the pipeline enforcing its own rule on the fix to its own document.
+
+**The change is text-only, so the corrected statement is still true of the artefact it describes.** I checked rather than assumed: the diff over `libs/` contains no executable change; `ValidateCreatePlaceholder` (a null check) remains the only validator in the generated client; there is no `Range` attribute, no bounds check and no throw anywhere in it; and `ListPlaceholdersAsync` still writes both values straight into the query string via `ParameterToString`. The document now says the client does not check before dispatching, and the client still does not check before dispatching.
+
+#### 3. It does not overclaim in the other direction — my view, as the one who proved the behaviour
+
+It does not, and the equal-strength change was the right call.
+
+Both descriptions now carry the **identical** two sentences, verbatim: *"Enforcement is the server's. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not."* I confirmed that by comparing the two texts, not by taking the claim. The reviewer's point was sound — I watched **both** `pageSize=10000` and `page=0` leave the client, so I had direct evidence for both, and a reader comparing a verified negative against a mere caution would have reasonably inferred the difference meant something.
+
+On the wording itself:
+
+- The general half — *"Declaring a bound does not mean a generated client checks it"* — is correctly hedged. It would have been a fresh falsehood to say generated clients never validate; some generators do emit client-side constraints, and this project's own `aspnetcore` output emits `[Range]` on the server contract.
+- The specific half is scoped to *"the C# client generated from this document"* — exactly the artefact I tested, with two values, at both bounds. Narrow enough to be true, specific enough to be actionable.
+- The positives that remain are both true and neither is grudging. `page`'s *"the constraint lives in the contract rather than only in the server's code"* is verifiably the case: the bound reaches the generated abstract controller as `[Range(1, 1000000)]`, and the `Math.Max`/`Math.Clamp` pair that once held it is gone from `PlaceholderController`. A reader learns the limit exists, learns who enforces it, and is told not to rely on the client — which is the whole truth, stated without gloom.
+
+**One forward-looking note, non-blocking and not a defect today.** The negative is scoped to *the C# client*, which is exact now because it is the only client this document has produced. ADR-0004's entire justification is polyglot generation, and this ticket's Out of Scope defers TypeScript and Python clients. When a second client is generated, that sentence stays true while becoming narrower than the reader needs — a TypeScript author could reasonably read "the C# client does not" as implying theirs might. Whoever generates the second client should widen it or name each. Worth one line then; nothing to do now.
+
+#### 4. DoD item 4 — **now satisfied**
+
+That was my stated condition, and it is met.
+
+- **D1 is fixed at source**, not deferred, and fixed the way `DOCUMENTATION.md` prescribes — in place, within the ticket that owns the file — rather than by adding client-side validation, which would have meant hand-editing generated code that ADR-0004 forbids.
+- **No other known defect is unrecorded.** Of my five non-blocking observations: **N2** (no automated contract tier) is now [T-0017](T-0017-automated-contract-conformance-tier.md) at `high`, and its **AC6 requires the four mechanically-detectable defects to be reintroduced one at a time and caught** — which is the criterion that makes the tier worth having, since a tier that only ever passes proves nothing. **N4** (the drift check is blind to *ignored* files as well as untracked ones) is carried in T-0016's Risks, which names the `.gitignore` interaction explicitly. **N3** is expressly not a defect (RFC 9457 permits extension members). **N5** is the reviewer's own non-blocking finding 9, recorded and true only while `libs/` stays generated-only. **N1** — the generator is pinned by mutable tag rather than `@sha256:` digest — has no destination ticket, and needs none for this item: AC8 asks for an explicit version pin and has one, so N1 is a hardening suggestion, not a defect.
+- The two residuals the third review flagged remain resolved, with destinations whose scope lines accept them (T-0014 widened; T-0016 created).
+
+#### Gates, re-run by me on the current tip
+
+The generated tree changed since my acceptance, so I did not carry my earlier run forward: `validate.py` → **OK (17 tickets, 6 ADRs)** · `dotnet build --no-incremental` → **0 warnings / 0 errors** · `dotnet format --verify-no-changes` → **0** · `dotnet test` → **26/26, 0 skipped** · `./tools/check-drift.sh` → **0** · working tree clean.
+
+- **Did:** Whitespace-normalised sweep for the old claim across everything that ships (119 files) and then across every tracked file; confirmed the corrected wording in all four generated artefacts and proved it is generator output by regenerating; confirmed the diff is text-only and that the client still performs no pre-dispatch validation; compared the two descriptions for equal strength; re-ran every gate.
+- **Decided:** D1 closed. The correction is accurate, correctly scoped in both directions, and reaches the artefacts that ship. DoD item 4 is satisfied.
+- **Remaining:** `complete-ticket`. The ticket is currently `status: in-progress` / `owner: claude-sm-9d4e` from the reopening; that is the only state left to move.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged; verified on `main` @ `f1f6d81`.
+- **Test state:** all gates green as listed above.
+- **Acceptance verdict:** **PASS stands; D1 closed** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
