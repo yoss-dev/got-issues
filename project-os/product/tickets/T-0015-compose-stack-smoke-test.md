@@ -83,6 +83,8 @@ Relates to [T-0012](T-0012-pin-container-base-images.md): once base images are d
 - **This is a slow test by nature** — image builds and container startup. If it becomes slow enough to be skipped it protects nothing, which is why AC5 keeps it out of the habitual tier and why it needs an obvious way to run.
 - Driving `docker compose` from a test harness is awkward; an alternative is a shell script with assertions. Refinement should choose deliberately rather than defaulting to whichever is nearer to hand.
 - **AC3 is hard to make deterministic** — "slow database" is a race by construction. It may need an injected delay rather than luck.
+- **The split seam, if this overruns, is stack (AC1–AC3) versus identity (AC6–AC7) — and it only works *after* the harness exists.** Splitting earlier just relocates the expensive part, which is standing the harness up at all; both halves need the same one (`claude-rev-2c8d`, 2026-08-30).
+- **AC4 is what makes the other six trustworthy** — mutation-proven rather than green-run-proven. If anything is trimmed under pressure, not that one.
 - **AC6's expired-token case needs either a short-lived token lifetime configured for the test or clock control.** Minting an expired token requires the issuer's cooperation; this is the refusal case most likely to be quietly dropped.
 - Overlaps [T-0014](T-0014-correct-testing-standard-commands.md) if the standard ends up describing this command too.
 
