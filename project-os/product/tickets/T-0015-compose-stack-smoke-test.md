@@ -1063,3 +1063,339 @@ fix.
 
 **Approved for merge.** Merge, then the `os:` status commit on the trunk per
 [GIT.md](../../standards/GIT.md)'s handover sequence.
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-9b3e) — independent acceptance
+
+**Verdict: PASS.** AC1–AC7 each verified against the merged code at `7bda6bc` on `main` in the
+primary checkout; AC8 correctly deferred to a destination that genuinely accepts it. Seven
+findings recorded below, none blocking — F1 and F2 are verified coverage gaps in the schema
+assertion (F1 is the implementer's own "For QA to probe", now reproduced and extended), F3 is
+a partial application of the review's B3, and F4–F7 are smaller. One item needs a decision at
+`complete-ticket`, named at the end.
+
+I did not implement this ticket (`implemented_by: claude-sm-9d4e`) and I did not review it
+(`claude-rev-6d21`). I derived my checks from the Problem/Scope/AC sections before reading the
+Work Log, and I re-ran or reconstructed every claim I report rather than citing the entry above.
+
+#### Gates, every exit code read from the tool itself — no pipeline, no grep
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `./tools/smoke.sh` | **0** | 12 passed, 0 failed, **3 m 23 s** |
+| `dotnet test` (root) | **0** | 17 + 46 = **63**, **14.7 s** wall — AC5 holds |
+| `dotnet build --no-incremental` | **0** | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **0** | solution |
+| `dotnet format apps/GotIssues.SmokeTests/GotIssues.SmokeTests.csproj --verify-no-changes` | **0** | the project outside the solution |
+| `./tools/check-drift.sh` | **0** | generated code matches `spec/openapi.yaml` |
+| `python3 tools/validate-project-os/validate.py` | **0** | 19 tickets, 6 ADRs |
+| `./tools/smoke.sh --build-only` | **0** | the rot guard works |
+| `./tools/smoke.sh --list-tests` | **0** | 12 tests listed — N6's `"${@+"$@"}"` genuinely forwards arguments |
+| `dotnet list … package --vulnerable --include-transitive` | **0** | no vulnerable packages |
+
+**No leaks — measured, not assumed.** `docker compose ls --all` and `docker volume ls` captured
+before the smoke run and again after it are **byte-identical**: the same two foreign projects
+(`docker`, `pool-care`) and the same 28 volumes, no `gs-*` project and no `postgres-data` /
+`identity-keys` volume left behind. This machine was running six other containers including
+four PostgreSQL instances throughout, which is the collision condition the attribution rule
+exists for. I repeated the check after my own eight hand-built stacks: Docker is back to its
+starting state exactly.
+
+#### Criterion by criterion — what I did, not what I read
+
+**AC1 — PASS.** `AC1_a_cold_start_on_an_empty_volume_brings_every_service_up_healthy` green in
+my run. Verified non-vacuous by standing the stack up myself: `up --wait` exit 0 with
+`postgres`/`identity`/`api` `running`+`healthy` and `migrator`/`identity-migrator` `exited 0`.
+The assertion reads `compose ps --format json` rather than inferring health from `up --wait`,
+which F3 below shows still matters.
+
+**AC2 — PASS, verified by hand end to end.** Inserted `qa9b3e-50b2d8b0698e40a081e433ac44767627`
+into `users`, `docker compose down` **keeping volumes**, `up -d --wait`:
+
+- the row survived (`select count(*) … where "Subject" = …` → **1**);
+- `public."__EFMigrationsHistory"` → **4** before and **4** after;
+- `migrator` `exited 0`.
+
+The migrator's own log on that restart reads `No migrations were applied. The database is
+already up to date.` **immediately followed by** `Migrations applied.` — which independently
+confirms `RestartTests.cs:44-46`: the log genuinely cannot distinguish the two cases, so
+asserting from the history count was the correct call and not a stylistic preference.
+
+**AC3 — PASS, verified by hand, both halves.** Started `api` with `--no-deps` and **no database
+at all**: after 25 s the container is `running` (not exited, not crash-looping), health
+`starting`, `GET /health` → **503** `{"status":"Unhealthy","checks":{"database":{"status":"Unhealthy","description":"database not reachable"}}}`.
+Then brought the database up: `GET /health` → **200**, and — the part the test does not assert
+but which is the actual claim — **the same container id** (`35ed4f9ba6a3` before and after) with
+`RestartCount 0`. It waited; it was not restarted into health. T-0001 AC7 holds.
+
+**AC4 — PASS, and I reproduced the whole chain rather than trusting the table.**
+
+*Mutant 1, migration step neutered (`entrypoint: ["/bin/sh","-c","exit 0"]`), my own project:*
+
+| Observation | Value |
+| --- | --- |
+| `docker compose up --wait` | **exit 0** |
+| `compose ps` | api/identity/postgres `running`+`healthy`, both one-shots `exited 0` |
+| `GET /health` on the discovered ephemeral port | **200** `{"status":"Healthy","checks":{"database":{"status":"Healthy","description":"database reachable"}}}` |
+| `… table_schema='public' and table_name='__EFMigrationsHistory'` | **0** ← the first assertion in `AssertSchemaMigratedAsync` is what fires |
+| the **unqualified** variant the implementer rejected | **1** ← it really would have passed here |
+| `… table_name='users'` | **0** |
+
+So `AssertStackHealthyAsync` genuinely cannot catch this mutant, `/health` genuinely reports
+Healthy against a database with no tables, and the kill is attributable to the *right*
+assertion. The self-reported survival in the Work Log is accurate and the fix is right rather
+than merely sufficient.
+
+*Mutant 2, `api` healthcheck disabled:* `up --wait` **exit 0** — confirmed, `--wait` has nothing
+to wait for — and `compose ps` reports `api` with `Health: ''`, so only the explicit state
+assertion catches it. The claim at `BrokenStackTests.cs:52-55` is exact.
+
+*Two further mutations of my own, neither shipped:* removing `api.depends_on` entirely
+(`!reset null`) and weakening it to `condition: service_started` both make `up --wait` **exit 1**
+(`container … migrator-1 exited (0)`), so the check fails on them too. Ordering mutations are
+killed, though by `--wait` semantics rather than by an assertion that names ordering.
+
+**AC5 — PASS.** Root `dotnet test` is **63 tests in 14.7 s**, and the only assemblies it loads
+are `GotIssues.Api.UnitTests.dll` and `GotIssues.Api.IntegrationTests.dll`. `GotIssues.slnx`
+lists projects explicitly (no globbing); there is no `Directory.Build.props`/`.targets` at the
+root, and the only reference to `GotIssues.SmokeTests` anywhere outside its own directory is
+`tools/smoke.sh:21`. AC5's mechanism is structural, not a convention someone must remember.
+The README section (`README.md:75-88`) documents both `tools/smoke.sh` and `--build-only`, and
+both work.
+
+**AC6 — PASS, verified with a token minter I wrote myself.** I did not reuse `TokenFactory`.
+I read the identity host's JWK out of the running container, implemented RS256 in pure Python
+(PKCS#1 v1.5 + SHA-256, `hashlib` only), generated an **independent 2048-bit RSA keypair**, and
+called `/health/authenticated` on the discovered ephemeral port:
+
+| Token | Result |
+| --- | --- |
+| genuine, from `/connect/token` | **200** |
+| **control:** minted, real key, `aud=gotissues-api`, `exp` +30 m | **200** |
+| minted, real key, `exp` −1 h | **401** |
+| minted, real key, `exp` **−60 s** | **200** |
+| minted, real key, `aud=some-other-api` | **401** |
+| minted, real key, `iss=http://evil:9999` | **401** |
+| minted, **my own independent RSA key** | **401** |
+| genuine token with its last signature character altered | **401** |
+| garbage (`not.a.token`) | **401** |
+| no token | **401** |
+
+The **control row is the whole argument** and it holds: a token that differs from a genuine one
+only in having been minted by me is **accepted**, so minting is not what causes any refusal and
+each 401 is attributable to the single named defect. The **−60 s row** reproduces the
+`ClockSkew` grace first-hand: a token a minute past `exp` is still accepted, so the hour-long
+margin in `TokenFactory.ExpiredTokenAsync` is necessary rather than decorative, and an
+implementer following the risk note without the numbers would indeed have got a 200.
+[T-0019](T-0019-token-clock-skew.md)'s premise is confirmed for the third time, by a third party.
+
+**AC7 — PASS, verified by hand.** `postgres` up alone: **0** non-system tables. `identity`
+started `--no-deps` against that empty schema: after 30 s the container is **running**, it
+**serves HTTP** (`GET /health` → **503** `Unhealthy`, the correct answer against a schema nobody
+prepared), and there are still **0** non-system tables — the `identity` schema is not even
+created (`information_schema.schemata` → 0). The assertion is falsifiable: on a migrated stack
+the same query returns **42**. The reviewer's third option is correctly implemented — I confirmed
+in [`Program.cs`](../../../apps/GotIssues.IdentityHost/Program.cs) that the `--migrate` branch
+`return`s at line 58, *before* `MapHealthChecks` (line 62), so any HTTP response does prove
+execution passed the point a migrate-on-startup host would have migrated. T-0001 AC5's analogue
+holds for this host.
+
+**AC8 — correctly deferred, and the destination accepts it.** I decoded a genuine member token
+from my own running stack rather than citing the one in the Work Log:
+
+```json
+{"aud":"gotissues-api","client_id":"smoke-member-client","exp":1788189300,"iat":1788185700,
+ "iss":"http://localhost:8081","jti":"9E3AC95CDA8EED51100AC9E9E5A81166","nbf":1788185700,
+ "role":"member","scope":["gotissues.api"]}
+```
+
+No `sub`. The deferral's premise is fact, not assertion. I then read
+[T-0018](T-0018-user-subject-tokens.md) itself, not the pointer to it: its **In Scope** contains
+*"Proving **T-0015 AC8** with such a token: a projection is created on first request and updated,
+not duplicated, on return"*; its **AC2** carries the criterion in the same words and cites
+`T-0015 AC8, T-0009 AC5/AC8`; its **Testing Notes** put the proof in this ticket's smoke tier;
+nothing in its **Out of Scope** disowns it (it excludes a login UI, real employee data, and
+provisioning policy — none of which is the criterion). It is registered in `BACKLOG.md` at
+position 7 with a ticket file that exists. **This is a real destination, not a false pointer.**
+
+**Attribution (not a criterion, but what makes the rest mean anything) — PASS.** Both HTTP
+services are proved by stopping the container and requiring `/health` to stop answering. I
+confirmed the mechanics hold up: `docker compose stop api` then `start api` **re-publishes on a
+new ephemeral port** (55554 → 55556), and every call site re-discovers the port via
+`BaseAddressAsync`, so the restart in the attribution test cannot poison a later test in the
+same fixture. `docker compose port` on a stopped service exits **1**, and the address in that
+test is captured before the stop, so the sequence is sound.
+
+---
+
+### Findings
+
+**F1 (non-blocking, verified) — the check reports a healthy migrated stack against a schema
+that is missing an application table.** This is the implementer's own "For QA to probe",
+reproduced and then extended past what was disclosed.
+
+`StackCheck.AssertSchemaMigratedAsync` (`Infrastructure/StackCheck.cs:56-80`) asserts three
+things: `public."__EFMigrationsHistory"` exists, its row count `!= "0"`, and `public.users`
+exists. It never reconciles the applied migrations against the migrations on disk, and it names
+only one of the API's two application tables.
+
+*Reproduction A — partial migration (the disclosed case).* On a healthy stack I rolled back
+`20260831072035_WidenUserSubject` alone: `alter table users alter column "Subject" type
+character varying(200)` and deleted its history row. Result — history rows **3** (code expects
+4), `users."Subject"` is **varchar(200)** where the model says 255, and **all three assertions
+pass**.
+
+*Reproduction B — a missing application table (not disclosed).* On a fully migrated stack I ran
+`drop table public.placeholder_records cascade` — the only product table the API has today,
+created by `20260831001215_InitialSchema`. Result: every service `healthy`, `GET /health` →
+**200**, and **all three assertions pass**. The check reports a green, migrated stack against a
+schema the API cannot serve from.
+
+*Why it is a finding and not a failure:* AC4 requires that *a* deliberately broken stack makes
+the check fail, proven by mutation. Two mutants do exactly that and I killed both myself. AC1 is
+about service health, and the schema assertion is an addition beyond it. So no criterion is
+violated. But the ticket's own AC4 risk says this criterion is what makes the other six
+trustworthy, and B is a wider hole than the note in the Work Log describes. **Recommendation:**
+assert the applied migration ids against the migrations in
+`apps/GotIssues.Api/Data/Migrations`, which closes both reproductions with one query — as a
+scope line on a follow-up, not in this ticket.
+
+**F2 (non-blocking) — the service lists are fixed, so "every service" is a list someone must
+remember to update.** `StackCheck.cs:13-16` hard-codes `LongRunningServices` and
+`OneShotServices`. AC1 says *"asserts every service reaches a healthy state"*. A service added
+to `compose.yaml` tomorrow is asserted by `up --wait` (generically, for `running` or a declared
+health condition) but not by the explicit `compose ps` assertion — and mutant 2 above is the
+proof that `up --wait` alone is not enough. Low severity today (five services, all listed).
+Deriving the lists from `compose config --services` would make it self-maintaining.
+
+**F3 (non-blocking) — AC4's tests still do not pin *why* the check failed, which is half of the
+review's B3.** `BrokenStackTests.cs:39-62` asserts only `failure is not null`.
+`claude-rev-6d21`'s B3 asked for two things: stop counting harness faults as evidence, **and**
+*"assert on its identity — the migration mutant must fail in `AssertSchemaMigratedAsync` …, the
+healthcheck mutant in `AssertStackHealthyAsync`"*. The first was done (`BuildAsync` is outside
+the `try` at `:86`, only `XunitException` is caught at `:95`); the second was not, and the
+re-review recorded B3 as fixed.
+
+This is not theoretical. `EnsureSucceeded` raises `XunitException`, and
+`(await stack.UpAsync()).EnsureSucceeded("docker compose up --wait")` is **inside** the `try` at
+`:90` — so a `docker compose up --wait` failure for *any* reason still counts as "the mutation
+was caught". I hit exactly that outcome twice while probing: both of my ordering mutations
+failed at `up --wait`, not at an assertion. Today the mutants do fail for the right reason —
+I verified both by hand, above — so AC4 holds. The residual is that the test cannot tell the
+difference, so it can rot silently, in the criterion whose whole job is to not do that. The fix
+is the one the reviewer already wrote: assert on the message, both of which are distinctive
+(`"migrations history table does not exist"`, `"reports health ''"`).
+
+**F4 (non-blocking) — `HostPortAsync` accepts a port lookup whose output literally says
+`invalid IP`.** `Infrastructure/ComposeStack.cs:176-190` calls `docker compose port`, requires
+exit 0, then parses everything after the last `:`. I hit a real state where
+`docker compose port identity 8080` printed **`invalid IP:0`** and exited **0** — after a
+`docker compose restart identity`, while the container was temporarily running with no published
+port (`docker ps` showed bare `8080/tcp`). `EnsureSucceeded` passes, `int.TryParse("0")` passes,
+and the method returns port **0**, so `BaseAddressAsync` yields `http://localhost:0`.
+
+I traced every consumer and **none turns this into a false pass**: `AssertHealthAnswersFromThisStackAsync`
+demands 200 from that address first, `WaitForAnyResponseAsync` ends in `Assert.Fail`, and
+`TokenFactory` asserts on the response. It is a legibility defect — the failure surfaces as a
+connection error against `localhost:0` instead of "Docker reported no published port". Rejecting
+a parsed port of `0`, or requiring the output to start with an address, is one line.
+
+**F5 (non-blocking, observation) — the identity host reports `Healthy` with zero clients.**
+`ConfigurationStoreHealthCheck` uses `Clients…FirstOrDefaultAsync()`, which returns `null`
+without throwing, so an empty-but-present configuration store is `Healthy`. The check would pass
+`AssertStackHealthyAsync` on a host that can issue no tokens — the shape T-0010's review found.
+It is **caught by AC6's accepted-token test**, so the suite is not fooled, and I could not
+actually reach the state by hand: deleting all clients and restarting `identity` re-runs
+`identity-migrator` through the declared dependency and re-seeds them, which is a good property.
+Recording it because it is the one place `AssertStackHealthyAsync` alone would be fooled.
+
+**F6 (non-blocking) — no criterion covers signing-key persistence across a restart.** T-0010's
+AC9 was verified by hand with a token minted *before* a restart still returning 200 after it.
+AC2 covers data and migrations, not the `identity-keys` volume, and nothing in this tier
+re-presents a pre-restart token. Outside this ticket's ACs, so not a defect against it — but it
+is the one T-0010 stack property that remains hand-verified, and N12 already notes the harness
+depends on that volume.
+
+**F7 (non-blocking, note) — the mutation record in the Work Log is now accurate, and I checked
+the corrected claim rather than the correction.** The `sleep 300` row's original claim (that the
+old log assertion "could not have detected this") was wrong and is corrected in place, with the
+`echo … ; sleep 300` mutant carrying the "strictly stronger" argument instead. I re-read
+`docker compose logs` behaviour and confirm the reasoning: the service-name prefix appears only
+on lines the container actually emits, so a silent container yields 0 bytes. No further action —
+noting that the correction survived into the merged text, which is where it needed to be.
+
+---
+
+### Definition of Done
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | **Pass.** Every In Scope bullet is built: a check driving the real `compose.yaml` (not a copy — `RepositoryRoot.ComposeFile`, with mutations layered as overrides), a deliberate decision on where it lives and how it is invoked, and documentation. Out of Scope is untouched, diff-checked: `git show --name-only 7bda6bc` touches **no** file under `apps/GotIssues.Api`, `apps/GotIssues.IdentityHost`, `libs/`, `spec/` or `compose.yaml`, adds no CI, and removes nothing from T-0003's tier. The T-0009 scope bullet was explicitly conditional on user tokens existing; they do not, and it is deferred rather than smuggled |
+| 2 All AC verified independently | **Pass.** AC1–AC7 verified above by a session that neither implemented nor reviewed this ticket, each against the running stack or an executed test; AC8 deferred with a destination I read myself |
+| 3 Automated tests exist and pass | **Pass.** 12 smoke checks + 63 root tests, all green, run by me. Every criterion maps to at least one test (AC1→1, AC2→1, AC3→1, AC4→2, AC6→4, AC7→1, plus 2 attribution tests; AC5 is structural absence and is verified as such). Coverage claims are mutation-proven per TESTING.md, and I killed the two AC4 mutants myself. **This is the item that discharges T-0001's and T-0010's deviations — see below** |
+| 4 No known unrecorded defects | **Pass, with one decision owed** — see the paragraph after this table. Existing residuals all have destinations that accept them, each verified by reading the destination: AC8 → T-0018 (In Scope + AC2), the rot guard → T-0014 (scope line added 2026-08-31, quoted in that file), `ClockSkew` → T-0019 (AC1–AC3). N11 and N12 are recorded trade-offs, correctly not fixed |
+| 5 Code quality | **Pass.** Reviewed over three passes by `claude-rev-6d21`, an independent session, ending in APPROVE. `dotnet format` exit 0 for both the solution and the out-of-solution project; build 0 warnings with `TreatWarningsAsErrors`; no TODO/FIXME/`Console.WriteLine`/`Skip=` anywhere in the new project; `bin`/`obj` ignored |
+| 6 Documentation updated | **Pass.** `README.md` gains a "The stack check" section naming both commands, why the tier exists, and the ephemeral-port rationale; `ARCHITECTURE.md`'s state banner is updated by the ticket that falsified it, which is the thing that has repeatedly been left stale here. `TESTING.md`'s tier table does not yet name `tools/smoke.sh` — that is explicitly T-0014's scope and has a scope line there |
+| 7 Work Log complete | **Pass**, and unusually so: three review rounds, the AC4 mutant that survived and corrected the check, the gate read from the wrong working copy, and the mutation table that overstated its own mutant are all recorded against the author. A stranger could reconstruct every decision |
+| 8 State updated | For `complete-ticket` |
+
+**Conditional items.** *Security* — applied as the acceptance-side review SECURITY.md requires
+for anything touching token validation: no production authentication code is changed (diff-verified);
+no key material is tracked (`git ls-files` finds no `.jwk`/`.pem`/`.pfx`/`tempkey`); the signing
+key is read out of a throwaway container at runtime and never written to the repository; the
+credential-shaped constants are `not-a-secret-throwaway-stack` against a stack that lives three
+minutes and dies with its volume; the one new package has no vulnerabilities and is already
+transitive via `Microsoft.AspNetCore.Authentication.JwtBearer`. *Migrations* — none added; the
+non-destructive restart is now asserted rather than remembered. *ADR* — none required: this adds
+verification, not system structure, which refinement and the Architect-perspective review both
+concluded. *Observability*, *Accessibility*, *Deployment* — not applicable.
+
+**The decision item 4 owes `complete-ticket`.** F1 is a *verified* gap: I broke a stack twice in
+ways the check reports green. It is a limitation of new coverage rather than a defect in the
+product, and reproduction A was disclosed by the implementer before review — but reproduction B
+is wider than the disclosure, and this project's rule is that a residual either gets a
+destination whose scope accepts it or an explicit PO deviation. **Neither exists for F1 today.**
+It should be one or the other before `done`; my recommendation is a scope line on a follow-up
+ticket asserting the applied migration ids against the migrations on disk, which closes F1, F2
+and F3's fragility together. F3 alone would also be a defensible one-line addition to this
+ticket if the PO prefers to close it here.
+
+#### The two deferrals this ticket exists to discharge
+
+**[T-0001](T-0001-runnable-compose-stack.md) DoD item 3 — discharged.** Its deviation was
+"ships with manual verification only", bounded by the promise that the gap would close.
+Its AC1 (cold start on a clean clone, every service healthy), AC6 (restart against an existing
+volume is non-destructive) and AC7 (a slow or absent database delays startup rather than
+crashing it) are now AC1, AC2 and AC3 here — automated, run by me, and each one I broke on
+purpose and watched fail. AC1's own health assertion I falsified by disabling a healthcheck;
+AC2's data survival is a property I re-proved by hand with my own row; AC3 I proved by the
+container id and `RestartCount 0` rather than by the health flag alone.
+
+**[T-0010](T-0010-duende-identity-host.md) DoD item 3 — discharged.** Its deviation was that
+"the headline behaviour of this ticket — a token issued by a real issuer being accepted, and the
+three refusals that need one to construct — is not automated", naming T-0015 AC6/AC7 as owner.
+All four are automated and green, and I re-verified every one of them with a minter and an RSA
+keypair of my own, including the control that makes the refusals attributable. AC7 covers the
+identity host's no-migrate-on-startup property, which T-0010's acceptance verified by hand and
+recorded as unguarded; it is now guarded and I confirmed the guard can fail.
+
+Both deferrals are discharged **by criteria I could break on demand and watched fail**, not by a
+green run. F1 does not touch either: the partial-migration and missing-table gaps are in the
+schema assertion added on top of AC1, and nothing in T-0001's or T-0010's deviation depended on it.
+
+- **Did:** Verified AC1–AC7 independently at `7bda6bc`; ran all ten gates reading each exit code
+  from its own tool; reproduced both shipped AC4 mutants by hand and confirmed each fails at the
+  *correct* assertion; ran four mutations of my own; re-derived AC6 with a pure-Python RS256
+  minter and an independent RSA keypair; decoded a genuine token to confirm AC8's premise; read
+  T-0018 to confirm the deferral's destination; measured Docker before and after.
+- **Decided:** PASS. Seven findings recorded, none blocking; F1 needs a destination or a
+  recorded deviation at `complete-ticket`.
+- **Remaining:** `complete-ticket` — settle F1, then `status: done`, `accepted_by: claude-qa-9b3e`,
+  sprint and backlog updated.
+- **Open questions / blockers:** none.
+- **Test state:** `tools/smoke.sh` **12/12** exit 0, 3m23s, **no leaked projects or volumes**
+  (Docker byte-identical before and after) · root `dotnet test` **63/63** exit 0 in 14.7 s ·
+  `dotnet build --no-incremental` exit 0, 0 warnings · `dotnet format` exit 0 (solution) and
+  exit 0 (smoke project) · `check-drift.sh` exit 0 · `validate.py` exit 0 (19 tickets, 6 ADRs) ·
+  `smoke.sh --build-only` exit 0 · no vulnerable packages.
+- **`accepted_by` deliberately left `none`** — reserved for `complete-ticket` at `done`, per the
+  convention this project has followed since T-0002.
