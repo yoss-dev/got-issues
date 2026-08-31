@@ -2,10 +2,10 @@
 id: T-0015
 title: Automated coverage for behaviour that needs the real Compose stack
 type: technical
-status: in-progress
+status: in-acceptance
 priority: normal
-owner: claude-sm-9d4e
-implemented_by: none
+owner: none
+implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0003, T-0010]
 adrs: [ADR-0003]

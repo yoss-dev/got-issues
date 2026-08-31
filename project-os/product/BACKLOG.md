@@ -19,7 +19,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | 3 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | backlog | T-0005, T-0009 |
 | 4 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | backlog | T-0006 |
 | 5 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | backlog | T-0005, T-0009 |
-| 6 | [T-0015](tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | technical | in-progress | T-0003, T-0010 |
+| 6 | [T-0015](tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | technical | in-acceptance | T-0003, T-0010 |
 | 7 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | backlog | T-0010 |
 | 8 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container images to immutable digests | technical | backlog | T-0001 |
 | 9 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | backlog | — |
