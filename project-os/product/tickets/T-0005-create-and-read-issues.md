@@ -1797,3 +1797,186 @@ first, exactly as I did.
 - **Open questions / blockers:** none.
 - **Test state:** `dotnet test` **110/110** (17 unit, 93 integration) · build 0 warnings ·
   `dotnet format` exit 0 · `validate.py` exit 0 · drift and smoke below.
+
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-8f52) — re-acceptance of `5649367` on `main`: **PASS**
+
+Second acceptance, same acceptor, fresh stack and fresh ports. **Verdict: PASS.** F1 is fixed, F2 is
+closed rather than deferred, F3 is corrected on the trunk, and all nine criteria hold. One new
+finding, non-blocking, with a destination created: **F4**, below — the harness ceiling the
+coordinator asked me to measure is a **leak**, and the diagnosis recorded beside the fix is wrong.
+
+#### The gates, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **110/110** — 17 unit, 93 integration, 0 skipped — exit **0** |
+| `dotnet build --no-incremental` | **0 warnings, 0 errors** — exit **0** |
+| `dotnet format --verify-no-changes` | exit **0** |
+| `dotnet format …/GotIssues.SmokeTests.csproj --verify-no-changes` | exit **0** |
+| `./tools/check-drift.sh` | `OK` — exit **0** (AC6) |
+| `./tools/smoke.sh` | **13/13**, 7m17s — exit **0** |
+| `python3 tools/validate-project-os/validate.py` | exit **0** |
+
+Live work on `docker compose -p qa8f52r2`, ports 18462/18463, after a `down -v`. Attribution bound
+both ways before anything was trusted: `qa8f52r2-api-1` `running healthy` → `/health` **200**;
+stopped → `curl` **exit 7**. Torn down with `down -v` exit 0; no `qa8f52r2` container, volume or
+network survives.
+
+#### The nine criteria, re-verified against the running software
+
+All nine **Pass**. AC1 `GOTI-1` with a multi-line description round-tripping; AC1b first issue **1**
+in every project; AC1c `PROJ-1` after three issues in `GOTI`; **AC1d** again at **30-way real-HTTP
+concurrency** — `1..30`, 30 distinct, contiguous, none skipped; AC2 read-back identical; AC3 **404**
+`problem+json` with nothing orphaned; AC4 **404**; AC5 **401** on both operations with nothing
+written; AC6 drift exit 0.
+
+Regression sweep on everything I probed the first time, all unchanged: nine malformed key shapes all
+**400 `problem+json`** (including `GOTI-1%0A`), `getIssue`'s 403 **403 `problem+json`** with a real
+body, both operations **500 `problem+json`** with PostgreSQL stopped underneath and no leakage of
+`Password`, `Npgsql`, `Host=` or exception text, and free text still absent from the logs — a title
+and description carrying personal-data-shaped markers produced **0** log hits.
+
+**The migration and data model are byte-identical to what I accepted against a populated database
+last round** (`git diff 303fafb..5649367 -- apps/GotIssues.Api/Data/` is empty), so that verdict
+carries rather than being re-run.
+
+#### F1 — fixed, and fixed accurately
+
+All three lines now describe what exists. `README.md:7` reads *"**Projects and issues** are real and
+role-guarded"* and names the key format; `README.md:113` narrows *Not here yet* to lifecycle,
+listing and comments, which is true; `ARCHITECTURE.md:5` names two built resources and three
+intended ones. I grepped for any surviving claim that issues do not exist and found none. The
+pattern itself was escalated to the retro with three candidate durable fixes and an honest note that
+the existing countermeasure (`ARCHITECTURE.md:7`) had already failed once — the right handling.
+
+#### F2 — closed, and the closure is better than the deferral would have been
+
+Verified on the live stack, seeding the counter because a billion issues is not a fixture:
+
+```text
+counter 999999999 → 201  key "BIGN-999999999"  → GET 200
+one past          → 409  application/problem+json,  counter stays 1000000000
+repeated ×3       → 409 each time,               counter stays 1000000000, issue count still 1
+```
+
+Three things worth stating. The **bound itself works**, not just the refusal — the last expressible
+number creates *and reads back*. The counter is **returned, not burned**: it holds at 1 000 000 000
+across repeated attempts rather than climbing, which proves the refusal is inside the allocating
+transaction. And that pinning makes the **`int` overflow I found last round unreachable through the
+API** — the counter can no longer climb toward 2 147 483 647, so the 500 I recorded is now gone by
+construction rather than by luck.
+
+`AllocationRollbackTests.A_project_that_has_exhausted_its_numbers_is_refused_rather_than_given_an_unusable_key`
+encodes exactly this and cannot pass vacuously. I also corroborated the reviewer's claim that its
+read-back assertion is load-bearing for constant-versus-pattern agreement, without re-mutating it:
+live, a 9-digit key reads **200** and a 10-digit key is **400**, so the pattern's boundary is
+demonstrably nine — which is the fact that assertion depends on.
+
+#### F3 — corrected, and struck rather than edited away
+
+`e1175ca` splits the row and strikes the wrong half in place, with a dated note saying who found it
+and why the strike is more useful than a tidy table. That is the right disposition.
+
+---
+
+#### F4 — Non-blocking, but the recorded cause is wrong: this is a leak, not pool contention
+
+The coordinator asked whether the `53300: sorry, too many clients already` failure was a latent
+ceiling that seven new tests crossed, or a connection leak. **It is a leak, and the ceiling was
+latent because of it.** Measured, not reasoned: 100 samples of `pg_stat_activity` taken against the
+Testcontainers instance while the integration suite ran.
+
+| Elapsed | Connections | Idle | Distinct databases | Databases created |
+| --- | --- | --- | --- | --- |
+| 0 s | 3 | 2 | 2 | 1 |
+| 5 s | 32 | 31 | 30 | 30 |
+| 10 s | 60 | 58 | 57 | 60 |
+| 16 s (end) | **104** | **103** | **92** | 95 |
+
+- The count **never decreased once** — 0 decreases across 100 samples.
+- **1.09 connections per database**, 103 of the final 104 `idle`. Every database ever created still
+  holds a connection at the end, including those whose class finished ten seconds earlier.
+
+**The mechanism recorded in the fix cannot be the real one.** The comment added to
+`PostgresContainerFixture.CreateDatabaseAsync` says the pools multiply out *"while xUnit runs classes
+in parallel"*. All nine integration classes carry `[Collection(PostgresFixtureDefinition.Name)]`, and
+xUnit runs one collection's classes **sequentially** — at most one class is live at a time, so
+parallel pool growth cannot occur. The data agrees: pools never approach their cap (1.09 against a
+`MaxPoolSize` of 10), because the driver is *how many databases have been created*, not how deep any
+one pool goes.
+
+Three consequences:
+
+1. **`MaxPoolSize = 10` binds nothing.** Peak real usage is ~1 per database.
+2. **`max_connections=500` postpones rather than fixes.** Growth is linear with no reclamation, so
+   the ceiling returns at roughly **455 tests**. The same arithmetic reproduces the original failure
+   exactly: at the default 100 the limit lands at ~89 tests; the suite had 86 and T-0005 added 7.
+3. **The next person to hit `53300` will hunt a parallelism problem that does not exist.**
+
+**Disposition.** The leak itself is in `PostgresContainerFixture` / `ApiFactory` teardown, introduced
+by [T-0003](T-0003-automated-test-harness.md), which is `done` — so per [WoW](../../governance/WAY_OF_WORKING.md)
+§11 it is a new bug ticket, not a reopening, and per the `acceptance-test` skill it is a defect in
+*adjacent existing behaviour* rather than in this change. I created
+**[T-0023](T-0023-integration-tests-retain-a-connection-per-test-database.md)** with the full sample
+data and the arithmetic; its In Scope takes on releasing the connections, re-deciding both
+mitigations, and correcting the comment (AC4), and its **AC2 requires the suite to pass at
+`max_connections=100`** so that raising a ceiling again cannot satisfy it. **DoD item 4 needs the PO
+persona to accept that deferral** at `complete-ticket`; the destination now exists and its scope
+genuinely covers the item.
+
+**The one part that belongs to this ticket** is the two-line comment T-0005 introduced, which states
+a false mechanism. Non-blocking, on the precedent T-0004's acceptance set for `Program.cs:164` — the
+cleanest resolution is to correct it before `complete-ticket`, and T-0023 AC4 catches it otherwise.
+The mitigation itself is sound and I am not asking for it to be reverted: it buys roughly four times
+the current suite size, and the commit subject honestly calls it *"lift a harness ceiling"* rather
+than a fix.
+
+#### Mutation, under the amended standard
+
+**No mutants again, deliberately.** The allocator's is on record against code whose shape has not
+changed. The migration backfill is enforced by a database default, which I read out of
+`information_schema` last round. The exhaustion guard's read-back assertion has a reviewer's mutant
+on record, and I corroborated the property it rests on directly (9 digits → 200, 10 → 400) rather
+than re-running theirs. F4 was found by measurement, which is the thing the amendment redirected
+effort toward, and no mutant would have found it — every test in the suite passes while the leak is
+happening.
+
+#### Definition of Done
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | **Pass** — the spec declares exactly `/projects`, `/projects/{projectKey}/issues`, `/issues/{issueKey}`. No lifecycle fields, listing, comments, edit or delete. The `ProjectsApi` regeneration is a consequence of widening the shared `Conflict` component, not scope creep |
+| 2 All acceptance criteria verified | **Pass** — nine of nine, independently |
+| 3 Automated tests exist and pass | **Pass** — 110/110, 0 skipped; N6's malformed-key theory now exists and the exhaustion boundary is covered at both ends |
+| 4 No known unrecorded defects | **Pass, conditional** — F4 recorded, destination T-0023 created; needs PO acceptance of the deferral at `complete-ticket` |
+| 5 Code quality | **Pass** — reviewed by `claude-rev-5c14`; build warning-clean; both `format` runs exit 0; no TODO, FIXME or debug scaffolding in the changed files |
+| 6 Documentation updated | **Pass** — F1 closed at all three locations, verified by grep and by reading |
+| 7 Work Log complete | **Pass** |
+| 8 State updated | Handled here and by `complete-ticket` |
+| — ADR recorded | **Pass** — ADR-0004 honoured: the bound and the 409 are declared in the spec and regenerated, not enforced only in a guard clause |
+| — Security | **Pass** — new input validated in the contract; 0 log occurrences of marker text in title and description; the 500 body leaks nothing |
+| — Migrations | **Pass** — unchanged since my first acceptance, where it was proved against a populated database |
+| — Deployment | **Pass** — smoke 13/13 |
+
+**Deviations requiring a record:** one — the F4 deferral to T-0023, which is a PO decision at
+`complete-ticket`, not mine. Nothing else needs a deviation, because nothing else is unmet.
+
+---
+
+- **Did:** Re-accepted `5649367` on `main`. Ran all seven gates and read each exit code from the tool.
+  Verified F1 at all three locations, F2 at and past the bound with the counter checked after each
+  attempt, F3 on the trunk. Re-verified the nine criteria and my whole first-round probe set against
+  a fresh stack. Instrumented a second suite run with 100 samples of `pg_stat_activity` to answer the
+  question the coordinator could not.
+- **Decided:** **PASS.** F4 recorded as a defect in adjacent pre-existing behaviour, with
+  [T-0023](T-0023-integration-tests-retain-a-connection-per-test-database.md) created as its
+  destination and registered in the backlog.
+- **Remaining:** `complete-ticket` — which needs the PO persona to accept the F4 deferral, and should
+  correct the two-line mechanism claim in `PostgresContainerFixture` on the way past.
+- **Open questions / blockers:** none blocking.
+- **Branch / PR:** n/a — accepted against `main` @ `5649367` in the primary checkout.
+- **Test state, measured by me on `main`:** `dotnet test` **110/110** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0 (23 tickets, 10 ADRs).
+  Nothing left running or stored.
