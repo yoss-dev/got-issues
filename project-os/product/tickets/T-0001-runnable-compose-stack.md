@@ -2,7 +2,7 @@
 id: T-0001
 title: Runnable Docker Compose stack with API skeleton and PostgreSQL
 type: technical
-status: blocked
+status: in-progress
 priority: high
 owner: claude-sm-9d4e
 implemented_by: none
@@ -54,7 +54,7 @@ The proof of concept's first real evidence that the company can run this tooling
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given a clean clone, Docker running, and no pre-existing volume, when `docker compose up` is run with no further manual steps, then every service reports a healthy status in `docker compose ps`.
+- [ ] AC1: Given a clean clone, Docker running, and no pre-existing volume, when the setup documented in the README is followed — copy `.env.example` to `.env`, supply local values, then run `docker compose up` — then every service reports a healthy status in `docker compose ps`, with no further manual steps beyond those. *(Amended 2026-08-30 by the PO; see Work Log.)*
 - [ ] AC2: Given the stack is up, when `GET /health` is requested, then it returns 200 with a body indicating the database is reachable.
 - [ ] AC3: Given the database container is stopped, when `GET /health` is requested, then it returns a non-200 status indicating unhealthy — the check actually probes the database rather than always reporting success.
 - [ ] AC4: Given an empty database volume, when the stack starts, then the migration step applies the schema and the API reports healthy afterwards.
@@ -177,3 +177,19 @@ Claimed via `pick-up-ticket` under `run-sprint`. Dependencies: none (verified �
 **Risks carried into implementation:** AC5 is the one an implementer breaks by habit (`Database.Migrate()` on startup is the convenient path) — the `--migrate` design exists specifically to make that impossible without noticing. AC7's correctness depends on Compose conditions, not on application retry logic.
 
 **Branch / PR:** `t-0001-runnable-compose-stack`, in its own worktree per [GIT.md](../../standards/GIT.md).
+
+### 2026-08-30 — Product Owner decision, transcribed by claude-sm-9d4e
+
+**Escalation resolved.** The maintainer (human PO), asked to choose between committing a default credential, amending AC1, or switching PostgreSQL to trust authentication, answered:
+
+> "amend AC1"
+
+Recorded per [WoW §13](../../governance/WAY_OF_WORKING.md): the decision is written into the repository before being acted on.
+
+**Applied.** AC1 now requires the stack to come up healthy after the README's documented setup — copying `.env.example` to `.env` and supplying local values — rather than after `docker compose up` alone. Nothing else about the criterion changed: it is still a clean clone, still an empty volume, still no further manual steps beyond the documented ones, still verified by `docker compose ps`.
+
+**Why this is the right shape rather than a convenience.** The ticket's In Scope already mandated `.env.example`, which only makes sense if something copies it; the original wording overreached rather than describing a different system. The alternatives each traded a real property for wording: committing a default password breaches [SECURITY.md](../../standards/SECURITY.md)'s unconditional rule, and trust authentication would have lowered a security posture to satisfy a sentence.
+
+**Note for a future ticket, not built here:** someone who skips the copy gets PostgreSQL's own message — *"Database is uninitialized and superuser password is not specified"* — which is accurate but says nothing about `.env.example`. A friendlier failure would be an improvement; adding it now would be inventing requirements the PO did not ask for.
+
+**Status:** unblocked, back to `in-progress`. Both of the review's blocking findings are now resolved — B2 fixed in code, B1 by this decision — so the branch goes back to `claude-rev-2c8d` for re-review before merge.
