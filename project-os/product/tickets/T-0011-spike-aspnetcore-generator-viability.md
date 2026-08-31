@@ -191,3 +191,47 @@ These are real, were verified, and remain T-0002's problems to solve — none is
 5. **First container-image pull exceeded 10 minutes** here; the 30 MB JAR took seconds. T-0002's choice of the container image stands, but the first-run cost is worth documenting.
 
 **Consequence:** [ADR-0006](../../architecture/adr/ADR-0006-nswag-for-server-contracts.md) is **Rejected** — the evidence that motivated it was my error. [T-0002](T-0002-contract-first-codegen-pipeline.md) is **not** stale and remains Ready; it should absorb the configuration above and findings 1–2 during implementation.
+
+### 2026-08-30 — QA / Test Engineer (claude-qa-5e19) — acceptance: **PASS**
+
+Independent acceptance. I did not implement this spike (`implemented_by: claude-sm-9d4e`) and did not read the Work Log's conclusions until after deriving my own expectations from the Question and Output sections. I re-ran the generator myself rather than accepting the write-up.
+
+**Note on sequencing:** I began this acceptance against the pre-correction ticket, whose verdict was "supersede ADR-0004 for the server half". My own re-run refuted that blocking finding *before* I saw the correction — commit `a1cdfb8` landed mid-session and had independently reached the same conclusion. So the corrected entry is corroborated by evidence gathered without sight of it, which is the strongest form this check could take.
+
+**Environment:** generator `7.18.0` (JAR from Maven Central) and `openapitools/openapi-generator-cli:latest` (`7.26.0-SNAPSHOT`); .NET SDK `10.0.300`; my own throwaway spec (one resource, create + paginated list, enum, nullable optional field, RFC 9457 problem shape, bearer scheme). Scratch dir outside the repo, since removed.
+
+**Verified independently — the correction is correct.** I reproduced both the original error and the fix. `operationIsAsync=true` alone yields `public virtual IActionResult CreateWidget(...)` — synchronous, exactly what the first entry saw. Adding `operationResultTask=true` yields `Task<IActionResult>`. The two options are genuinely separate concerns and the withdrawn finding was a real methodological mistake, correctly diagnosed.
+
+**Verified — the prescribed configuration works.** Running the exact `--additional-properties` string this ticket hands to T-0002 produced:
+
+```csharp
+public abstract class DefaultApiController : ControllerBase
+public abstract Task<IActionResult> CreateWidget([FromBody]CreateWidgetRequest createWidgetRequest);
+```
+
+A hand-written `sealed` controller inheriting it and implementing both members with `async`/`await` and `HttpContext.RequestAborted`, in a consuming project set to `Nullable=enable`, `TreatWarningsAsErrors`, `AnalysisMode=latest-recommended`, on `net10.0`: **Build succeeded, 0 warnings.** ENGINEERING.md's async rule is satisfiable — no `.Result`, no `.Wait()`, no sync EF Core, no custom `IActionResult` workaround.
+
+**Verified — surviving findings 1–4, all reproduced:**
+
+1. `aspnetCoreVersion` offers 2.0–8.0, defaults to 8.0, emits `<TargetFramework>net8.0</TargetFramework>`. Also true on the `7.26.0-SNAPSHOT` image, so this is not fixed upstream.
+2. With `useNewtonsoft=false`, `dotnet list package --include-transitive` shows `JsonSubTypes 1.8.0 > Newtonsoft.Json 10.0.1`, and the build emits `NU1903 ... high severity vulnerability, GHSA-5crp-9r3c-p9vr` — matching this ticket's version and advisory ID exactly. I also **tested the proposed remedy**, which the ticket asserts rather than demonstrates: a repository-level `Directory.Build.props` pinning `Newtonsoft.Json` 13.0.3 clears NU1903 on both projects (all references resolve to 13.0.3) and the build succeeds. The remedy holds.
+3. Generated `<Nullable>annotations</Nullable>` — confirmed, and notably it stays `annotations` *even with* `nullableReferenceTypes=true` in the property string.
+4. `WARN o.o.codegen.DefaultCodegen - OpenAPI 3.1 support is still in beta` — emitted on every run.
+
+**Verified — DoD spike clause and hygiene.** No spike code shipped: working tree clean, no tracked `.cs`/`.csproj`/generated artefacts, nothing ignored-but-present, no spike branch. ADR-0004 is untouched since `ebc05f5` (bootstrap) and still `Accepted` — correctly *not* marked superseded. ADR-0006 is `Rejected` in both the file and the index, its body preserved unedited with the correction stated up front, and cross-linked from this ticket's `adrs:`. Validator: OK (11 tickets, 6 ADRs).
+
+**One defect found, non-blocking, for T-0002 to respect.** The prescribed option set is load-bearing in a way the ticket does not say. Dropping `buildTarget=library` while keeping `classModifier=abstract,operationModifier=abstract,operationIsAsync=true,operationResultTask=true` makes the generator emit:
+
+```csharp
+public abstract async Task<IActionResult> CreateWidget(..., CancellationToken cancellationToken);
+```
+
+which is invalid C# — `error CS1994: The 'async' modifier can only be used in methods that have a body`. The prescribed configuration includes `buildTarget=library` and is safe, but T-0002 should treat that flag as required, not cosmetic, and pin the whole option string. (Silver lining: that broken path is the only one that emits a `CancellationToken` *parameter*; the ticket's use of `HttpContext.RequestAborted` instead is the right call, not merely an acceptable one.)
+
+**Taken on trust — not load-bearing to this verdict, flagged for T-0002.** I did not run the `csharp` client generator, so the client half of the recorded configuration (`library=generichost`, System.Text.Json, async with `CancellationToken`, builds on `net10.0`) rests on the implementer's testing, not mine. It is presented as fact in the configuration block; T-0002 should confirm it on first use rather than inherit it unverified. I also could not falsify the 10-minute first-pull timing, which is environment-specific and whose image is now cached.
+
+**Minor evidentiary discrepancies, no action needed.** The first entry says 7.18.0 was run "both as the official container image and as the JAR", but the `:latest` image is `7.26.0-SNAPSHOT` — the two routes were not the same version. I confirmed the behaviour is identical on both, so nothing turns on it. The withdrawn entry's `Microsoft.AspNetCore.Mvc.NewtonsoftJson 3.0.0` / `Newtonsoft.Json 12.0.2` did not reproduce for me (I resolved `6.0.0-rc.1` / `13.0.1` on the default path); that entry is withdrawn and the surviving finding 2 matched exactly.
+
+**Verdict: PASS.** The question posed is answered directly and correctly, the answer is now supported by evidence I reproduced independently rather than by assertion, the follow-up ADR exists and is correctly Rejected rather than left dangling as Proposed, ADR-0004 is intact, and no spike code shipped. The self-correction — and preserving the wrong reasoning as the record instead of quietly rewriting it — is exactly what the DoD's spike clause is for.
+
+Acceptor identity for the record: **`claude-qa-5e19`** (≠ `implemented_by: claude-sm-9d4e`, so the independence gate is satisfied). I left `accepted_by: none` and `status: in-acceptance` deliberately: this framework assigns both fields to `complete-ticket` at `done` (`templates/TICKET_TEMPLATE.md` — *“set by complete-ticket at done”*), `acceptance-test`'s State Changes do not include `accepted_by`, and the validator rejects `accepted_by` set on any status but `done`. `complete-ticket` should set `accepted_by: claude-qa-5e19` as it closes this ticket.
