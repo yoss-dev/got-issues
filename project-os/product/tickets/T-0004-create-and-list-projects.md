@@ -2,9 +2,9 @@
 id: T-0004
 title: Create and list projects
 type: feature
-status: in-acceptance
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0002, T-0003, T-0009]
@@ -860,3 +860,290 @@ spec change and deserves its own ticket.
   both `dotnet format` runs, drift, and the validator all exit 0. The recorded test state is
   accurate. I changed no implementation or test code; all three mutation experiments were reverted
   and verified byte-identical against pre-mutation copies.
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-4d18) — acceptance of `main` @ `98ff9de`
+
+Independent acceptance per [acceptance-test](../../skills/acceptance-test/SKILL.md). I did not
+implement this ticket (`implemented_by: claude-sm-9d4e`) and did not review it
+(`claude-rev-3e77`). Scenarios were derived from Problem/Outcome/Scope/AC/Examples **before**
+reading the Work Log, so the implementer's narrative did not set my expectations.
+
+**Verdict: FAIL.** Two blocking findings. Ten of the eleven criteria hold and I verified each by
+measurement; **AC6 does not** — one reachable input makes `POST /projects` return a status the
+contract does not declare, with no body and no content type. Separately, **DoD item 6 is unmet**:
+four statements in the repository's own documentation still say the placeholder resource is what
+exists and that this ticket is future work.
+
+Nothing here disputes the design. The endpoint is correct under everything else I could throw at
+it, the concurrency guarantee is real, and the mutation evidence — including the correction — is
+accurate. Both findings are small; neither is a rethink.
+
+#### Gates, all run on `main` in the primary checkout, exit codes read from the tool itself
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | **82 passed** — 17 unit, 65 integration, 0 skipped |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `git status` empty beforehand, so a real drift pass, not the dirty-tree 2 |
+| `./tools/smoke.sh` | **1**, then **0** | see below |
+| `python3 tools/validate-project-os/validate.py` | 0 | 19 tickets, 8 ADRs |
+
+**The first `smoke.sh` run failed 4/12 and was an environment fault, not a regression.** All four
+failures were `docker compose build exited 1` with `lookup mcr.microsoft.com: no such host` —
+Docker's DNS could not resolve the base-image registry, so the four tests that build a stack under
+a fresh project name never started one. I checked DNS
+(`docker run --rm alpine:3 nslookup mcr.microsoft.com` resolved) and re-ran: **12/12, exit 0,
+3m30s**. Recording both runs rather than only the green one, because a reader who sees
+"smoke 12/12" and later hits the same DNS failure should know it has been seen and what it looks
+like.
+
+No containers, volumes, networks or images were left behind by anything I ran.
+
+#### How the live probing was attributed
+
+Every behavioural claim below was measured against a **real Compose stack**, not the in-process
+test host — the reviewer's N1 is precisely that the test host cannot see the shape of a refusal.
+Stack run as `docker compose -p qa4d18` on ephemeral ports (API 18404, identity 18414) from an env
+file outside the repository. All three containers confirmed **healthy before any response was
+trusted**; attribution confirmed afterwards by stopping `qa4d18-api-1` and observing port 18404
+answer `Connection refused` while nothing else took over. Torn down with `down -v`, and the four
+built images removed; `docker compose ls`, `docker ps -a`, `docker volume ls` and `docker images`
+all show nothing named `qa4d18`.
+
+---
+
+#### Finding 1 — `POST /projects` returns an undeclared 500 with no body (AC6). Blocking.
+
+**Repro**, against the real stack with a genuine `admin` token — the `name` contains one `U+0000`,
+written here as its JSON escape:
+
+```
+POST /projects
+Content-Type: application/json
+
+{"key":"NUL1","name":"A\u0000B"}
+```
+
+**Expected** (AC6, *"behaviour matches what the specification declares"*): one of the five
+responses `spec/openapi.yaml` declares for this operation — `201`, `400`, `401`, `403`, `409` —
+and, for every declared failure, `application/problem+json`.
+
+**Observed:** `500`, **zero-length body, no `Content-Type` header at all.**
+
+**Cause**, and it is two files apart:
+
+- `apps/GotIssues.Api/Controllers/ProjectsController.cs:52` catches `DbUpdateException` only
+  `when (IsDuplicateKey(ex))`. PostgreSQL cannot store `U+0000` in a `text`/`varchar` column and
+  rejects the insert with SQLSTATE **22021** (`invalid byte sequence for encoding "UTF8": 0x00`),
+  which is not a unique violation, so the exception escapes the action.
+- `apps/GotIssues.Api/Program.cs:81` installs `UseStatusCodePages`, which fills in a body for a
+  *status-only* response. There is no `UseExceptionHandler` anywhere, so an exception-produced 500
+  gets no problem document — the one response in this API that returns nothing at all.
+
+The narrow catch itself is right and I am not asking for it to be widened blindly; T-0009 lost an
+acceptance round to a broad catch, and the comment at `:109-112` says so. The defect is that the
+*other* branch has no destination.
+
+**Why this is a T-0004 defect and not a pre-existing one.** The missing global exception handler
+predates this ticket, but it was unreachable: until this merge the only writable resource was the
+placeholder, which this ticket deleted. `POST /projects` is now the only endpoint in the system
+that writes caller-supplied text, this ticket authored it, and this ticket authored the contract
+that declares what it may return. In Scope includes *"Validation of project input, declared in the
+specification"*; [SECURITY.md](../../standards/SECURITY.md) requires request validation declared in
+the spec **and** explicit checks in controllers.
+
+**Severity: medium.** Admin-authenticated only, no data written (I confirmed no row is left and the
+connection is not poisoned — the next request succeeds), and the empty body leaks nothing. But it
+is this ticket's own named defect class in its strongest form: the operation declares five
+responses and returns a sixth, with a body the contract has no way to describe. It is also the one
+thing the Examples section rules out by name — *"400 with a problem document, **not a 500**"*.
+
+**Isolation work, so the fix is not aimed at the wrong thing.** Only `U+0000` does this. `U+0001`
+and other C0 controls, `U+202E`, a lone surrogate (400 from the JSON reader), a `U+0000` in `key`
+(400 from the declared pattern) and a 10 MB name (400 from `StringLength`) all behave correctly.
+
+The remedy is ENG's call and I am not prescribing one, but both obvious routes are small: reject
+the character in the contract (a `pattern` on `name`, then regenerate — the contract-first route),
+or give a non-duplicate write failure a declared destination. **Whatever is chosen lands once and
+[T-0005](T-0005-create-and-read-issues.md) and [T-0006](T-0006-issue-lifecycle-fields.md) inherit
+it**, since both will copy this controller shape — which is the argument for fixing it here rather
+than deferring it.
+
+#### Finding 2 — the repository still documents the placeholder as what exists (DoD item 6). Blocking.
+
+In Scope: *"**Removal of T-0002's disposable placeholder resource** from the specification and of
+its generated output."* That was done thoroughly in the spec, the generated output, the controller,
+the record, the schema and the tests — I verified the live database holds only
+`__EFMigrationsHistory`, `projects` and `users`, and that `IX_projects_Key` is `UNIQUE`. It was not
+done in the documentation, where four statements are now false on `main`:
+
+| Location | Text | Why it is false |
+| --- | --- | --- |
+| `README.md:7` | *"What exists so far is a deliberately disposable placeholder resource proving that pipeline end to end — the real product resources come next."* | The placeholder is deleted; `/projects` is a real product resource |
+| `README.md:113` (under *Not here yet*) | *"Product resources — projects, issues, comments. What exists is a disposable placeholder proving the pipeline; T-0004 brings the first real one."* | T-0004 has landed; projects are not "not here yet" |
+| `README.md:129` | *"**No shipped endpoint uses them yet** … T-0004 is the first endpoint to be role-guarded."* | `POST /projects` is role-guarded and shipped; I measured a `member` receiving 403 |
+| `project-os/architecture/ARCHITECTURE.md:5` | *"the only resource in the specification today is a deliberately disposable placeholder, and T-0004 brings the first real one"* | Same |
+
+[DoD](../../governance/DEFINITION_OF_DONE.md) item 6 names *"README/setup instructions affected by
+the change"*. [DOCUMENTATION.md](../../standards/DOCUMENTATION.md) is more specific still: *"The
+root README must work from a clean clone"* `[confirmed]`, *"A ticket that changes any of those
+steps fixes the README in the same change"*, and *"Stale documentation is a defect … fix in place
+when the fix is within your current ticket's scope."* Deleting the resource the README describes is
+inside this ticket's scope by its own Scope section.
+
+This is cheap to fix and I have deliberately not fixed it — acceptance does not edit the change
+under test. But note the shape: a reader arriving at this repository today is told the product has
+no resources, by the same document that tells them how to run it.
+
+---
+
+#### The eleven criteria, each verified independently
+
+| AC | Verdict | Evidence |
+| --- | --- | --- |
+| AC1 | **Pass** | Live: admin `POST {"key":"GOTI","name":"Got Issues"}` → `201 application/json` carrying `id`, `key`, `name`, `createdAt`; reappears in the listing |
+| AC1b | **Pass** | Live, 16 keys: `goti`, `Got Issues!`, `1GOTI`, `G`, `GOT-I`, `GOTI_`, leading and trailing space, **trailing newline** (.NET's `RegularExpressionAttribute` requires the match to span the whole string, so `$`'s newline tolerance does not leak), Cyrillic `І` and `О` lookalikes, fullwidth `ＧＯＴＩ`, empty — every one `400 application/problem+json` with `errors.Key`. Boundaries: `AB` (2) → 201, `ABCDEFGHIJ` (10) → 201, `ABCDEFGHIJK` (11) → 400 |
+| AC1c | **Pass** | Live sequential duplicate → `409 application/problem+json`, one row. **Ten simultaneous creates of one key → exactly `1×201, 9×409`, one row**, repeated twice. The guarantee is in the schema: `\d projects` shows `"IX_projects_Key" UNIQUE, btree ("Key")`. Twenty simultaneous creates of *different* keys → `20×201`, so the constraint refuses collisions without serialising unrelated work |
+| AC1d | **Pass** | Live: `PUT`/`PATCH`/`DELETE /projects` → 405, `/projects/{id}` → 404 — no operation exists that could change a key. The contract-anchored half of the test is the real guard (it reads `ProjectsApiController`'s generated method list); the `init`-only half is a tripwire, exactly as the Work Log now says |
+| AC2 | **Pass** | Live: `member` `POST` → **`403 application/problem+json`**, nothing persisted. Mutant M3 below confirms the assertion is load-bearing |
+| AC2b | **Pass** | Live: `admin` and `member` both list → 200. An unrecognised role (`superuser`) is refused, not promoted |
+| AC2c | **Pass** | Live: no token and a malformed token both → **`401 application/problem+json`** on both operations, distinct from AC2's 403 |
+| AC3 | **Pass** *(for input the specification declares invalid)* | Live: missing `name`, `""`, `null`, whitespace-only, 201 characters, 200 astral emoji (400 UTF-16 units), wrong JSON type, malformed JSON, empty body, `null` body, JSON array — all `400 application/problem+json` naming the field in `errors`. See Finding 1 for input the specification declares *valid* |
+| AC4 | **Pass** | Live over **190 projects**: walked all 10 pages at `pageSize=20` — `totalCount` constant at 190 on every page, 190 ids collected, **190 distinct**, covering every row exactly once; the same set reached at `pageSize=100` in two pages. `page=1000000` → empty page, 200. Ordering is genuinely newest-first (91 distinct timestamps among 100 rows, so the `ThenBy(p => p.Id)` tiebreaker is doing real work and no row is duplicated or skipped across a tie). Bounds: `page=0/-1/1000001`, `pageSize=0/-5/101`, `abc`, `1.5`, `2147483647`, `99999999999999999999` → 400 `problem+json`; `page=1000000&pageSize=100` → 200, no overflow |
+| AC5 | **Pass** | `./tools/check-drift.sh` exit 0 with `git status` empty beforehand |
+| AC6 | **FAIL** | Everything above matches the specification. `{"key":"NUL1","name":"A\u0000B"}` does not — Finding 1 |
+
+**The question left "for QA to probe" — is there any *other* response that declares
+`application/problem+json` and returns something else?** No. I enumerated every declared response
+of both operations against the live stack: `201` and `200` → `application/json`; `400`, `401`,
+`403`, `409` → `application/problem+json`. **The 403 in particular is correct in production**,
+which is worth stating plainly because it is the one no test in any tier can see: the test host's
+`GuardedEndpointStartupFilter` refuses in front of the application's `UseStatusCodePages`, so the
+same request there yields a bodyless 403. N1 from review is a real coverage gap and is correctly
+parked in [T-0017](T-0017-automated-contract-conformance-tier.md); the behaviour behind it is right.
+
+#### Mutation evidence — verified, not accepted
+
+Run on `main`, filtered to `ProjectsTests` (19 tests; baseline green, exit 0). All files restored
+and confirmed **byte-identical to `HEAD`** with `git show HEAD:<path> | cmp -`; `git status` clean.
+
+| Mutant | Recorded | What I measured |
+| --- | --- | --- |
+| `.IsUnique()` dropped from the model, migration untouched | *invalid — stopped by `PendingModelChangesWarning`* | **Confirmed.** `Failed: 19, Passed: 0`, every one in `InitializeAsync()` at `ProjectsTests.cs:29` with `PendingModelChangesWarning`. **Zero assertions executed.** The correction is accurate and so is its reasoning: a red suite is not a kill |
+| Unique index replaced by a read-then-insert check (migration `unique: false` plus an `AnyAsync` pre-check) | *kills the concurrent test only* | **Confirmed exactly.** `Failed: 1, Passed: 18` — the single death is `AC1c_two_concurrent_creates_of_one_key_produce_exactly_one_project`, `Assert.Equal() Failure … Actual: 2`. The sequential AC1c survives. This is the row that earns the concurrent test its place, and it is correctly attributed to the reviewer |
+| `[Authorize(Policy = Admin)]` removed | *kills AC2* | **Confirmed.** `Failed: 1, Passed: 18`; the death is `AC2_a_member_may_not_create_a_project` |
+
+**My own mutant, and it found something (Finding 3).** `.Skip((pageNumber - 1) * size)` →
+`.Skip(0)` — the page number ignored entirely, every page returning the first page's rows. All
+**19 `ProjectsTests` stayed green**, including
+`AC4_the_list_is_paginated_and_the_caller_can_reach_the_rest`. Across the full suite the mutant
+*is* killed — by `GeneratedContractTests.Paging_returns_every_record_exactly_once`
+(`apps/GotIssues.Api.IntegrationTests/GeneratedContractTests.cs:161-183`), one of the tests
+migrated from the placeholder.
+
+So AC4's second half is covered, and the coverage is real. What the mutant proves is narrower and
+worth saying precisely: **the test named for AC4 is not what covers AC4.**
+`apps/GotIssues.Api.IntegrationTests/ProjectsTests.cs:281-302` fetches page 1 and stops — it never
+requests page 2, despite being called `…_and_the_caller_can_reach_the_rest`. Same family as
+blocking finding B3 from review (a test asserting less than its own name claims), one layer up.
+**Non-blocking** — the behaviour is right and a passing test does assert it — but the name should
+either become true or stop claiming what a sibling class proves.
+
+#### Non-blocking notes
+
+- **N1 — `ProjectPage.totalCount` is not `required` in the schema.** `spec/openapi.yaml` requires
+  `[items, page, pageSize]` only, so the generated client types it `int?` while AC4 leans on it as
+  *"what a client needs to fetch the next page"* and the API always sends it. The contract
+  understates a guarantee the implementation makes. A one-line spec change, but a spec change, so
+  it belongs to refinement rather than to acceptance.
+- **N2 — undeclared statuses are reachable on both operations.** `405` (`PUT`/`PATCH`/`DELETE
+  /projects`), `415` (from the `[Consumes("application/json")]` the generator emits for the
+  declared `requestBody`) and `404` (`/projects/{id}`). All three return
+  `application/problem+json`; none appears in the specification. Framework-standard and not caused
+  by this ticket, but it is the same "the document is silent about what the system does" family
+  T-0017's conformance tier exists for — worth folding into that ticket's already-open refinement
+  rather than minting a new one.
+- **N3 — a 40 MB request body drops the connection** rather than answering `413`. Kestrel's default
+  limit, not this ticket's; recorded only so the next person does not rediscover it.
+- **N4 — the Work Log is the best I have read on this project.** Striking through the invalid
+  mutation row instead of replacing it, and attributing the read-then-insert mutant to the reviewer
+  rather than absorbing it, are both what the standard asks for and both cost the author something.
+  That is why the two findings above are stated as narrowly as they are: this change earned precise
+  criticism rather than general suspicion.
+
+#### Definition of Done, at this stage
+
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | Implementation complete, nothing Out of Scope | **Pass** — every In Scope item present; no update, archive or delete operation, no membership concept, no redefinition of T-0009's policies, no UI. Verified in the diff and live (405/404) |
+| 2 | All acceptance criteria verified | **Fail** — AC6, Finding 1 |
+| 3 | Automated tests exist and pass | **Pass** — 82/82, 0 skipped, mutation-verified above |
+| 4 | No known unrecorded defects | **Fail** — Finding 1 is now recorded and must be fixed, or deferred into a bug ticket whose scope actually takes it, with PO acceptance |
+| 5 | Code quality | **Pass** — 0 warnings, both `format` runs clean, no TODOs, no debug scaffolding, no dead code |
+| 6 | Documentation updated | **Fail** — Finding 2 |
+| 7 | Work Log complete | **Pass** |
+| 8 | State updated | pending `complete-ticket` |
+| — | ADR recorded | **Pass** — ADR-0008 Accepted, in the index, linked from `adrs:` and from *Relevant ADRs*, and linking back. NB1 from re-review is closed |
+| — | Security | **Pass with Finding 1** — validation declared in the contract, no secrets, no dependency change; the one gap is a write failure with no declared destination |
+| — | Migrations | **Pass** — scripted, reversible (`Down` recreates `placeholder_records`), applied by the explicit migrator service, exercised by the suite and by the smoke tier's schema check |
+| — | Observability | **Pass** — the 500 is fully logged with SQLSTATE and stack trace; it is the *response* that is empty, not the record |
+| — | Deployment | **Pass** — smoke 12/12 through the real Compose stack |
+
+**Does any deviation need recording? No — because none is available.** Items 2, 4 and 6 are not
+deviations; they are unmet items with concrete, small fixes inside this ticket's scope. A DoD
+deviation is a recorded PO or human decision to accept a gap, and there is no gap worth accepting
+when the remedy is a spec or catch change plus four sentences of documentation. If the PO
+nonetheless wishes to defer Finding 1, [DoD](../../governance/DEFINITION_OF_DONE.md) item 4's
+strengthened wording applies: the destination ticket must be read and the scope line that takes it
+on cited or added — and T-0017 does **not** currently take it on, so pointing there without editing
+it would be the false pointer that ticket's own history is about.
+
+#### What T-0005 and T-0006 should inherit, and what they should not
+
+- **Inherit** the shape of this controller: no routing attributes, policies applied through the
+  `AuthorizationPolicies` constants per ADR-0008, `ControllerBase.Problem(…)` rather than
+  `Conflict(new Problem{…})`, a narrow `DbUpdateException` filter, and the stable paging tiebreaker.
+  All four are lessons already paid for.
+- **Inherit** the mutation discipline, including the correction — *did the mutant reach the
+  assertion?* is now the question, and a red suite is not the answer to it.
+- **Avoid** copying the write path before Finding 1 has a destination. Issues carry a title and a
+  description, both caller-supplied text, so T-0005 would reproduce this defect rather than inherit
+  a fix.
+- **Avoid** naming a test for a criterion it only half exercises. The AC-per-test naming here is
+  good and worth keeping, which is exactly why `AC4_…_the_caller_can_reach_the_rest` should say
+  what it does.
+
+#### One process note, recorded rather than decided quietly
+
+[acceptance-test](../../skills/acceptance-test/SKILL.md) says a failed acceptance sets
+`status: in-progress`, `owner: none`. The validator refuses that combination —
+`OWNED_STATUSES` requires an owner for `in-progress`
+(`tools/validate-project-os/validate.py:20,80`) — so the two rules cannot both be satisfied. I
+followed the project's own precedent instead of inventing a third answer: `a3f27d1`
+(*"os: T-0009 reopened…"*) set `status: in-progress` with `owner:` back to the implementer, and the
+sprint and backlog tables to match. Done the same way here. The skill and the validator disagree by
+one field and somebody should reconcile them; that is `evolve-governance`'s call, not acceptance's.
+
+- **Did:** Derived scenarios from the requirements before reading the Work Log; verified all eleven
+  criteria against a real Compose stack with attribution confirmed in both directions; probed key
+  casing and Unicode lookalikes, name and key boundaries at and one past their declared limits,
+  pagination bounds at and one past theirs, pagination integrity across 190 rows and 10 pages,
+  concurrent creates of the same key and of different keys, malformed and hostile bodies, and
+  undeclared methods and media types; ran all seven gates reading each exit code from its own tool;
+  reproduced all three recorded mutants and ran a fourth of my own.
+- **Decided:** **FAIL** — Finding 1 (undeclared bodyless 500 on a contract-legal input, AC6) and
+  Finding 2 (documentation still describes the deleted placeholder as what exists, DoD item 6).
+  Finding 3 and N1–N3 are non-blocking. Status back to `in-progress`, owner cleared, sprint table
+  updated.
+- **Remaining:** an engineer picks this back up for the two findings; re-acceptance afterwards.
+  Finding 3 and N1–N2 are for that engineer or for refinement to route.
+- **Open questions / blockers:** none. ADR-0004 and ADR-0008 both stand; nothing I found argues
+  against either.
+- **Branch / PR:** verified on `main`; the ticket's change-set is `98ff9de`, acceptance run at
+  `3c5526b`.
+- **Test state:** `dotnet test` 82/82 exit 0 · `dotnet build --no-incremental` 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `smoke.sh` exit 1 (environment DNS) then
+  exit 0, 12/12 · `validate.py` exit 0. I changed no implementation, test or specification code;
+  all four mutants were reverted and verified byte-identical against `HEAD`.
