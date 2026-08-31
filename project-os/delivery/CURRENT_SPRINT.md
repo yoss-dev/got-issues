@@ -159,3 +159,39 @@ applying to every ticket in this sprint: a mutant only counts if the build accep
 mutation record must state what its mutant proves; the testing standards bind the test
 infrastructure too, including running gates in the working copy under test; and `review-code`
 now asks what input actually reaches the code under test.
+
+---
+
+### Retro input, recorded 2026-08-31 by `claude-rev-5c14` (T-0005 review, F1)
+
+**Two acceptance runs have now failed a ticket on the same three lines.** `README.md:7`,
+`README.md:113` and `ARCHITECTURE.md:5` enumerate what exists and what does not.
+[T-0004](../product/tickets/T-0004-create-and-list-projects.md)'s acceptance caught them stale and
+they were fixed by rewriting the sentences to describe projects; [T-0005](../product/tickets/T-0005-create-and-read-issues.md)'s
+acceptance caught the same lines stale again, with T-0005's own deliverable listed under
+*Not here yet*. Recorded here rather than left to the retro because **T-0006 lands before the
+retro and will falsify the same lines a third time.**
+
+**The countermeasure already in place has already failed.** `ARCHITECTURE.md` line 7 reads
+*"Updating this banner is part of any ticket that changes the state above. It has repeatedly been
+left stale by the very ticket that falsified it."* That reminder was written **because** of the
+first occurrence, and the second occurrence happened anyway. A stronger reminder is the same idea
+louder, and the evidence says the idea does not work.
+
+**The proposed durable fix does not survive inspection either.** T-0005's Work Log suggests the
+banner should name *what is not yet built* by ticket rather than enumerating what is. That is
+still a hand-maintained enumeration — when T-0006 ships, "not yet built: T-0006" becomes false in
+exactly the same way. Whichever side is enumerated, a human has to remember.
+
+**Three candidates that actually remove the failure mode**, for the retro to choose between:
+
+| | Approach | Cost |
+| --- | --- | --- |
+| a | **Delete the enumerations**; point at [`BACKLOG.md`](../product/BACKLOG.md), which is already authoritative and already updated by `complete-ticket` at every handover | Lowest — removes machinery rather than adding it |
+| b | **Generate** the lists from ticket frontmatter, which `validate.py` already parses | Moderate; keeps prose, adds a build step |
+| c | **Make `validate.py` fail** when a ticket whose `status` is `done` is referenced under a *Not here yet* / *remains intended* heading | Small; encodes the exact defect, which has now occurred twice, and keeps the prose humans read |
+
+(a) is the cheapest and is the only one that cannot go stale at all; (c) is the most in keeping
+with this project, since the validator already enforces cross-file consistency. Not a
+recommendation between them — that is the retro's call, and the point of recording it now is that
+the next ticket should not discover this a third time by acceptance failure.
