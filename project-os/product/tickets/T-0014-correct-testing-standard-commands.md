@@ -49,6 +49,7 @@ A standard that tells agents to run non-existent commands trains them to ignore 
 - **`GIT.md`** — its merge-gate list cites the old drift command. Same correction.
 - **`DOCUMENTATION.md`** — its prerequisites still name a JDK, which [T-0002](T-0002-contract-first-codegen-pipeline.md) removed by running the generator from a container image. (The same statement in `PROJECT.md` §5 and `ARCHITECTURE.md` is delivery state and was corrected in T-0002 directly; these three are governance and need this ticket's approval route.)
 - Follow `evolve-governance`: justification, the right approval, and a durable record.
+- **Name `tools/smoke.sh` in [TESTING.md](../../standards/TESTING.md)'s tier table, and decide whether `tools/smoke.sh --build-only` belongs in [GIT.md](../../standards/GIT.md)'s pre-merge gate list.** Added 2026-08-31 from [T-0015](T-0015-compose-stack-smoke-test.md)'s review: `apps/GotIssues.SmokeTests` sits outside `GotIssues.slnx` so the habitual suite stays fast, which means **nothing compiles it by accident** — the gates build and format the solution and would not notice it failing to compile. The mitigation today is a documented command, which is a habit rather than a gate. This scope line exists so that residual has a destination that accepts it.
 
 ### Out of Scope
 
