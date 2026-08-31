@@ -2,11 +2,11 @@
 id: T-0004
 title: Create and list projects
 type: feature
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-4d18
 depends_on: [T-0002, T-0003, T-0009]
 adrs: [ADR-0004, ADR-0003, ADR-0008]
 created: 2026-08-30
@@ -52,17 +52,17 @@ Sam gets the structure that a flat list cannot provide — work grouped by proje
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given a caller holding the `admin` role, when they create a project with a valid name and key, then it is persisted and returned with both.
-- [ ] AC1b: Given a key that is not short uppercase alphanumeric (as declared in the specification), when a project is created, then the API returns 400 with a problem document naming the key.
-- [ ] AC1c: Given a key already in use, when a project is created with it, then the API returns 409 and no second project exists — keys are unique across the deployment.
-- [ ] AC1d: Given an existing project, when any operation attempts to change its key, then the key does not change — it is immutable, because every issue identifier derives from it.
-- [ ] AC2: Given a caller holding only the `member` role, when they attempt to create a project, then the API returns 403 and nothing is persisted — project creation is an admin act (`PROJECT.md` §5).
-- [ ] AC2b: Given a caller of either role, when they request the project list, then it is returned — listing is not restricted.
-- [ ] AC2c: Given an unauthenticated or invalid-token caller, when they attempt either operation, then the API returns 401 — distinct from the 403 of AC2.
-- [ ] AC3: Given invalid input (as declared in the specification), when a project is created, then the API returns 400 with an `application/problem+json` body naming the offending field.
-- [ ] AC4: Given more projects exist than one page holds, when the list is requested, then results are paginated and the response carries what a client needs to fetch the next page — no unbounded result set is ever returned.
-- [ ] AC5: Given the specification, when `./tools/generate.sh` is run and the drift check follows, then the diff is empty — the endpoints were designed in the spec, not in the controller.
-- [ ] AC6: Given the endpoints, when they are exercised by integration tests against real PostgreSQL, then behaviour matches what the specification declares.
+- [x] AC1: Given a caller holding the `admin` role, when they create a project with a valid name and key, then it is persisted and returned with both.
+- [x] AC1b: Given a key that is not short uppercase alphanumeric (as declared in the specification), when a project is created, then the API returns 400 with a problem document naming the key.
+- [x] AC1c: Given a key already in use, when a project is created with it, then the API returns 409 and no second project exists — keys are unique across the deployment.
+- [x] AC1d: Given an existing project, when any operation attempts to change its key, then the key does not change — it is immutable, because every issue identifier derives from it.
+- [x] AC2: Given a caller holding only the `member` role, when they attempt to create a project, then the API returns 403 and nothing is persisted — project creation is an admin act (`PROJECT.md` §5).
+- [x] AC2b: Given a caller of either role, when they request the project list, then it is returned — listing is not restricted.
+- [x] AC2c: Given an unauthenticated or invalid-token caller, when they attempt either operation, then the API returns 401 — distinct from the 403 of AC2.
+- [x] AC3: Given invalid input (as declared in the specification), when a project is created, then the API returns 400 with an `application/problem+json` body naming the offending field.
+- [x] AC4: Given more projects exist than one page holds, when the list is requested, then results are paginated and the response carries what a client needs to fetch the next page — no unbounded result set is ever returned.
+- [x] AC5: Given the specification, when `./tools/generate.sh` is run and the drift check follows, then the diff is empty — the endpoints were designed in the spec, not in the controller.
+- [x] AC6: Given the endpoints, when they are exercised by integration tests against real PostgreSQL, then behaviour matches what the specification declares.
 
 ## Examples / Scenarios
 
@@ -113,7 +113,7 @@ Integration tests through `WebApplicationFactory` against PostgreSQL in Testcont
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked item by item on 2026-08-31 by `claude-qa-4d18`; no deviation required.
 
 ---
 
@@ -2041,3 +2041,64 @@ recorded work, and note 1 needs a ticket that `complete-ticket` will require any
   and the validator all exit 0. I changed no committed code: the spec mutant and its scratch
   commit were reset with `git reset --hard a9ef413`, the spec verified byte-identical to a
   pre-mutation copy, and the tree left clean.
+
+### 2026-08-31 — QA / Scrum Master (claude-qa-4d18) — Definition of Done walk, ticket closed
+
+State assessed: `main` @ `3f0b74b`, with `e4b287f` carrying the deferral's destination.
+
+**Universal items**
+
+1. **Implementation complete** — the projects resource, its migration, its policies, and the
+   deletion of the placeholder from spec, code, schema and documentation. Review walked the diff
+   against In Scope across four rounds and found no scope drift.
+2. **Acceptance criteria verified independently** — all eleven, by `claude-qa-4d18`, against a
+   real Compose stack with attribution confirmed, not only through the suite. Boxes ticked above.
+3. **Automated tests** — 87 passing (17 unit, 70 integration), smoke 13/13, nothing skipped.
+   Every claim mutation-proved, and three mutants **discarded as invalid** when they proved not to
+   reach their assertions.
+4. **No known unrecorded defects.** Everything acceptance and review raised is fixed except one
+   item, deferred to **[T-0020](T-0020-correlate-a-500-with-its-cause.md)** — created and linked
+   *before* this walk, with a scope line that names the item explicitly, because item 4 counts a
+   deferral only once its destination exists and accepts it. Two questions this ticket raised but
+   did not answer sit on [T-0017](T-0017-automated-contract-conformance-tier.md) (undeclared
+   `415`/`405`; the declaration-versus-enforcement gap), and the constraint hazard it created for
+   [T-0005](T-0005-create-and-read-issues.md) is recorded there.
+5. **Code quality** — approved by `claude-rev-3e77` after four rounds; build 0 warnings under
+   warnings-as-errors; `dotnet format` exit 0 for the solution and the out-of-solution smoke
+   project.
+6. **Documentation** — the item this ticket failed acceptance on. README's banner, *Not here yet*
+   and role paragraph, ARCHITECTURE's state banner, and `Program.cs`'s justification for
+   `/health/authenticated` were all falsified by deleting the placeholder; all four are corrected,
+   and the last one now names the precondition that will expire it.
+7. **Work Log complete** — including the three invalid mutants and the false generalisation,
+   recorded rather than quietly replaced.
+8. **State updated** — this commit.
+
+**Conditional items**
+
+- **Regression tests** — every defect found has a test that fails without the fix, each
+  demonstrated by a mutant verified to reach its assertion.
+- **ADR** — **[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md)**,
+  Accepted, raised by this ticket, linked from the frontmatter and the ADR section.
+- **Security** — role enforcement is the ticket's subject; the 500 leaks nothing about the failure
+  and a smoke assertion holds that; no secrets added.
+- **Migrations** — `AddProjectsDropPlaceholder` creates `projects` with a unique index on `Key`
+  and drops the placeholder table; applied by the stack's own migration step and covered by the
+  smoke tier's schema comparison.
+- **Observability** — the correlation gap is the deferral above.
+- **Accessibility, Deployment** — not applicable.
+
+**Verdict: Done.** No deviation required.
+
+**What this ticket actually proved.** [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)
+governed six tickets before this one without a real resource ever travelling it. It now has:
+a `pattern`, `required` fields, two new status codes and a declared `500` all reached the
+implementation through generation, and every validation rule this ticket added lives in
+`spec/openapi.yaml` rather than in a controller. The premise held.
+
+- **Did:** Walked every universal item and every applicable conditional item against repository state.
+- **Decided:** the single deferral has a destination that accepts it; no deviation is warranted.
+- **Remaining:** none.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged as `98ff9de`, `af17722`, `3f0b74b`; all worktrees and branches removed.
+- **Test state:** 87/87 · smoke 13/13 · build 0 warnings · format 0 (both) · drift 0 · validate 0.

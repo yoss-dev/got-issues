@@ -14,19 +14,18 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | in-acceptance | T-0002, T-0003, T-0009 |
-| 2 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | committed | T-0004 |
-| 3 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | committed | T-0005, T-0009 |
-| 4 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
-| 5 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
-| 6 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | ready | T-0010 |
-| 7 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container images to immutable digests | technical | ready | T-0001 |
-| 8 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | ready | — |
-| 9 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | ready | T-0001 |
-| 10 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | ready | T-0002 |
-| 11 | [T-0017](tickets/T-0017-automated-contract-conformance-tier.md) | Automate the contract-conformance test tier TESTING.md already defines | technical | ready | T-0002 |
-| 12 | [T-0019](tickets/T-0019-token-clock-skew.md) | Decide the resource server's clock-skew allowance instead of inheriting five minutes | technical | ready | T-0009 |
-| 13 | [T-0020](tickets/T-0020-correlate-a-500-with-its-cause.md) | Make a 500 correlatable with the log line that explains it | technical | backlog | T-0004 |
+| 1 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | committed | T-0004 |
+| 2 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | committed | T-0005, T-0009 |
+| 3 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
+| 4 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
+| 5 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | ready | T-0010 |
+| 6 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container images to immutable digests | technical | ready | T-0001 |
+| 7 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | ready | — |
+| 8 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | ready | T-0001 |
+| 9 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | ready | T-0002 |
+| 10 | [T-0017](tickets/T-0017-automated-contract-conformance-tier.md) | Automate the contract-conformance test tier TESTING.md already defines | technical | ready | T-0002 |
+| 11 | [T-0019](tickets/T-0019-token-clock-skew.md) | Decide the resource server's clock-skew allowance instead of inheriting five minutes | technical | ready | T-0009 |
+| 12 | [T-0020](tickets/T-0020-correlate-a-500-with-its-cause.md) | Make a 500 correlatable with the log line that explains it | technical | backlog | T-0004 |
 
 ## Completed
 
@@ -39,6 +38,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | [T-0002](tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | technical | done | 2026-08-31 |
 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | done | 2026-08-31 |
 | [T-0015](tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | technical | done | 2026-08-31 |
+| [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | done | 2026-08-31 |
 
 ## Changelog
 
@@ -52,6 +52,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - 2026-08-30 — **SPRINT-001 planned.** Committed T-0001, T-0011, T-0003, T-0010 (goal: the stack runs from a clean clone with a working token round-trip, proved by tests). Continuous flow, no end date. T-0002 held back pending T-0011's verdict; T-0009 held back because both its dependencies are in this sprint. Order unchanged.
 - 2026-08-30 — `refinement-session` complete: **T-0001, T-0003, T-0002, T-0009, T-0010 all refined → `ready`** (5 of 5 attempted). Spawned **T-0011**, a 4-hour spike gating T-0002, after the maintainer chose to answer the `aspnetcore` generator question before building the pipeline rather than during it; T-0011 is placed at position 2 because it has no dependencies and its verdict could supersede ADR-0004. T-0010 moved above T-0002 (it only needs T-0001, while T-0002 waits on the spike). Positions 6–11 shifted; relative product-ticket priority unchanged.
 - 2026-08-30 — `refinement-session` (order chosen by the maintainer: T-0001, T-0003, T-0002, T-0009). **T-0001 refined → `ready`**, and **split**: the Duende identity host became **T-0010**, inserted at position 4 ahead of T-0009, which now depends on it rather than on T-0001. T-0001's refinement also produced **ADR-0005** (operational endpoints are outside the API contract), which resolved a circular conflict between the contract-first rule and T-0001's health endpoint. Positions 4–10 shifted down by one; relative priority is otherwise unchanged.
+- 2026-08-31 — **T-0004 done — the first product capability.** Projects can be created by an admin and listed by either role, through endpoints designed in the specification and generated from it. ADR-0004's premise held on its first real resource. **[T-0005](tickets/T-0005-create-and-read-issues.md) is now unblocked** and is the sprint's next ticket.
 - 2026-08-31 — **T-0020 created from T-0004's acceptance**: the 500 is the only response in the API that cannot be correlated from either end — every other problem document carries `traceId`, that one carries nothing, and the log line has no identifier either. Created before `complete-ticket` rather than after, because [DoD](../governance/DEFINITION_OF_DONE.md) item 4 counts a deferral only once its destination exists and accepts it.
 - 2026-08-31 — **SPRINT-003 planned.** Committed T-0004, T-0005, T-0006 — goal: *a person can create a project, file issues, and move them through their lifecycle, all through the API*. The MVP the Product Owner asked for. First sprint whose committed work is a strict dependency chain rather than independent tickets, so capacity is set at 3 rather than the trailing 3–4. T-0007 left out to keep the chain three deep; T-0018 left out although it is what makes `assignee` name a person rather than a client id. Order unchanged.
 - 2026-08-31 — **Both blocking questions answered by the maintainer; all 10 now `ready`.** The issue enumerations are the minimal set (`bug`/`task`, `open`/`in_progress`/`done`, `low`/`normal`/`high`), closing T-0006's only DoR failure. The grant type is a **test-only extension grant, gated off by default** — recorded as [ADR-0007](../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md) (Accepted), which closes T-0018's architectural conditional and unblocks T-0008.
