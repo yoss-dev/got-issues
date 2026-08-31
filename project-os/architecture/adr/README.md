@@ -26,4 +26,4 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 | [ADR-0003](ADR-0003-initial-technology-stack.md) | Build Got Issues as a .NET 10 API on PostgreSQL with Duende IdentityServer, running entirely under Docker Compose | Accepted | 2026-08-30 |
 | [ADR-0004](ADR-0004-contract-first-openapi-code-generation.md) | Generate server contracts and clients from a hand-authored OpenAPI specification using OpenAPI Generator | Accepted | 2026-08-30 |
 | [ADR-0005](ADR-0005-operational-endpoints-outside-the-api-contract.md) | Operational endpoints are outside the API contract | Accepted | 2026-08-30 |
-| [ADR-0006](ADR-0006-nswag-for-server-contracts.md) | Generate server contracts with NSwag, keeping OpenAPI Generator for clients | Proposed | 2026-08-30 |
+| [ADR-0006](ADR-0006-nswag-for-server-contracts.md) | Generate server contracts with NSwag, keeping OpenAPI Generator for clients | Rejected | 2026-08-30 |

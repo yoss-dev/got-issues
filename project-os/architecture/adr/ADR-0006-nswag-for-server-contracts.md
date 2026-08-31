@@ -2,7 +2,11 @@
 
 ## Status
 
-Proposed
+Rejected
+
+> **Rejected 2026-08-30, the same day it was proposed.** The blocking evidence in the Context below — that the `aspnetcore` generator cannot emit async controller methods — was **wrong**. The generator needs *two* options, `operationIsAsync` **and** `operationResultTask`; the spike set only the first. With both, it emits `Task<IActionResult>`, and a controller implementing it builds clean under this project's full settings. The maintainer challenged the finding and was right.
+>
+> [ADR-0004](ADR-0004-contract-first-openapi-code-generation.md) therefore **stands, unsuperseded**. The body below is preserved unedited as the record of what was proposed and why it was wrong. The secondary findings it cites — no ASP.NET Core 9/10 target, and a vulnerable transitive `Newtonsoft.Json` via `JsonSubTypes` — are real, and are [T-0002](../../product/tickets/T-0002-contract-first-codegen-pipeline.md)'s to handle.
 
 ## Date
 

@@ -143,3 +143,51 @@ Supersede [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code
 **Time box:** the question was answered well inside the 4 hours. Nothing was left unexplored that would change the verdict.
 
 **Stopping here per the sprint plan.** SPRINT-001's Notes say that if this spike returns "supersede", the loop stops and re-plans rather than absorbing it, because T-0002's scope changes materially — a WoW §7 conversation, not a mid-sprint adjustment. A **Proposed** ADR-0006 accompanies this ticket; accepting it is the maintainer's decision.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — CORRECTION: verdict reversed
+
+**The maintainer challenged the async finding and was right. The previous entry's blocking finding is withdrawn, and with it the recommendation to supersede ADR-0004.**
+
+**What I got wrong.** I set `operationIsAsync=true`, saw synchronous `IActionResult` methods, tested three *modifier* combinations, and concluded the flag was ignored. It was not. The `aspnetcore` generator splits the concern across **two** options, and I only used one:
+
+- `operationIsAsync` — makes the method body async
+- **`operationResultTask`** — makes the method *return* `Task<>`
+
+With both set, the generator emits exactly what is needed:
+
+```csharp
+public abstract Task<IActionResult> CreateWidget([FromBody]CreateWidgetRequest createWidgetRequest);
+```
+
+My three-configuration test varied `classModifier`/`operationModifier` while leaving `operationResultTask` at its default of `false` throughout — so it re-confirmed my own mistake three times rather than testing the hypothesis. That is the lesson worth keeping: I read the option list, found a plausible match, and stopped looking. `operationResultTask` was in the same list.
+
+**Re-verified.** An async controller inheriting the generated abstract class, using `HttpContext.RequestAborted` for cancellation, **builds clean** under this project's full settings — `Nullable=enable`, `TreatWarningsAsErrors`, `latest-recommended` analysers, 0 warnings.
+
+## Corrected verdict: **ADR-0004 stands. Do not supersede.**
+
+ENGINEERING.md's async rule is satisfiable: methods are `async Task<IActionResult>` and take no `.Result`/`.Wait()`. The generated signature still carries no `CancellationToken` **parameter**, but `HttpContext.RequestAborted` supplies one inside the method, which meets the standard's requirement that cancellation reach EF Core. That is a mild ergonomic wart, not a violation.
+
+## The working configuration, for T-0002 to inherit
+
+```
+-g aspnetcore
+--additional-properties=aspnetCoreVersion=8.0,buildTarget=library,\
+  classModifier=abstract,operationModifier=abstract,\
+  operationIsAsync=true,operationResultTask=true,\
+  nullableReferenceTypes=true,useSwashbuckle=false,useNewtonsoft=false,\
+  packageName=<name>
+```
+
+Client: `-g csharp --additional-properties=library=generichost` (the default; System.Text.Json, async with `CancellationToken`, no Newtonsoft, builds on `net10.0`).
+
+## Findings that survive the correction
+
+These are real, were verified, and remain T-0002's problems to solve — none is disqualifying:
+
+1. **No ASP.NET Core 9/10 target.** `aspnetCoreVersion` stops at 8.0 and emits `<TargetFramework>net8.0</TargetFramework>`. It compiles fine once retargeted, but generated project files must not be hand-edited, so T-0002 needs a `Directory.Build.props` override or a post-generation step.
+2. **A vulnerable transitive `Newtonsoft.Json`.** `useNewtonsoft=false` removes the MVC package, but `JsonSubTypes` 1.8.0 pulls Newtonsoft 10.0.1 back in, carrying GHSA-5crp-9r3c-p9vr. Under `TreatWarningsAsErrors` this is `NU1903: Warning As Error` and the build fails. Fixed by pinning `Newtonsoft.Json` 13.0.3 at the repository level — in our own files, so the never-hand-edit-generated-code rule holds.
+3. **Generated `Nullable` is `annotations`, not `enable`** — the generated assembly is not null-checked to this project's standard.
+4. **The generator warns that OpenAPI 3.1 support "is still in beta"**, and this project's contract is 3.1.
+5. **First container-image pull exceeded 10 minutes** here; the 30 MB JAR took seconds. T-0002's choice of the container image stands, but the first-run cost is worth documenting.
+
+**Consequence:** [ADR-0006](../../architecture/adr/ADR-0006-nswag-for-server-contracts.md) is **Rejected** — the evidence that motivated it was my error. [T-0002](T-0002-contract-first-codegen-pipeline.md) is **not** stale and remains Ready; it should absorb the configuration above and findings 1–2 during implementation.

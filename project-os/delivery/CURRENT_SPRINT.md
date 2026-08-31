@@ -23,8 +23,6 @@ Sequenced: T-0001 first — everything except the spike depends on it.
 
 ## Blockers & Escalations
 
-- **T-0011 — verdict is "supersede", so the loop stopped as planned.** The spike found that OpenAPI Generator's `aspnetcore` templates emit **synchronous** controller methods with no `CancellationToken` (`operationIsAsync=true` is silently ignored, confirmed across three configurations), which collides with ENGINEERING.md's async rule on every endpoint permanently. **ADR-0006 is drafted as `Proposed`**, recommending NSwag for server contracts and OpenAPI Generator for clients. This sprint's Notes said a "supersede" verdict stops the loop rather than absorbing it, because T-0002's scope changes materially (WoW §7). Awaiting the maintainer: accept ADR-0006, reject it, or ask for NSwag to be verified first. **T-0002 is now stale-Ready** and must be re-refined against whichever way this goes.
-
 - **T-0001 — awaiting a PO decision on AC1.** Implementation is complete and independently reviewed (`claude-rev-2c8d`, request-changes); every finding is resolved except one. AC1 requires `docker compose up` to work from a clean clone "with no further manual steps", but `.env` is git-ignored by design, so PostgreSQL will not initialise without it. Resolving it means either committing a default credential (forbidden outright by SECURITY.md), amending AC1 to permit the documented `cp .env.example .env` (a PO artifact I may not change), or switching PostgreSQL to trust authentication (technically clean, but a security posture lowered to pass a criterion). **Recommended default: amend AC1** — the ticket's own In Scope already mandates `.env.example`, which implies copying it. Full escalation in the ticket Work Log. Blocked since 2026-08-30; unblocked by the maintainer choosing one option.
 
 ## Discovered / Unplanned Work
@@ -56,13 +54,13 @@ Sequenced: T-0001 first — everything except the spike depends on it.
 **Progressed**
 
 - **T-0001** — implemented, independently reviewed by `claude-rev-2c8d` (request-changes), all findings resolved except one. Now `blocked` on a PO decision. Branch `t-0001-runnable-compose-stack`, 5 commits, not merged.
-- **T-0011** — spike complete, verdict delivered, `in-acceptance`. Awaiting an independent acceptance session.
+- **T-0011** — spike complete, `in-acceptance`. Verdict after correction: **ADR-0004 stands**; the generator is viable with the right flags. Awaiting an independent acceptance session, which should scrutinise the corrected findings rather than the first pass.
 
 **Gates honoured.** Review ran as a separate session with its own identity and re-verified every criterion against its own clean clone rather than trusting the implementer — which is how the AC1 false pass was caught. Nothing was merged; nothing reached `done`.
 
 **Artifacts created:** ADR-0005 (Accepted, during refinement), ADR-0006 (**Proposed**, from the spike). No discovered work; no deferred defects.
 
-**Consequence to note:** T-0002 is `ready` but **stale** — it was refined against ADR-0004, which ADR-0006 would supersede. It must be re-refined before it is planned, whichever way the decision goes.
+**Correction, same day:** the spike's blocking finding was wrong. The `aspnetcore` generator *can* emit `async Task<IActionResult>`; it needs `operationIsAsync` **and** `operationResultTask`, and the spike set only the first. The maintainer challenged it and was right. **ADR-0004 stands, ADR-0006 is Rejected, and T-0002 is not stale** — it remains Ready and inherits the working generator configuration recorded in T-0011. Only **one** decision (T-0001's AC1) is now outstanding.
 
 **Validator:** OK (11 tickets, 6 ADRs). Working tree clean, trunk and branch both consistent.
 
