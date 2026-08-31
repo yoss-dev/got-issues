@@ -186,11 +186,35 @@ public sealed class ComposeProject : IAsyncDisposable
             separator > 0 && int.TryParse(mapping[(separator + 1)..], CultureInfo.InvariantCulture, out _),
             $"Could not read a host port for {service} from '{mapping}'.");
 
-        return int.Parse(mapping[(separator + 1)..], CultureInfo.InvariantCulture);
+        var port = int.Parse(mapping[(separator + 1)..], CultureInfo.InvariantCulture);
+
+        // `docker compose port` can exit 0 having printed `invalid IP:0`. No caller today
+        // turns that into a false pass, but this is a public helper and the next one
+        // inherits a function that hands back a plausible port when Docker said nothing
+        // of the kind.
+        Assert.True(port > 0, $"docker compose port {service} {containerPort} returned '{mapping}', which is not a port.");
+
+        return port;
     }
 
     public async Task<Uri> BaseAddressAsync(string service, int containerPort = 8080) =>
         new($"http://localhost:{await HostPortAsync(service, containerPort).ConfigureAwait(false)}");
+
+    /// <summary>
+    /// Every service the compose file declares, read from the file rather than listed by
+    /// hand. A hard-coded list makes "every service is healthy" mean "every service
+    /// someone remembered", and the service added next is the one it will not cover.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> DeclaredServicesAsync()
+    {
+        var result = await ComposeAsync("config", "--services").ConfigureAwait(false);
+        result.EnsureSucceeded("docker compose config --services");
+
+        return [.. result.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)];
+    }
 
     /// <summary>
     /// The state Compose reports for each service, from <c>ps --format json</c> rather
@@ -246,11 +270,12 @@ public sealed class ComposeProject : IAsyncDisposable
         return await ComposeAsync(arguments, CancellationToken.None).ConfigureAwait(false);
     }
 
-    /// <summary>A single-value SQL query against the stack's own database.</summary>
-    public async Task<string> QueryAsync(string sql)
+    /// <summary>A SQL query against the stack's own database, or another on the same server.</summary>
+    public async Task<string> QueryAsync(string sql, string? database = null)
     {
         var result = await ExecAsync(
-            "postgres", "psql", "-U", PostgresUser, "-d", PostgresDatabase, "-tAc", sql).ConfigureAwait(false);
+            "postgres", "psql", "-U", PostgresUser, "-d", database ?? PostgresDatabase, "-tAc", sql)
+            .ConfigureAwait(false);
         result.EnsureSucceeded($"psql: {sql}");
         return result.StandardOutput.Trim();
     }

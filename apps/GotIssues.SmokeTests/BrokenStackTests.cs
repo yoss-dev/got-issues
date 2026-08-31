@@ -45,6 +45,11 @@ public sealed class BrokenStackTests
             failure is not null,
             "The check passed against a stack whose migration step does nothing. It would not notice a "
             + "migration regression, so every other criterion it reports is unevidenced.");
+
+        // Asserting only that *something* failed would let an unrelated fault — a failed
+        // image build, a stack torn down underneath — read as the mutation being caught.
+        // The failure has to be the one this mutation causes.
+        Assert.Contains("produced no schema at all", failure!.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -59,6 +64,13 @@ public sealed class BrokenStackTests
             failure is not null,
             "The check passed against a stack whose API declares no health condition, so 'every service "
             + "reaches a healthy state' was never actually being asserted.");
+
+        // Not "health": docker's own output says "container … is unhealthy" when an
+        // unrelated dependency fails to start, so that substring reported the mutant
+        // killed while no assertion in the check had run. The marker has to be text only
+        // this assertion produces.
+        Assert.Contains(
+            "Every service must either be running and healthy", failure!.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -85,9 +97,14 @@ public sealed class BrokenStackTests
             // something went wrong, so anything going wrong would have proved the point.
             (await stack.BuildAsync()).EnsureSucceeded("docker compose build");
 
+            // `up --wait` is setup too. Both mutations produce a stack that starts
+            // cleanly — the breakage is what the assertions find afterwards — so a
+            // failure to start is a harness fault and must fail this test rather than
+            // be counted as the mutant being caught.
+            (await stack.UpAsync()).EnsureSucceeded("docker compose up --wait");
+
             try
             {
-                (await stack.UpAsync()).EnsureSucceeded("docker compose up --wait");
                 await StackCheck.AssertStackHealthyAsync(stack);
                 await StackCheck.AssertSchemaMigratedAsync(stack);
                 return null;

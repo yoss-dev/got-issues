@@ -85,6 +85,8 @@ Some things are only true of the **stack**, not of the application: that a cold 
 
 It builds images and starts containers, so it takes minutes — which is why it is a separate command and why `apps/GotIssues.SmokeTests` is deliberately absent from `GotIssues.slnx`. **Nothing else compiles that project**, so `--build-only` exists to catch it rotting without paying for a full run.
 
+The check reads the service list from `compose.yaml` itself, and requires every service to be either running and healthy or exited 0 — so **a long-running service must declare a healthcheck** or the check fails. That is deliberate: a service whose health nobody declared cannot be asserted healthy.
+
 Every stack it starts uses its own Compose project name and **ephemeral host ports**, so it cannot collide with a stack you already have running — and cannot be answered by one either, which is the point: a `curl` to `localhost:8080` proves nothing about a container that failed to start.
 
 ### The contract, and changing it

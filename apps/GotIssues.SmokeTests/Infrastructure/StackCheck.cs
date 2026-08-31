@@ -9,75 +9,103 @@ namespace GotIssues.SmokeTests.Infrastructure;
 /// </summary>
 public static class StackCheck
 {
-    /// <summary>Services expected to run and stay healthy.</summary>
-    public static readonly string[] LongRunningServices = ["postgres", "identity", "api"];
-
-    /// <summary>Services expected to run once and exit zero (ADR-0003's explicit migration step).</summary>
-    public static readonly string[] OneShotServices = ["migrator", "identity-migrator"];
-
     /// <summary>
-    /// Every long-running service healthy, every one-shot service exited zero.
+    /// Every declared service is either running and healthy, or exited zero.
     ///
-    /// Deliberately asserted from <c>compose ps</c> and not inferred from <c>up --wait</c>
-    /// alone: <c>--wait</c> is the mechanism under test in AC4, and a check whose only
-    /// evidence is the mechanism it is testing cannot fail when that mechanism is removed.
+    /// The services are read from the compose file rather than listed here. A hard-coded
+    /// list turns "every service is healthy" into "every service someone remembered", and
+    /// the service added next is exactly the one it would not cover.
+    ///
+    /// Asserted from <c>compose ps</c> and not inferred from <c>up --wait</c>: `--wait` is
+    /// the mechanism AC4 breaks, and a check whose only evidence is the mechanism under
+    /// test cannot fail when that mechanism is removed.
     /// </summary>
     public static async Task AssertStackHealthyAsync(ComposeProject stack)
     {
-        var services = await stack.ServicesAsync().ConfigureAwait(false);
+        var declared = await stack.DeclaredServicesAsync();
+        Assert.NotEmpty(declared);
 
-        foreach (var name in LongRunningServices)
+        var services = await stack.ServicesAsync();
+
+        foreach (var name in declared)
         {
             var service = services.SingleOrDefault(s => s.Service == name);
-            Assert.True(service is not null, $"Service '{name}' is absent from the stack. Present: {Names(services)}");
-            Assert.True(service!.IsRunning, $"Service '{name}' is '{service.State}', expected running.");
-            Assert.True(service.IsHealthy, $"Service '{name}' reports health '{service.Health}', expected healthy.");
-        }
+            Assert.True(service is not null, $"Service '{name}' is declared but absent from the stack. Present: {Names(services)}");
 
-        foreach (var name in OneShotServices)
-        {
-            var service = services.SingleOrDefault(s => s.Service == name);
-            Assert.True(service is not null, $"Service '{name}' is absent from the stack. Present: {Names(services)}");
             Assert.True(
-                service!.ExitedCleanly,
-                $"Service '{name}' is '{service.State}' with exit code {service.ExitCode}; expected exited 0.");
+                (service!.IsRunning && service.IsHealthy) || service.ExitedCleanly,
+                $"Service '{name}' is '{service.State}' with health '{service.Health}' and exit code "
+                + $"{service.ExitCode}. Every service must either be running and healthy, or have exited 0.");
         }
     }
 
     /// <summary>
-    /// The migration step's *effect*: the schema exists and the history records it.
+    /// The schema matches what a clean run of the migration step produces.
     ///
-    /// Added because AC4 caught the check without it. `/health` probes connectivity —
-    /// correctly, that is its stated job (T-0001 AC3) — so it answers healthy against a
-    /// database with no tables at all. A stack whose migration step had been neutered
-    /// therefore passed the whole check. Service health cannot stand in for migrations
-    /// having run; nothing but the schema can speak for the schema.
+    /// Rewritten after acceptance. The previous version asserted that a *fixed pair* of
+    /// tables existed and that the history was non-empty, which passed against a database
+    /// missing `placeholder_records` entirely, and against a partially-migrated one where
+    /// a column was the wrong width — both verified by the acceptor. A named list of
+    /// tables can only find what its author already thought of.
+    ///
+    /// This migrates a scratch database with the stack's own migration step and compares
+    /// full column signatures: every table, column, type and length. A missing table, a
+    /// missing column, a rolled-back width change and an unapplied migration all differ.
+    /// The reference must be non-empty, or a migration step that does nothing would agree
+    /// with a database where nothing was done.
+    ///
+    /// Known limit: the signature is <c>information_schema.columns</c> only — no indexes,
+    /// constraints, defaults or nullability — so a migration that adds only an index
+    /// produces an identical signature and would not be detected.
     /// </summary>
     public static async Task AssertSchemaMigratedAsync(ComposeProject stack)
     {
-        // Qualified by schema on purpose: the identity host keeps a history table of the
-        // same name in the `identity` schema, so an unqualified count is 2 on a healthy
-        // stack and 1 when the API's migration step has done nothing at all. Counting
-        // both would have made this assertion pass in exactly the case it exists to catch.
-        var historyExists = await stack.QueryAsync(
-            "select count(*) from information_schema.tables "
-            + "where table_schema = 'public' and table_name = '__EFMigrationsHistory'");
-        Assert.True(
-            historyExists == "1",
-            "The migrations history table does not exist, so the migration step never ran against this database.");
+        const string reference = "smoke_schema_reference";
+        const string signature =
+            "select table_name || '.' || column_name || ' ' || data_type || "
+            + "coalesce('(' || character_maximum_length || ')', '') "
+            + "from information_schema.columns where table_schema = 'public' order by 1";
 
-        var applied = await stack.QueryAsync("select count(*) from public.\"__EFMigrationsHistory\"");
-        Assert.True(
-            applied != "0",
-            "The migrations history is empty: the migration step reported success without applying anything.");
+        await stack.QueryAsync($"drop database if exists {reference}", "postgres");
+        await stack.QueryAsync($"create database {reference}", "postgres");
 
-        var users = await stack.QueryAsync(
-            "select count(*) from information_schema.tables "
-            + "where table_schema = 'public' and table_name = 'users'");
-        Assert.True(
-            users == "1",
-            "The 'users' table is absent, so the schema the API depends on was never created.");
+        try
+        {
+            var connection =
+                $"Host=postgres;Port=5432;Database={reference};"
+                + $"Username={ComposeProject.PostgresUser};Password={ComposeProject.PostgresPassword}";
+
+            (await stack.ComposeAsync(
+                "run", "--rm", "--no-deps", "-e", $"ConnectionStrings__GotIssues={connection}", "migrator"))
+                .EnsureSucceeded("migrating the reference database");
+
+            var expected = Lines(await stack.QueryAsync(signature, reference));
+            Assert.True(
+                expected.Count > 0,
+                "A clean run of the migration step produced no schema at all, so it applies nothing — "
+                + "and an empty reference would agree with any unmigrated database.");
+
+            var actual = Lines(await stack.QueryAsync(signature));
+
+            var missing = expected.Except(actual, StringComparer.Ordinal).ToList();
+            var unexpected = actual.Except(expected, StringComparer.Ordinal).ToList();
+
+            Assert.True(
+                missing.Count == 0 && unexpected.Count == 0,
+                "The live schema differs from what a clean migration produces.\n"
+                + $"Missing: {Describe(missing)}\nUnexpected: {Describe(unexpected)}");
+        }
+        finally
+        {
+            await stack.QueryAsync($"drop database if exists {reference}", "postgres");
+        }
     }
+
+    private static List<string> Lines(string output) =>
+        [.. output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).Where(l => l.Length > 0)];
+
+    private static string Describe(List<string> items) =>
+        items.Count == 0 ? "(none)" : string.Join(", ", items);
 
     /// <summary>
     /// Confirms the endpoint answering us belongs to the container under test.

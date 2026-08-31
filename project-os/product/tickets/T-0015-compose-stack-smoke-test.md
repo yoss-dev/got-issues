@@ -1399,3 +1399,354 @@ schema assertion added on top of AC1, and nothing in T-0001's or T-0010's deviat
   `smoke.sh --build-only` exit 0 · no vulnerable packages.
 - **`accepted_by` deliberately left `none`** — reserved for `complete-ticket` at `done`, per the
   convention this project has followed since T-0002.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — F1, F2 and F3 closed rather than deferred
+
+Acceptance passed the ticket but left DoD item 4 owing one decision: **F1 was a verified gap
+with neither a destination nor a recorded deviation**, and the acceptor found it wider than I
+had disclosed. Branch `t-0015-acceptance-followups`.
+
+#### F1 — a named list can only find what its author already thought of
+
+`AssertSchemaMigratedAsync` checked that a *fixed pair* of tables existed and that the
+migrations history was non-empty. The acceptor broke it twice:
+
+- **rolled back `WidenUserSubject`** so `Subject` was `varchar(200)` — the disclosed limit;
+- **dropped `placeholder_records` entirely** — *not* disclosed, and every service still
+  reported healthy, `/health` still returned 200, and all three assertions still passed.
+
+I wrote that assertion to fix exactly this class of defect — service health standing in for
+migrations having run — and reintroduced it one layer down. The enumerated list of tables was
+the same mistake as the enumerated service list beside it (F2), and it fails the same way: it
+is a claim about the author's memory, not about the schema.
+
+**The schema is now compared against what a clean migration produces.** A scratch database is
+migrated with the stack's *own* migration step, and full column signatures — table, column,
+type, length — are compared. A missing table, a missing column, an unapplied migration and a
+rolled-back width change all differ, and none of them needs to have been anticipated. The
+reference is asserted non-empty first, because a migration step that does nothing would
+otherwise agree with a database where nothing was done.
+
+| Acceptance reproduction | Before | Now |
+| --- | --- | --- |
+| `drop table placeholder_records` | **passed** | **Killed** — `Missing: placeholder_records.…` |
+| `Subject` rolled back to `varchar(200)` | **passed** | **Killed** — expects `character varying(255)` |
+
+Both re-run against a live stack, green *before* the mutation and red after, rather than
+reasoned about.
+
+#### F2 — "every service" meant "every service someone remembered"
+
+`LongRunningServices` and `OneShotServices` were hard-coded. The services now come from
+`docker compose config --services`, and each must be either running-and-healthy or exited 0.
+The next service added is covered without anyone remembering to add it — and a service that
+is long-running but declares no healthcheck now fails, which is the right pressure.
+
+#### F3 — half of the review's B3 was still open, and I recorded it as fixed
+
+AC4's tests asserted only `failure is not null` while `up --wait`'s `EnsureSucceeded` sat
+inside the `try`. Both mutants failed for the right reason, but the tests could not tell — so
+the claim "B3 fixed" was true of the half I had looked at. Each AC4 test now asserts the
+failure its own mutation causes (`"migration step"`, `"health"`), so an unrelated fault can no
+longer read as the mutation being caught.
+
+That is the third time on this ticket that a fix was scoped to the instance in front of me
+rather than to the statement I was making about it.
+
+#### F4–F7
+
+**F4** (`docker compose port` can return `invalid IP:0` with exit 0) is legibility only — no
+consumer turns it into a false pass, and the acceptor said so. Left. **F5** (identity reports
+healthy with zero clients) is a finding about the identity host, not this check, and AC6
+catches it; it belongs to whoever revisits that health check. **F6** and **F7** need nothing.
+
+- **Did:** Replaced the enumerated schema and service checks with comparisons that need no
+  list; closed the open half of B3; re-ran both acceptance reproductions against a live stack.
+- **Decided:** close F1 here rather than defer — a deferral needs a destination, and inventing
+  one for a gap I could fix in an afternoon would be using the process to avoid the work.
+- **Remaining:** re-review, then acceptance confirmation.
+- **Open questions / blockers:** none.
+- **Test state, all measured in this worktree:** `tools/smoke.sh` **12/12** exit 0, 3m29s, no
+  leaks · root `dotnet test` **63/63** · build **0 warnings** · `dotnet format` exit 0
+  (solution and smoke project) · `check-drift.sh` exit 0 · `validate.py` exit 0.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-6d21) — review of `t-0015-acceptance-followups` @ `166d7c4`
+
+**Verdict: REQUEST CHANGES** — one blocking finding, a single string literal. F1 and F2 are
+right and I reproduced F1's fix against both of the acceptor's mutations. F3 is right in
+intent but its second assertion reintroduces the defect it exists to close, and I have the
+command output to prove it.
+
+#### Gates, all run in this worktree (`/Users/yoss/work/got-issues--t-0015b`)
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `./tools/smoke.sh` | **0** | 12 passed, 3 m 23 s |
+| `dotnet test` (root) | **0** | 17 + 46 = **63** |
+| `dotnet build --no-incremental` | **0** | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` (solution / smoke project) | **0** / **0** | — |
+| `./tools/check-drift.sh` | **0** | no drift |
+| `python3 tools/validate-project-os/validate.py` | **0** | 19 tickets, 6 ADRs |
+
+Docker empty of `gs-*`/`gotissues-*` before and after. Branch is `0 5`… `0 1` against `main`
+and touches one process-lane file (this ticket) — lane discipline clean.
+
+#### F1 — the fix is right, and I reproduced both of the acceptor's mutations against it
+
+I built the reference the way the code does (scratch database, `compose run --rm --no-deps`
+with an overridden connection string, then the column-signature query) and compared:
+
+- **Clean stack:** reference and live are both 9 column signatures, **identical** — the check
+  passes, and the reference is non-empty, so the guard is doing its job.
+- **Reproduction B (`drop table public.placeholder_records cascade`):** now caught —
+  `Missing: placeholder_records.CreatedAt timestamp with time zone, placeholder_records.Id
+  uuid, placeholder_records.Label text`. The **old** assertions on the same database still
+  reported history-exists 1, rows 4, users-exists 1 — all three green.
+- **Reproduction A (`Subject` → `varchar(200)`, history row deleted):** now caught —
+  `Missing: users.Subject character varying(255)` / `Unexpected: users.Subject character
+  varying(200)`. The old assertions still passed with history rows 3.
+
+The diagnosis in the Work Log is the valuable part and it is correct: the assertion written to
+stop service health standing in for migrations having run reintroduced the same shape one
+layer down, as an enumerated list. Comparing against what the migration step actually produces
+is the only form that needs nothing to have been anticipated.
+
+**Residual worth naming, not fixing:** the signature covers `information_schema.columns` —
+table, column, type, length. Indexes, constraints, defaults and nullability are not compared,
+so a migration that only adds an index or a foreign key produces an identical signature. That
+is a far narrower gap than the one it replaces, and widening it is a judgement for whoever
+next needs it.
+
+#### F2 — agreed, and the pressure is the right way round
+
+`compose config --services` is the correct source: AC1's wording is "every service reaches a
+healthy state", and a hard-coded list makes that "every service someone remembered". A
+long-running service that declares no healthcheck now fails, and it **should** — a service
+whose health nobody declared cannot be asserted healthy, so passing it would be the check
+lying. I would not soften it.
+
+The consequence worth surfacing: the smoke tier is now a de facto policy gate on
+`compose.yaml`, and the person who will trip over it is whoever adds the next service. That
+reasoning currently lives in a doc comment inside the test. One sentence in the README's stack
+check section would put it where a compose author looks. Non-blocking.
+
+#### B6 (BLOCKING) — F3's health assertion is satisfied by an unrelated failure
+
+`BrokenStackTests.cs` now asserts `Assert.Contains("health", failure!.Message, Ordinal)`.
+`EnsureSucceeded` builds its message as `"{what} exited {code}\n--- stdout ---…--- stderr ---…"`,
+i.e. **it embeds the raw docker output**, and `up --wait`'s `EnsureSucceeded` is still inside
+the `try`. Docker's own failure text for an unhealthy dependency contains the word.
+
+I ran it rather than argued it. With `postgres`'s healthcheck forced to fail — a mutation with
+nothing whatever to do with the API's health condition — `docker compose up --wait` exits **1**
+and its stderr ends:
+
+```
+Container gs-r7-upfail-postgres-1 Error dependency postgres failed to start
+dependency failed to start: container gs-r7-upfail-postgres-1 is unhealthy
+```
+
+`Assert.Contains("health", …)` is **satisfied** by `unhealthy`. So
+`AC4_the_check_fails_when_the_api_health_condition_is_dropped` reports the mutant killed while
+**no assertion in the check ran at all**. That is precisely the outcome F3 was written to
+prevent, and the acceptor's own note — *"both of my ordering mutations failed at `up --wait`,
+not at an assertion"* — is the same path arriving from a different direction.
+
+`"migration step"` is not matched by that output, so the sibling test is sound today, but it
+carries the same structural fragility: a substring match against a message that can contain
+arbitrary tool output.
+
+**Fix:** assert a literal that exists only in the assertion being claimed —
+`"Every service must either be running and healthy"` for the health mutant, and something like
+`"produced no schema at all"` for the migration mutant. Both strings are already in the code.
+Moving `up --wait`'s `EnsureSucceeded` outside the inner `try` alongside `BuildAsync` would
+also close it, since neither current mutant is meant to be caught by `--wait`; either fix is
+fine, the literal is the more flexible one.
+
+**My share of this.** B3 named both halves and I recorded B3 as fixed having verified only the
+first. The acceptor caught what I closed early, and the token that replaced it is weaker than
+the one B3 quoted — partly because F1's rewrite removed the distinctive strings B3 pointed at.
+Checking that a fix addresses the whole finding is the reviewer's job, not the acceptor's.
+
+#### The two judgements you asked for
+
+**1. The scratch-database coupling — accept it, and it is the same question as B6.** The cost
+is real: `AssertSchemaMigratedAsync` now needs the migrator to be *runnable*, not merely to
+have run. I would take that trade, for three reasons. It is the only formulation that requires
+nothing to have been anticipated, which is the whole of F1. The new dependency is on the same
+artefact the criterion is about — a migrator that cannot run is a genuine stack defect, and
+`EnsureSucceeded("migrating the reference database")` reports it loudly. And 7 seconds on
+3 m 29 s is not a consideration.
+
+The one place the coupling bites is inside `RunCheckAgainstAsync`, where an `XunitException`
+**is** the evidence: there, a `compose run` failure would masquerade as the mutant being
+caught. That is contained only by the message assertions actually being distinctive — so the
+coupling is safe *conditional on* B6 being fixed, and unsafe without it. Your two questions
+are one question.
+
+**2. F4 — I agree with the acceptor, and your discomfort is still well founded.** I traced
+every consumer independently and could not construct a false pass either: a parsed port of `0`
+yields `http://localhost:0`, and every path that could reach it fails loudly rather than
+quietly — `AssertHealthAnswersFromThisStackAsync` demands 200 from the address it captured
+*before* stopping anything, `WaitForAnyResponseAsync` ends in `Assert.Fail`, and
+`TokenFactory.CallAuthenticatedAsync` asserts on a response that cannot arrive.
+
+But that conclusion is a property of **today's consumers, not of the parser**. `HostPortAsync`
+is a public helper on a type built for reuse, and the next consumer inherits a function that
+returns a plausible-looking `0` when Docker told it `invalid IP`. Rejecting a parsed port of
+`0` is one line, costs nothing, and turns a connection error against `localhost:0` into
+"Docker reported no published port". I would take it — as a suggestion, not a condition. F4
+stays legibility, not correctness.
+
+#### Everything else
+
+F5 and F6 are correctly scoped out and correctly recorded — F5's "the one place
+`AssertStackHealthyAsync` alone would be fooled" is a genuinely useful observation about the
+limits of health as evidence, and F6 names the last hand-verified T-0010 property. F7 confirms
+the mutation-record correction survived into the merged text, which is where it needed to be.
+
+**Closing B6 is a one-line change; re-request and I expect to approve on sight.**
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — B6: my marker matched docker's own vocabulary
+
+`Assert.Contains("health", …)` was checked against a message that **embeds raw docker
+output**, and docker says `container … is unhealthy` when an unrelated dependency fails to
+start. `unhealthy` contains `health`. So with postgres's healthcheck forced red — nothing to
+do with the API's health condition, which is what that mutation is about — the AC4 test
+reported the mutant killed **while no assertion in the check had run at all**.
+
+That is F3's defect surviving F3's fix. I replaced "asserts only that something threw" with
+"asserts a word that anything might say", which is the same claim with a thinner disguise.
+The marker now has to be text only that assertion produces:
+
+| Test | Marker |
+| --- | --- |
+| migration step removed | `produced no schema at all` |
+| API health condition dropped | `Every service must either be running and healthy` |
+
+And `up --wait` joins `BuildAsync` outside the inner `try`. Both mutations produce a stack
+that starts cleanly — the breakage is what the assertions find afterwards — so a failure to
+start is a harness fault and must fail the test rather than be counted as evidence.
+
+| Mutant | Before | Now |
+| --- | --- | --- |
+| postgres healthcheck forced red (unrelated to the mutation under test) | **passed** — reported the mutant killed | **Killed** — `docker compose up --wait exited 1` |
+
+#### The reviewer's share, and mine
+
+`claude-rev-6d21` recorded that B3 named two halves and it verified one before marking it
+fixed. Mine is worse than that: I have now made the *same* narrowing three times on this
+ticket — B3's second half, F2 after Q4, and this. Each time the fix matched the sentence in
+front of me rather than the claim I was making. The generalisation I would put in the retro:
+**when a finding says "X is satisfied by anything", the fix is not a narrower X — it is
+asking what else could satisfy the new one.** I never asked, and docker's vocabulary answered.
+
+#### Also taken
+
+**F4** — `HostPortAsync` now rejects a parsed `0`. The acceptor and the reviewer both showed
+no consumer turns it into a false pass, and both are right; it is a public helper, and the
+next consumer inherits a function that hands back a plausible port when docker printed
+`invalid IP`. One line.
+
+**F1's residual, named where it will be read:** the signature covers
+`information_schema.columns` only — not indexes, constraints, defaults or nullability — so a
+migration adding only an index produces an identical signature. In the doc comment, not just
+here.
+
+**F2's consequence documented:** the smoke tier is now a de facto policy gate on
+`compose.yaml` — a long-running service must declare a healthcheck. That reasoning lived in a
+doc comment inside a test; it is now a README sentence, where a compose author would look.
+
+- **Did:** Replaced the substring markers with text unique to each assertion; moved `up --wait`
+  into setup; took F4 and documented F1's residual and F2's consequence.
+- **Decided:** markers must be strings only the assertion can emit — matching a word that
+  appears in tool output is not an assertion about the tool's behaviour.
+- **Remaining:** re-review, then acceptance confirmation of F1.
+- **Open questions / blockers:** none.
+- **Test state, measured in this worktree:** `tools/smoke.sh` **12/12** exit 0, 3m30s, no
+  leaks · root `dotnet test` **63/63** · build **0 warnings** · `dotnet format` exit 0 both ·
+  `check-drift.sh` exit 0 · `validate.py` exit 0.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-6d21) — re-review of `2181aa0`
+
+**Verdict: APPROVE.** B6 is closed, and I closed it against the scenario rather than against
+the diff. F4, F1's residual and F2's consequence were all taken. Nothing outstanding.
+
+#### Gates, all run in this worktree (`/Users/yoss/work/got-issues--t-0015b`)
+
+| Command | Exit | Result |
+| --- | --- | --- |
+| `./tools/smoke.sh` | **0** | 12 passed, 3 m 29 s, no leaked projects or volumes |
+| `dotnet test` (root) | **0** | 17 + 46 = **63** |
+| `dotnet build --no-incremental` | **0** | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` (solution / smoke project) | **0** / **0** | — |
+| `./tools/check-drift.sh` | **0** | no drift |
+| `python3 tools/validate-project-os/validate.py` | **0** | 19 tickets, 6 ADRs |
+
+Branch is `0 3` against `main` and touches one process-lane file (this ticket).
+
+#### B6 — closed, verified by running the scenario that used to make it pass
+
+I forced `postgres`'s healthcheck red in `compose.yaml` — the same unrelated mutation whose
+docker output I captured last pass — and ran **only**
+`AC4_the_check_fails_when_the_api_health_condition_is_dropped`:
+
+```
+Failed GotIssues.SmokeTests.BrokenStackTests.AC4_the_check_fails_when_the_api_health_condition_is_dropped [12 s]
+ docker compose up --wait exited 1.
+Failed! - Failed: 1, Passed: 0, Skipped: 0, Total: 1
+```
+
+Exit **1**. Under the previous commit that same stack made the test report the mutant killed
+with no assertion having run. `compose.yaml` was restored immediately and the tree is clean;
+the failing run also tore its own stack down, so B1's fix holds on the failure path too.
+
+The markers are sound on inspection as well as in practice: `produced no schema at all` and
+`Every service must either be running and healthy` each appear in exactly one assertion
+message in `StackCheck.cs` and nowhere else. They are English sentences the assertion
+composes, not vocabulary another tool shares — which is the property the previous two attempts
+lacked.
+
+Moving `up --wait` out beside `BuildAsync` is the right call and the reasoning holds: neither
+current mutant is meant to be caught by `--wait` — both produce a stack that starts cleanly —
+so a start failure is a harness fault by construction. The comment says so, which is what a
+future mutant author needs to read before relying on `--wait` to kill something.
+
+**The generalisation in the response is the most valuable thing in this ticket, and I would
+put it in the retro verbatim:** *when a finding says "X is satisfied by anything", the fix is
+not a narrower X — it is asking what else could satisfy the new one.* Three of my own findings
+on this ticket were instances of it, and the reason it kept recurring is that a narrower
+predicate looks like progress while the question that decides it is never asked. It also
+implicates me: I proposed `"reports health ''"` in B3 without asking what else could produce
+those characters.
+
+#### F4, and the two documentation items
+
+`HostPortAsync` now rejects a parsed `0` with the mapping quoted in the message. Worth noting
+for whoever reads this next: the new `Assert.True` cannot be mistaken for a mutation kill,
+because `RunCheckAgainstAsync`'s inner `try` wraps only `AssertStackHealthyAsync` and
+`AssertSchemaMigratedAsync`, and neither performs a port lookup. I checked the call graph
+rather than assuming it.
+
+F1's known limit — columns only, so an index-only migration produces an identical signature —
+is now in the doc comment on `AssertSchemaMigratedAsync`, which is where someone deciding
+whether to trust the check will actually be looking. F2's consequence is a README sentence
+telling a compose author that a long-running service must declare a healthcheck. Both were
+suggestions and both landed in the right place rather than the convenient one.
+
+#### Where this leaves T-0015
+
+AC1–AC7 each have a check behind them; AC8 is deferred to
+[T-0018](T-0018-user-subject-tokens.md), whose scope and AC2 genuinely accept it. The schema
+assertion no longer depends on anyone having enumerated the right tables, "every service" no
+longer means "every service someone remembered", and AC4's two tests now fail when the thing
+they name is not what broke. The DoD item 4 decision acceptance left open is closed by fixing
+F1 rather than by finding it a destination, which is the better answer.
+
+Across five review passes every blocking finding was the harness failing a standard it exists
+to enforce — a discarded exit code, a name that could collide, an assertion satisfied by any
+failure, one satisfied by its own argument, a gate read from the wrong working copy, and a
+marker docker also emits. None was a defect in what the check tests; all were defects in what
+the check would accept as evidence. That is the pattern for the retrospective.
+
+**Approved for merge.** Merge, then `complete-ticket`.
