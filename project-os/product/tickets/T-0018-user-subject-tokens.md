@@ -75,6 +75,8 @@ the test host.
 - [ ] AC2: Given such a token, when an authenticated request is made, then a user projection is created for that subject; and when the same token is used again, then the record is updated rather than duplicated (T-0015 AC8, T-0009 AC5/AC8).
 - [ ] AC3: Given a token carrying a subject and a role, when a guarded endpoint is requested, then the existing role policies permit or refuse it exactly as they do for a client token — the subject must not change the authorisation outcome.
 - [ ] AC4: Given the seeded test people, when the repository is inspected, then no real employee's name or email address is present (`PROJECT.md` Q8, [SECURITY.md](../../standards/SECURITY.md)).
+- [ ] AC5: Given a token carrying a subject, when the API validates it, then the **existing** validation applies unchanged — same issuer, audience, signing key and lifetime rules as a client token. A new token *shape* must not become a new token *path*.
+- [ ] AC6: Given the smoke tier, when it runs, then [T-0015](T-0015-compose-stack-smoke-test.md)'s AC8 is satisfied by a real token rather than deferred — this ticket closes that deferral or it has not delivered its stated purpose.
 
 ## Examples / Scenarios
 
@@ -88,10 +90,9 @@ the test host.
 
 ## Risks / Unknowns
 
-- **The grant type is the decision, and it is not obvious.** Resource-owner password is
-  deprecated; authorisation code implies a browser and a login page; a test-only extension
-  grant proves the projection without committing the product to a login model. Refinement
-  should choose deliberately — this is the kind of decision that quietly becomes permanent.
+- **The grant type is the decision, and it is not obvious — and refinement did not settle it.**
+  See the Work Log: it meets the ADR bar and is the maintainer's call, not an agent's. The
+  three candidates and their consequences are recorded there.
 - **It may meet the ADR bar.** "How people authenticate" is a system-shaping choice; if the
   answer is anything beyond a test-only grant, it likely needs an ADR.
 - **Seeded people are still personal-data-shaped.** AC4 exists because a fake person with a
@@ -101,6 +102,21 @@ the test host.
 
 The proof belongs in the smoke tier T-0015 builds, since it needs the real identity host —
 that is precisely why T-0015 could not prove it.
+
+**The specific test to add** is T-0015's AC8, already written and waiting: a token carrying a
+subject, one request, assert a projection row exists; a second request, assert the row is
+updated and not duplicated. `apps/GotIssues.SmokeTests` already has the harness, the token
+factory and the database access to do it.
+
+**Mutate first** ([TESTING.md](../../standards/TESTING.md)): remove the subject claim from the
+issued token and confirm the projection test fails. This is the exact blind spot that hid
+[T-0009](T-0009-role-authorisation-and-user-projection.md)'s claim-mapping bug behind forty
+green tests — the projection silently does nothing when the subject is absent, which is
+indistinguishable from success unless something asserts the row.
+
+**And the harder mutation, because it is the one that matters:** rename the subject claim to
+something the API does not read, keeping everything else valid. If the test still passes, it is
+asserting that *a* row exists rather than that *this caller's* row does.
 
 ## Relevant ADRs & Documentation
 
@@ -126,5 +142,57 @@ that is precisely why T-0015 could not prove it.
 - **Decided:** scoped to making a subject-carrying token *possible and proven*, not to a provisioning model — the grant-type choice is left to refinement because picking it here would smuggle a system-shaping decision into a deferral.
 - **Remaining:** refinement.
 - **Open questions / blockers:** the grant type; whether it meets the ADR bar.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Refinement (claude-sm-9d4e) — PO · BA · ENG · ARCH · QA · SEC
+
+**Not ready, and the reason is the point: this ticket turns on a decision at the
+[ADR bar](../../architecture/adr/README.md).** "How people authenticate" shapes the identity
+host, the API's token validation, and anything that later puts a UI in front of either. The DoR's
+architectural conditional says such a ticket is Ready only once the ADR exists — at least
+`Proposed` — or the ticket is explicitly a spike. Neither is true yet, and writing a Proposed ADR
+whose decision I invented would satisfy the letter of the DoR while defeating it.
+
+**The three candidates, with what each commits us to:**
+
+| Option | What it costs | What it commits |
+| --- | --- | --- |
+| **Test-only extension grant** — a custom Duende grant that issues a token for a seeded test person | Smallest. Days, not weeks. | Nothing about the product's real login model. It proves the projection, assignment and authorship end to end and leaves the question open. The risk is the usual one: "temporary" test-only mechanisms outlive their justification, and this one issues tokens for people. |
+| **Authorisation code + a login page** | Largest. Implies a browser flow, a UI, and session handling — and `PROJECT.md` §3 names a web UI as an explicit **non-goal** for now. | The real answer eventually, and a direct contradiction of a confirmed non-goal today. |
+| **Resource-owner password** | Middling. | A deprecated flow, in a system whose whole premise is doing identity properly with Duende. Cheap now, embarrassing later. |
+
+**My recommendation: the test-only extension grant**, with its temporariness written into the
+ADR as a constraint rather than an intention — for example, that it is refused unless an explicit
+configuration flag is set, so it cannot be enabled by accident in anything resembling production.
+It unblocks [T-0006](T-0006-issue-lifecycle-fields.md) and
+[T-0008](T-0008-comment-on-an-issue.md), closes [T-0015](T-0015-compose-stack-smoke-test.md)'s
+AC8, and defers the login question to when a UI actually exists — which is the point at which
+the answer becomes obvious rather than speculative.
+
+**What I refined regardless of the decision.** Added **AC5** — a new token shape must not become
+a new token path; the same issuer, audience, key and lifetime rules apply, and an implementer
+adding a parallel validation branch would be introducing precisely the kind of second code path
+where [T-0009](T-0009-role-authorisation-and-user-projection.md)'s claim-mapping bug lived. Added
+**AC6** so the ticket is accountable for the deferral it was created to close. Recorded the two
+mutations, including the one that distinguishes "a row exists" from "this caller's row exists".
+
+**Security.** Seeded people are personal-data-shaped even when fictional; AC4 keeps real names
+and addresses out of the repository. Whatever grant is chosen touches token issuance, so
+[SECURITY.md](../../standards/SECURITY.md) requires a Security review at refinement and at
+acceptance — this entry is the refinement half, and it cannot complete until the grant is known.
+
+**Sizing.** Option 1 fits the guideline comfortably; option 2 does not and would need splitting.
+Another reason the decision comes first.
+
+- **Did:** Applied every perspective; added AC5 and AC6; recorded the candidates, their
+  consequences and a recommendation.
+- **Decided:** nothing about the grant — deliberately. Refinement's job here was to make the
+  decision cheap to take, not to take it.
+- **Remaining:** the maintainer chooses a grant; then `create-adr`, then this is `ready`.
+- **Open questions / blockers:** **one, blocking** — the grant type, at the ADR bar.
+- **DoR verdict:** **not ready** — the architectural conditional fails. Every universal item
+  holds; if the answer is the recommended option, this becomes `ready` as soon as the ADR is
+  `Proposed`.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

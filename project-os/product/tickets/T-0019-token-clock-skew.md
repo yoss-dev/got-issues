@@ -2,7 +2,7 @@
 id: T-0019
 title: Decide the resource server's clock-skew allowance instead of inheriting five minutes
 type: technical
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
@@ -88,10 +88,39 @@ None beyond the existing resource server.
   window by an hour. It will still pass under a smaller allowance, but the reason its margin
   is so large should move with the decision.
 
+## Technical Notes
+
+**Where the number is set:** `TokenValidationParameters.ClockSkew` in the API's `AddJwtBearer`
+configuration (`apps/GotIssues.Api/Program.cs`), which today sets `MapInboundClaims`,
+`RoleClaimType` and `NameClaimType` and leaves `ClockSkew` at its default.
+
+**A recommendation, not a decision** — the decision is this ticket's deliverable, and
+[SECURITY.md](../../standards/SECURITY.md) requires the Security persona to review it. Every
+service runs in one Compose stack off one host clock ([ADR-0003](../../architecture/adr/ADR-0003-initial-technology-stack.md)),
+which is the condition under which the five-minute default is least justified. A small
+non-zero allowance — of the order of **30 seconds** — costs almost nothing and survives the
+day the identity host moves to another machine; zero is stricter and defensible today but
+turns future clock drift into intermittent 401s, which are miserable to diagnose. What is not
+defensible is leaving the number unchosen, which is the present state.
+
+**AC3 is conditional by design.** If the decision is zero, AC3 is satisfied by a test showing a
+token one second past `exp` is refused; if non-zero, it needs both sides of the boundary. Say
+which in the Work Log rather than letting the criterion quietly disappear.
+
 ## Testing Notes
 
 The boundary belongs in the smoke tier: it needs a real issuer to construct the token, which
 is why T-0015 owns the expired case today.
+
+**T-0015's existing test will still pass and that is the trap.** It mints a token an hour past
+`exp` precisely to clear the five-minute window, so it passes under any allowance shorter than
+an hour and proves nothing about the new number. AC2 and AC3 need tokens near the *chosen*
+boundary, and T-0015's margin comment should move with the decision — otherwise the repository
+keeps a sentence explaining a window that no longer exists.
+
+**Mutate first** ([TESTING.md](../../standards/TESTING.md)): set `ClockSkew` back to its
+default and confirm the new boundary tests fail. A test that passes both before and after the
+change is testing the token minter, not the resource server.
 
 ## Relevant ADRs & Documentation
 
@@ -100,7 +129,7 @@ is why T-0015 owns the expired case today.
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold. Item 3 deserved a check: the criteria are verifiable *without* knowing which number is chosen, because AC1 and AC4 are about the decision being explicit and reasoned, and AC2/AC3 are about the chosen boundary being enforced — that is what makes this a ticket rather than a question. Conditional items: security is the subject (token validation, [SECURITY.md](../../standards/SECURITY.md) requires Security-persona review at refinement and acceptance — this entry is the refinement half); no UX, no data shape; not at the ADR bar, since it configures an existing decision rather than making a new one.
 
 ## Definition of Done
 
@@ -116,5 +145,39 @@ is why T-0015 owns the expired case today.
 - **Decided:** framed as "decide the number", not "set it to zero" — the ticket should not pre-empt the judgement it exists to force.
 - **Remaining:** refinement.
 - **Open questions / blockers:** none.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Refinement (claude-sm-9d4e) — PO · BA · ENG · ARCH · QA · **SEC**
+
+**Security pass, recorded explicitly** because [SECURITY.md](../../standards/SECURITY.md)
+requires it for anything touching token validation, at refinement *and* at acceptance. The
+present state is a resource server that accepts tokens for five minutes past their stated
+expiry — a real, if modest, security fact that nobody chose. The risk is bounded (internal
+tool, PoC, one-hour token lifetime) which is exactly why it is cheap to settle now rather than
+after the system holds real data.
+
+**Analysis (BA).** The one ambiguity was AC3, which is conditional on the answer to AC1 — now
+stated as such rather than left to be quietly skipped if the answer is zero.
+
+**Engineering (ENG).** One line and its comment; the location is named in Technical Notes.
+
+**Architecture (ARCH).** Not at the ADR bar: this configures a decision
+[ADR-0003](../../architecture/adr/ADR-0003-initial-technology-stack.md) already made.
+
+**QA.** The trap is recorded: T-0015's expired-token test clears the window by an hour and will
+pass under any plausible new value, so it must not be mistaken for coverage of the new boundary.
+
+**Sizing.** Small. The deliverable is a *decision plus its enforcement*, not an investigation.
+
+- **Did:** Applied all perspectives including the mandatory Security pass; recorded where the
+  number is set, a recommendation with its reasoning, and the way this ticket's own tests could
+  pass vacuously.
+- **Decided:** the number stays the implementer's to choose under Security review — the ticket
+  exists to force the choice, and pre-empting it here would be refinement making a security
+  decision without the review the standard requires.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready.**
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

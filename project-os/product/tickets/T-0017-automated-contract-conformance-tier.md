@@ -2,7 +2,7 @@
 id: T-0017
 title: Automate the contract-conformance test tier TESTING.md already defines
 type: technical
-status: backlog
+status: ready
 priority: high
 owner: none
 implemented_by: none
@@ -88,14 +88,23 @@ Related: [T-0016](T-0016-generation-output-ownership.md) protects spec-versus-ge
 
 ## Risks / Unknowns
 
-- **Choosing a validator matters more than it looks.** A library that ignores `additionalProperties` or OpenAPI 3.1 union types (`[string, 'null']`) would pass defects 4 and would have passed defect 4 as originally written. Refinement should check the candidate against T-0002's actual defects before adopting it.
+- **Choosing a validator matters more than it looks.** A library that ignores `additionalProperties` or OpenAPI 3.1 union types (`[string, 'null']`) would pass defects 4 and would have passed defect 4 as originally written.
+
+  **Refinement's answer, 2026-08-31 — a decision rule rather than a library.** The candidate to try first is `Microsoft.OpenApi.Readers` to parse `spec/openapi.yaml` plus `JsonSchema.Net` to validate, because the latter targets JSON Schema 2020-12, which is the dialect OpenAPI 3.1 actually uses — the mismatch that breaks most 3.0-era validators on this specification. **The selection is settled by AC6, not by reading documentation:** reintroduce T-0002's four defects and keep the validator only if it catches all four. If none does, the honest outcome is a finding and a follow-up ticket — *never* a weakened AC6. A conformance tier that cannot catch the defects this repository has already shipped would be worse than none, because it would carry a green tick.
 - OpenAPI 3.1 support is uneven across .NET tooling — the generator itself warns its 3.1 support is beta.
-- If conformance runs on every response it may slow the integration tier; measure before optimising.
+- If conformance runs on every response it may slow the integration tier; measure before optimising. AC7's bar is concrete enough to hold to: the root suite runs in ~6 s today, and this must not push it into the tens of seconds where people stop running it habitually — the same reasoning that put the smoke tier behind its own command ([T-0015](T-0015-compose-stack-smoke-test.md)).
 - A tier that only ever passes proves nothing, which is why AC6 requires the four historical defects be reintroduced.
 
 ## Testing Notes
 
 AC6 is the criterion that makes this ticket honest. Four real defects exist in this repository's history with known reproductions; the tier is credible exactly to the degree it catches them.
+
+**Reintroduce each defect in the artefact, not in a fixture.** [TESTING.md](../../standards/TESTING.md)
+requires a mutant the build accepts, and it requires the record to say what the mutant proves.
+Editing `spec/openapi.yaml` and regenerating is the mutation; hand-writing a response that
+violates a schema tests the validator against a string, not the system against its contract.
+Restore the specification afterwards and confirm the drift check is clean — a mutation left in
+place here would silently change the contract every later ticket generates from.
 
 ## Relevant ADRs & Documentation
 
@@ -105,7 +114,7 @@ AC6 is the criterion that makes this ticket honest. Four real defects exist in t
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold. Item 9 deserved argument: the validator's viability is genuinely unknown, but the unknown is bounded by AC6 — a wrong choice fails a criterion rather than surfacing after merge. Conditional items: no UX, no data shape, no personal data; no ADR-bar decision — ADR-0004 already commits to the premise and this enforces it.
 
 ## Definition of Done
 
@@ -121,5 +130,17 @@ AC6 is the criterion that makes this ticket honest. Four real defects exist in t
 - **Decided:** priority `high`, unusually for a testing ticket. The evidence is that four of T-0002's six defects were mechanically detectable and instead consumed three review rounds and an acceptance pass — and one of them survived all four because assertions checked status codes and not bodies. Every product ticket from T-0004 onward adds endpoints to a contract nothing verifies behaviourally.
 - **Remaining:** Refinement. The validator choice is the substantive decision and should be tested against T-0002's real defects rather than chosen on reputation.
 - **Open questions / blockers:** none.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Refinement (claude-sm-9d4e) — PO · BA · ENG · ARCH · QA
+
+Applied all perspectives; replaced 'refinement should check the candidate' with a decision rule the implementer can execute — a named first candidate, and AC6 as the selector rather than documentation. Recorded that the mutations must edit the specification and regenerate, not hand-write a violating response, and must be reverted with the drift check confirmed clean.
+
+- **Did:** Full refine-ticket pass across every applicable perspective.
+- **Decided:** recorded inline above and in the ticket body.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready.**
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

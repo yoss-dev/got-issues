@@ -2,7 +2,7 @@
 id: T-0014
 title: Correct the stale commands and prerequisites across the standards
 type: technical
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
@@ -10,7 +10,7 @@ accepted_by: none
 depends_on: []
 adrs: []
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 # T-0014: Correct the stale commands and prerequisites across the standards
@@ -64,6 +64,8 @@ A standard that tells agents to run non-existent commands trains them to ignore 
 - [ ] AC1b: Given the standards, when they are searched for a JDK prerequisite, then none asserts one — generation runs from a container image.
 - [ ] AC2: Given the section, when read after T-0002 and T-0003 land, then it needs no further correction — it must not re-create a promise about future tooling that goes stale.
 - [ ] AC3: Given the change, when it is merged, then it carries the human approval `evolve-governance` requires, recorded in the change.
+- [ ] AC4: Given [TESTING.md](../../standards/TESTING.md)'s tier table, when it is read, then it names the smoke tier and `tools/smoke.sh` — the tier exists ([T-0015](T-0015-compose-stack-smoke-test.md)) and the standard that defines tiers does not mention it.
+- [ ] AC5: Given [GIT.md](../../standards/GIT.md)'s pre-merge gate list, when it is read, then it states a decision about `tools/smoke.sh --build-only`: either it is a gate, or it is deliberately not one with the reason. `apps/GotIssues.SmokeTests` sits outside `GotIssues.slnx`, so **nothing compiles it by accident** — today the only guard is a documented command, which is a habit rather than a gate.
 
 ## Dependencies
 
@@ -71,12 +73,13 @@ Human approval (governance change). No ticket dependencies — deliberately, so 
 
 ## Risks / Unknowns
 
-- Timing: if this lands before T-0002/T-0003, the honest text is "not yet"; if after, it is the real commands. Either is fine, but the wording must not need a third edit — hence AC2.
+- ~~Timing: if this lands before T-0002/T-0003~~ — **resolved**: both landed 2026-08-31, so the honest text is the real commands. AC2 still applies to any *new* promise the correction might introduce.
+- **AC5 asks for a decision, not a correction, and that decision has a cost either way.** Making `--build-only` a gate adds a step to every merge for a project that is not compiled by the other gates; leaving it out accepts that the smoke project can rot until someone runs it. Both are defensible; silently keeping the status quo is not, because the status quo was never chosen.
 - The same latent problem may exist in other standards written at bootstrap. **Out of scope here**, but worth a look during the retrospective.
 
 ## Testing Notes
 
-Verified by literally running each documented command in a clean clone and confirming the text matches the outcome.
+Verified by literally running each documented command in a clean clone and confirming the text matches the outcome. That is the whole test, and it is the one thing that cannot be skipped: this ticket exists because commands were documented without being run.
 
 ## Relevant ADRs & Documentation
 
@@ -86,7 +89,7 @@ Verified by literally running each documented command in a clean clone and confi
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold; the timing risk that shaped item 9 is resolved now that T-0002 and T-0003 have landed. Conditional items: none — this changes documents, not behaviour. It travels lane 2 and needs human approval (AC3), which is a process constraint rather than a DoR exception.
 
 ## Definition of Done
 
@@ -112,5 +115,17 @@ Verified by literally running each documented command in a clean clone and confi
 - **Worth recording:** this is the **false-pointer failure the DoD was amended to prevent, made one day after the amendment, by the person who wrote it.** The rule works — a reviewer applied it and caught this — but the rule alone did not stop me making the mistake. That belongs in the next retrospective, not just here.
 - **Remaining:** Refinement, then an `evolve-governance` change.
 - **Open questions / blockers:** needs human approval by nature.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Refinement (claude-sm-9d4e) — PO · BA · ENG · ARCH · QA
+
+Applied all perspectives; folded in the two obligations this ticket acquired after it was written — naming the smoke tier in TESTING.md's tier table (AC4) and deciding whether `--build-only` is a merge gate (AC5). The second is a decision the ticket must force rather than a correction it can make: nothing compiles `apps/GotIssues.SmokeTests` by accident, and the current guard is a documented command, which is a habit.
+
+- **Did:** Full refine-ticket pass across every applicable perspective.
+- **Decided:** recorded inline above and in the ticket body.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready.**
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.

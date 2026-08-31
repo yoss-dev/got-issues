@@ -2,7 +2,7 @@
 id: T-0016
 title: Make the drift check see everything under libs/, including untracked files
 type: technical
-status: backlog
+status: ready
 priority: normal
 owner: none
 implemented_by: none
@@ -76,11 +76,13 @@ The contract-first guarantee is only as strong as the check that enforces it. Th
 
 - `git status --porcelain` reports files ignored by `.gitignore` differently from untracked ones; the check must not become noisy about build artefacts under `libs/*/bin` and `obj`, or it will be switched off — the exact failure this ticket exists to prevent.
 - The generator may reintroduce files the script deletes; the check must distinguish "generation produced this" from "someone left this here".
-- Deciding ownership may mean generating into a scratch directory and syncing, which is a larger change than the check itself.
+- ~~Deciding ownership may mean generating into a scratch directory and syncing~~ — **bounded in refinement, 2026-08-31.** Take the smaller option first: make the check see untracked files (AC2/AC3) and satisfy AC5 by *documenting* the script's removals as the deliberate mechanism. Generate-to-scratch-and-sync is a materially larger change and should become its own ticket if the smaller option proves insufficient — not be absorbed mid-implementation, which is how a one-day ticket becomes a three-day one.
 
 ## Testing Notes
 
 AC6 is what keeps this honest: a drift check that has only ever been seen green proves nothing, which is precisely the finding that produced this ticket.
+
+**Two traps specific to this ticket**, both instances of the pattern [RETRO-SPRINT-002](../../delivery/retrospectives/RETRO-SPRINT-002.md) named — a check that accepts the wrong evidence. First, the mutations for AC2 and AC3 must be run **from a clean tree**: `check-drift.sh` already refuses to run when `libs/` is dirty (exit 2), and an exit code of 2 is not the same as the failure AC2 describes. Assert on the *reason*, not merely on non-zero. Second, the noise risk in Risks below is the one that gets the gate switched off; the mutation to run is adding a file under `libs/*/obj` and confirming the check stays **green**.
 
 ## Relevant ADRs & Documentation
 
@@ -90,7 +92,7 @@ AC6 is what keeps this honest: a drift check that has only ever been seen green 
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — not yet refined.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-31 during `refinement-session`. All nine universal items hold. Item 7 (sizing) needed the explicit bound now recorded in Risks: the ownership question could otherwise expand this ticket well past the guideline. Conditional items: none — no data shape, no UX, no personal data; the merge-gate behaviour is already governed by ADR-0004 and GIT.md.
 
 ## Definition of Done
 
@@ -106,5 +108,17 @@ AC6 is what keeps this honest: a drift check that has only ever been seen green 
 - **Decided:** framed around symptom 3 (the drift check's blindness) rather than the tidier-looking symptoms 1 and 2, because that is the one with a merge gate downstream. The reviewer's correction — that the gate currently holds only by accident of a manifest we do not control — is the reasoning, and is recorded in Problem / Context rather than left in a review transcript.
 - **Remaining:** Refinement.
 - **Open questions / blockers:** none.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — Refinement (claude-sm-9d4e) — PO · BA · ENG · ARCH · QA
+
+Applied all perspectives; bounded the sizing risk explicitly (take the smaller option; generate-to-scratch becomes its own ticket rather than absorbing this one mid-implementation); named the two ways its own mutations could pass for the wrong reason — `check-drift.sh` exits 2 on a dirty tree, which is not the failure AC2 describes, and the build-artefact noise case must be mutated green.
+
+- **Did:** Full refine-ticket pass across every applicable perspective.
+- **Decided:** recorded inline above and in the ticket body.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **DoR verdict:** **ready.**
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
