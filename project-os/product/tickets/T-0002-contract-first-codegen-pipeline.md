@@ -2,13 +2,13 @@
 id: T-0002
 title: Contract-first pipeline — OpenAPI spec, code generation, and drift check
 type: technical
-status: backlog
+status: ready
 priority: high
 owner: none
 implemented_by: none
 accepted_by: none
-depends_on: [T-0001]
-adrs: [ADR-0004]
+depends_on: [T-0001, T-0011]
+adrs: [ADR-0004, ADR-0005]
 created: 2026-08-30
 updated: 2026-08-30
 ---
@@ -33,12 +33,12 @@ This is the half of the proof of concept that tests the *method* rather than the
 
 ### In Scope
 
-- `spec/openapi.yaml`: an OpenAPI 3.1 document, hand-authored, covering at minimum one real resource end to end plus the shared error shape (RFC 9457 `application/problem+json`) and the security schemes.
+- `spec/openapi.yaml`: an OpenAPI 3.1 document, hand-authored, covering the shared error shape (RFC 9457 `application/problem+json`), the security schemes, and **one deliberately disposable placeholder resource** used only to prove the pipeline. [T-0004](T-0004-create-and-list-projects.md) replaces it with the first real resource and deletes it — the same approach T-0001 takes with its placeholder table. Operational endpoints are *not* in the document ([ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)).
 - `tools/generate.sh`: one command running the OpenAPI Generator CLI with both generators — `aspnetcore` (abstract controllers + DTOs) and `csharp` (typed client) — into their own directories under `libs/`.
 - Generated output committed, and excluded from analyzers and formatting checks ([ENGINEERING.md](../../standards/ENGINEERING.md)).
 - The API project wired to implement the generated controller interfaces rather than declaring its own routes.
 - A drift check: regenerating on a clean tree produces no diff, and it fails loudly when it does.
-- Documentation of the workflow (edit spec → regenerate → implement) in the README.
+- Documentation of the workflow (edit spec → regenerate → implement) in the README, including that operational endpoints are exempt ([ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)).
 
 ### Out of Scope
 
@@ -49,11 +49,12 @@ This is the half of the proof of concept that tests the *method* rather than the
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given `spec/openapi.yaml`, when `./tools/generate.sh` is run, then server contracts and a C# client are generated into their own directories under `libs/` without manual steps beyond having a JDK installed.
+- [ ] AC1: Given `spec/openapi.yaml`, when `./tools/generate.sh` is run on a machine with Docker but **no host JDK**, then server contracts and a C# client are generated into their own directories under `libs/` — the generator runs from its pinned container image (see Technical Notes).
 - [ ] AC2: Given a clean working tree, when generation is run and `git diff --exit-code` follows, then the diff is empty.
 - [ ] AC3: Given an edit to `spec/openapi.yaml` that is not regenerated, when the drift check runs, then it fails and names the divergence.
 - [ ] AC4: Given the generated server contracts, when the API is built, then its controllers implement the generated interfaces and declare no routes of their own.
-- [ ] AC5: Given the stack from T-0001, when the specified resource's endpoint is called through the running API, then it behaves as the specification declares, including the `application/problem+json` error shape.
+- [ ] AC5: Given the stack from T-0001, when the placeholder resource's endpoint is called through the running API, then it behaves as the specification declares, including the `application/problem+json` error shape.
+- [ ] AC8: Given the generator's version, when `./tools/generate.sh` is inspected, then the version is pinned explicitly — regeneration on another machine or another day produces identical output.
 - [ ] AC6: Given the README, when a newcomer follows the documented spec→regenerate→implement workflow, then it works as written.
 
 ## Examples / Scenarios
@@ -65,9 +66,11 @@ This is the half of the proof of concept that tests the *method* rather than the
 
 ## Technical Notes
 
-*Suggestions, not constraints:* pin the OpenAPI Generator version explicitly so output is reproducible — an unpinned generator turns an unrelated upgrade into a repository-wide diff ([ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) risks). Keep generated directories clearly named so the "never hand-edit" rule is obvious from the path alone.
+**Run the generator from its container image — decided during refinement (2026-08-30).** The project already requires Docker; running the generator in a pinned container removes the host-JDK prerequisite entirely, pins the version for free (AC8), and matches the project's "everything runs under Docker" posture. The host-JDK route works (JDK 25 verified locally) but adds a prerequisite for every future contributor and lets versions drift between machines.
 
-The generator runs on a JDK (25 verified locally, 2026-08-30). Consider running it via its official container image so contributors need no host JDK — this would also bring the toolchain in line with the Compose constraint.
+**Consequence the implementer must handle:** `PROJECT.md` §5 currently lists the JDK as build tooling and the README lists it as a prerequisite. Both need updating in this ticket if AC1 is met as written — a documentation change is part of the change that breaks it ([DOCUMENTATION.md](../../standards/DOCUMENTATION.md)).
+
+*Suggestion, not constraint:* keep generated directories clearly named so the "never hand-edit" rule is obvious from the path alone.
 
 ## Dependencies
 
@@ -76,9 +79,10 @@ The generator runs on a JDK (25 verified locally, 2026-08-30). Consider running 
 
 ## Risks / Unknowns
 
-- **The `aspnetcore` generator's output may not suit ASP.NET Core 10.** This is the single biggest unvalidated assumption in the project ([ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) — outdated templates, weak nullable-reference-type support, awkward async signatures are all plausible). ADR-0004 requires the result be recorded in the Work Log of the first ticket that implements a real endpoint. **If the output fails the bar, this ADR needs superseding — not a quiet deviation.** The documented fallback is NSwag for the server while keeping OpenAPI Generator for non-C# clients; the specification itself is unaffected either way.
+- **The `aspnetcore` generator's output may not suit ASP.NET Core 10** — the project's single biggest unvalidated assumption. **Now owned by [T-0011](T-0011-spike-aspnetcore-generator-viability.md)**, a time-boxed spike this ticket depends on, so the answer arrives *before* the pipeline is built rather than during it. If the spike's verdict is "supersede", ADR-0004 is replaced and this ticket's scope changes before anyone plans a sprint around it.
 - Committed generated code may produce large, noisy diffs. Accepted deliberately so drift is visible; revisit if it becomes intolerable.
-- Generation is a separate step, not part of `dotnet build`, so "regenerate after editing the spec" is enforced by the check rather than the compiler. If the check is easy to skip, the guarantee erodes.
+- Generation is a separate step, not part of `dotnet build`, so "regenerate after editing the spec" is enforced by the check rather than the compiler. **With no CI (`PROJECT.md` Q6), nothing runs that check but a human remembering to** — the weakest link in the contract-first guarantee, and worth knowing rather than assuming.
+- The placeholder resource adds churn: T-0004 must delete it. Small, but it means the first product ticket starts by removing something.
 
 ## Testing Notes
 
@@ -93,7 +97,7 @@ The drift check is itself a test and a merge gate ([TESTING.md](../../standards/
 
 ## Definition of Ready
 
-- [ ] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — checked during refinement; note applied exceptions here.
+- [x] Meets [DoR](../../governance/DEFINITION_OF_READY.md) — evaluated 2026-08-30 during `refinement-session`. All nine universal items hold. Item 5: dependencies are T-0001 and the new spike T-0011; neither makes starting pointless, though T-0011's verdict could change this ticket's scope — which is exactly why it gates. Conditional items: the architectural question is resolved by ADR-0004 (Accepted) with its residual risk routed to T-0011; ADR-0005 settles the operational-endpoint boundary; no personal data; no UX. No exceptions applied.
 
 ## Definition of Done
 
@@ -111,3 +115,20 @@ The drift check is itself a test and a merge gate ([TESTING.md](../../standards/
 - **Open questions / blockers:** none blocking. The generator-output risk above is the thing most likely to change this ticket's shape, and it cannot be resolved without doing the work.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-30 — Business Analyst (claude-sm-9d4e)
+
+Perspectives applied: Product Owner, Business Analyst, Software Engineer, Architect, QA, Security.
+
+- **Did:** Full `refine-ticket` pass within a `refinement-session`.
+  - **ARCH:** judged the `aspnetcore` generator risk too large to carry into implementation — ADR-0004 defers the verdict to "the first real endpoint", which lands mid-ticket, after the pipeline is built around it. Escalated live; the maintainer chose a **time-boxed spike**. Created [T-0011](T-0011-spike-aspnetcore-generator-viability.md) and made this ticket depend on it. ADR-0004 is unchanged — the spike may supersede it, which is the point.
+  - **ARCH:** found a scope collision — this ticket needed "one real resource end to end", but the first real resource is T-0004's (projects), and ADR-0005 rules out proving the pipeline with an operational endpoint. Resolved with a **deliberately disposable placeholder resource**, mirroring T-0001's placeholder table; T-0004 deletes it. The churn is recorded in Risks rather than hidden.
+  - **ENG:** decided the generator runs from a **pinned container image** rather than a host JDK — removes a prerequisite for every contributor, pins the version for free, and matches the project's Docker posture. Recorded the consequence: `PROJECT.md` §5 and the README both name the JDK and must be corrected by this ticket. AC1 rewritten to assert the no-host-JDK case, and **AC8** added for the version pin.
+  - **QA:** AC5 retargeted at the placeholder resource so it is actually verifiable when the ticket lands.
+  - **ENG:** noted in Risks that with no CI, the drift check depends on a human remembering — the honest weak point of the whole contract-first guarantee (`PROJECT.md` Q6).
+- **Decided:** did **not** widen scope to the real product contract; the deliverable stays "a working pipeline", not "the product's API".
+- **Remaining:** Implementation, after T-0001 and T-0011.
+- **Open questions / blockers:** none. **T-0011's verdict may change this ticket's scope** — that is a known, deliberate gate, not a blocker.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.
+- **DoR verdict:** **ready**.

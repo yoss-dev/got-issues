@@ -30,7 +30,7 @@ Everything in the dashed box starts with `docker compose up`; nothing depends on
 
 | Component | Location | Responsibility | Boundary rule |
 | --- | --- | --- | --- |
-| **API specification** | `spec/openapi.yaml` (repository root) | The contract: resources, schemas, errors, auth scopes. Authored by hand, first. | The *only* place the API surface is designed. Nothing downstream may add an endpoint or field the spec does not describe. |
+| **API specification** | `spec/openapi.yaml` (repository root) | The contract: resources, schemas, errors, auth scopes. Authored by hand, first. | The *only* place the product API surface is designed. Nothing downstream may add an endpoint or field the spec does not describe. **Operational endpoints (health, readiness, metrics) are the one exemption** — they are infrastructure, not product surface ([ADR-0005](adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)). |
 | **Generated contracts** | `libs/` | Server-side abstract controllers + DTOs (`aspnetcore` generator) and the typed C# client (`csharp` generator). | **Never hand-edited.** Regenerated from the spec; committed so drift is visible in review. |
 | **API service** | `apps/` | Implements the generated controller interfaces: request handling, domain logic, persistence. | Contains no route or model definitions of its own — it *implements* generated contracts. |
 | **Identity host** | `apps/` | Duende IdentityServer: issues tokens for users and machine clients. | The API never issues or validates credentials itself; it only validates tokens against this host's discovery document. |

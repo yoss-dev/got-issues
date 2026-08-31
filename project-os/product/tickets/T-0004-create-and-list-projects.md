@@ -34,6 +34,7 @@ Sam gets the structure that a flat list cannot provide — work grouped by proje
 ### In Scope
 
 - Specification of the project resource in `spec/openapi.yaml`: create and list operations, schemas, error responses, required scopes.
+- **Removal of T-0002's disposable placeholder resource** from the specification and of its generated output — projects is the first real resource, and the placeholder exists only until it arrives.
 - Implementation behind the generated controller contracts.
 - Persistence via EF Core, with the migration that introduces the projects table.
 - Pagination on the list endpoint — mandatory per [ENGINEERING.md](../../standards/ENGINEERING.md).
