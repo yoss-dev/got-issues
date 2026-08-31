@@ -44,7 +44,7 @@ public static class StackCheck
     ///
     /// Rewritten after acceptance. The previous version asserted that a *fixed pair* of
     /// tables existed and that the history was non-empty, which passed against a database
-    /// missing `placeholder_records` entirely, and against a partially-migrated one where
+    /// missing a table entirely (it was `placeholder_records` at the time), and against a partially-migrated one where
     /// a column was the wrong width — both verified by the acceptor. A named list of
     /// tables can only find what its author already thought of.
     ///

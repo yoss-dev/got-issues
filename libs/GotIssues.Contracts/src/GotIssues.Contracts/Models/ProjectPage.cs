@@ -21,33 +21,41 @@ using GotIssues.Contracts.Converters;
 namespace GotIssues.Contracts.Models
 { 
     /// <summary>
-    /// A disposable record. See the Placeholder tag.
+    /// One page of results. Collection endpoints are always paginated — an unbounded result set is forbidden by the project&#39;s engineering standards. 
     /// </summary>
     [DataContract]
-    public class Placeholder : IEquatable<Placeholder>
+    public class ProjectPage : IEquatable<ProjectPage>
     {
         /// <summary>
-        /// The record&#39;s identifier.
+        /// The projects on this page.
         /// </summary>
-        /// <value>The record&#39;s identifier.</value>
+        /// <value>The projects on this page.</value>
         [Required]
-        [DataMember(Name="id", EmitDefaultValue=true)]
-        public Guid Id { get; set; }
+        [DataMember(Name="items", EmitDefaultValue=false)]
+        public List<Project> Items { get; set; }
 
         /// <summary>
-        /// An optional human-readable label; null when none was given.
+        /// The 1-based page number this response represents.
         /// </summary>
-        /// <value>An optional human-readable label; null when none was given.</value>
-        [DataMember(Name="label", EmitDefaultValue=true)]
-        public string? Label { get; set; }
+        /// <value>The 1-based page number this response represents.</value>
+        [Required]
+        [DataMember(Name="page", EmitDefaultValue=true)]
+        public int Page { get; set; }
 
         /// <summary>
-        /// When the record was created, in UTC.
+        /// How many projects this page can hold.
         /// </summary>
-        /// <value>When the record was created, in UTC.</value>
+        /// <value>How many projects this page can hold.</value>
         [Required]
-        [DataMember(Name="createdAt", EmitDefaultValue=true)]
-        public DateTime CreatedAt { get; set; }
+        [DataMember(Name="pageSize", EmitDefaultValue=true)]
+        public int PageSize { get; set; }
+
+        /// <summary>
+        /// Total projects matching the query, across all pages.
+        /// </summary>
+        /// <value>Total projects matching the query, across all pages.</value>
+        [DataMember(Name="totalCount", EmitDefaultValue=true)]
+        public int? TotalCount { get; set; }
 
         /// <summary>
         /// Returns the string presentation of the object
@@ -56,10 +64,11 @@ namespace GotIssues.Contracts.Models
         public override string ToString()
         {
             var sb = new StringBuilder();
-            sb.Append("class Placeholder {\n");
-            sb.Append("  Id: ").Append(Id).Append("\n");
-            sb.Append("  Label: ").Append(Label).Append("\n");
-            sb.Append("  CreatedAt: ").Append(CreatedAt).Append("\n");
+            sb.Append("class ProjectPage {\n");
+            sb.Append("  Items: ").Append(Items).Append("\n");
+            sb.Append("  Page: ").Append(Page).Append("\n");
+            sb.Append("  PageSize: ").Append(PageSize).Append("\n");
+            sb.Append("  TotalCount: ").Append(TotalCount).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
         }
@@ -87,34 +96,40 @@ namespace GotIssues.Contracts.Models
         {
             if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((Placeholder)obj);
+            return obj.GetType() == GetType() && Equals((ProjectPage)obj);
         }
 
         /// <summary>
-        /// Returns true if Placeholder instances are equal
+        /// Returns true if ProjectPage instances are equal
         /// </summary>
-        /// <param name="other">Instance of Placeholder to be compared</param>
+        /// <param name="other">Instance of ProjectPage to be compared</param>
         /// <returns>Boolean</returns>
-        public bool Equals(Placeholder other)
+        public bool Equals(ProjectPage other)
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return 
                 (
-                    Id == other.Id ||
-                    
-                    Id.Equals(other.Id)
+                    Items == other.Items ||
+                    Items != null &&
+                    other.Items != null &&
+                    Items.SequenceEqual(other.Items)
                 ) && 
                 (
-                    Label == other.Label ||
-                    Label != null &&
-                    Label.Equals(other.Label)
+                    Page == other.Page ||
+                    
+                    Page.Equals(other.Page)
                 ) && 
                 (
-                    CreatedAt == other.CreatedAt ||
+                    PageSize == other.PageSize ||
                     
-                    CreatedAt.Equals(other.CreatedAt)
+                    PageSize.Equals(other.PageSize)
+                ) && 
+                (
+                    TotalCount == other.TotalCount ||
+                    
+                    TotalCount.Equals(other.TotalCount)
                 );
         }
 
@@ -128,12 +143,14 @@ namespace GotIssues.Contracts.Models
             {
                 var hashCode = 41;
                 // Suitable nullity checks etc, of course :)
+                    if (Items != null)
+                    hashCode = hashCode * 59 + Items.GetHashCode();
                     
-                    hashCode = hashCode * 59 + Id.GetHashCode();
-                    if (Label != null)
-                    hashCode = hashCode * 59 + Label.GetHashCode();
+                    hashCode = hashCode * 59 + Page.GetHashCode();
                     
-                    hashCode = hashCode * 59 + CreatedAt.GetHashCode();
+                    hashCode = hashCode * 59 + PageSize.GetHashCode();
+                    
+                    hashCode = hashCode * 59 + TotalCount.GetHashCode();
                 return hashCode;
             }
         }
@@ -141,12 +158,12 @@ namespace GotIssues.Contracts.Models
         #region Operators
         #pragma warning disable 1591
 
-        public static bool operator ==(Placeholder left, Placeholder right)
+        public static bool operator ==(ProjectPage left, ProjectPage right)
         {
             return Equals(left, right);
         }
 
-        public static bool operator !=(Placeholder left, Placeholder right)
+        public static bool operator !=(ProjectPage left, ProjectPage right)
         {
             return !Equals(left, right);
         }

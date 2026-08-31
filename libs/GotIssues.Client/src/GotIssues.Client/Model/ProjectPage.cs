@@ -28,17 +28,17 @@ namespace GotIssues.Client.Model
     /// <summary>
     /// One page of results. Collection endpoints are always paginated — an unbounded result set is forbidden by the project&#39;s engineering standards. 
     /// </summary>
-    public partial class PlaceholderPage : IValidatableObject
+    public partial class ProjectPage : IValidatableObject
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="PlaceholderPage" /> class.
+        /// Initializes a new instance of the <see cref="ProjectPage" /> class.
         /// </summary>
-        /// <param name="items">The records on this page.</param>
+        /// <param name="items">The projects on this page.</param>
         /// <param name="page">The 1-based page number this response represents.</param>
-        /// <param name="pageSize">How many records this page can hold.</param>
-        /// <param name="totalCount">Total records matching the query, across all pages.</param>
+        /// <param name="pageSize">How many projects this page can hold.</param>
+        /// <param name="totalCount">Total projects matching the query, across all pages.</param>
         [JsonConstructor]
-        public PlaceholderPage(List<Placeholder> items, int page, int pageSize, Option<int?> totalCount = default)
+        public ProjectPage(List<Project> items, int page, int pageSize, Option<int?> totalCount = default)
         {
             Items = items;
             Page = page;
@@ -50,11 +50,11 @@ namespace GotIssues.Client.Model
         partial void OnCreated();
 
         /// <summary>
-        /// The records on this page.
+        /// The projects on this page.
         /// </summary>
-        /// <value>The records on this page.</value>
+        /// <value>The projects on this page.</value>
         [JsonPropertyName("items")]
-        public List<Placeholder> Items { get; set; }
+        public List<Project> Items { get; set; }
 
         /// <summary>
         /// The 1-based page number this response represents.
@@ -64,9 +64,9 @@ namespace GotIssues.Client.Model
         public int Page { get; set; }
 
         /// <summary>
-        /// How many records this page can hold.
+        /// How many projects this page can hold.
         /// </summary>
-        /// <value>How many records this page can hold.</value>
+        /// <value>How many projects this page can hold.</value>
         [JsonPropertyName("pageSize")]
         public int PageSize { get; set; }
 
@@ -78,9 +78,9 @@ namespace GotIssues.Client.Model
         public Option<int?> TotalCountOption { get; private set; }
 
         /// <summary>
-        /// Total records matching the query, across all pages.
+        /// Total projects matching the query, across all pages.
         /// </summary>
-        /// <value>Total records matching the query, across all pages.</value>
+        /// <value>Total projects matching the query, across all pages.</value>
         [JsonPropertyName("totalCount")]
         public int? TotalCount { get { return this.TotalCountOption; } set { this.TotalCountOption = new(value); } }
 
@@ -91,7 +91,7 @@ namespace GotIssues.Client.Model
         public override string ToString()
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("class PlaceholderPage {\n");
+            sb.Append("class ProjectPage {\n");
             sb.Append("  Items: ").Append(Items).Append("\n");
             sb.Append("  Page: ").Append(Page).Append("\n");
             sb.Append("  PageSize: ").Append(PageSize).Append("\n");
@@ -112,19 +112,19 @@ namespace GotIssues.Client.Model
     }
 
     /// <summary>
-    /// A Json converter for type <see cref="PlaceholderPage" />
+    /// A Json converter for type <see cref="ProjectPage" />
     /// </summary>
-    public class PlaceholderPageJsonConverter : JsonConverter<PlaceholderPage>
+    public class ProjectPageJsonConverter : JsonConverter<ProjectPage>
     {
         /// <summary>
-        /// Deserializes json to <see cref="PlaceholderPage" />
+        /// Deserializes json to <see cref="ProjectPage" />
         /// </summary>
         /// <param name="utf8JsonReader"></param>
         /// <param name="typeToConvert"></param>
         /// <param name="jsonSerializerOptions"></param>
         /// <returns></returns>
         /// <exception cref="JsonException"></exception>
-        public override PlaceholderPage Read(ref Utf8JsonReader utf8JsonReader, Type typeToConvert, JsonSerializerOptions jsonSerializerOptions)
+        public override ProjectPage Read(ref Utf8JsonReader utf8JsonReader, Type typeToConvert, JsonSerializerOptions jsonSerializerOptions)
         {
             int currentDepth = utf8JsonReader.CurrentDepth;
 
@@ -133,7 +133,7 @@ namespace GotIssues.Client.Model
 
             JsonTokenType startingTokenType = utf8JsonReader.TokenType;
 
-            Option<List<Placeholder>?> items = default;
+            Option<List<Project>?> items = default;
             Option<int?> page = default;
             Option<int?> pageSize = default;
             Option<int?> totalCount = default;
@@ -154,7 +154,7 @@ namespace GotIssues.Client.Model
                     switch (localVarJsonPropertyName)
                     {
                         case "items":
-                            items = new Option<List<Placeholder>?>(JsonSerializer.Deserialize<List<Placeholder>>(ref utf8JsonReader, jsonSerializerOptions)!);
+                            items = new Option<List<Project>?>(JsonSerializer.Deserialize<List<Project>>(ref utf8JsonReader, jsonSerializerOptions)!);
                             break;
                         case "page":
                             page = new Option<int?>(utf8JsonReader.TokenType == JsonTokenType.Null ? (int?)null : utf8JsonReader.GetInt32());
@@ -172,64 +172,64 @@ namespace GotIssues.Client.Model
             }
 
             if (!items.IsSet)
-                throw new ArgumentException("Property is required for class PlaceholderPage.", nameof(items));
+                throw new ArgumentException("Property is required for class ProjectPage.", nameof(items));
 
             if (!page.IsSet)
-                throw new ArgumentException("Property is required for class PlaceholderPage.", nameof(page));
+                throw new ArgumentException("Property is required for class ProjectPage.", nameof(page));
 
             if (!pageSize.IsSet)
-                throw new ArgumentException("Property is required for class PlaceholderPage.", nameof(pageSize));
+                throw new ArgumentException("Property is required for class ProjectPage.", nameof(pageSize));
 
             if (items.IsSet && items.Value == null)
-                throw new ArgumentNullException(nameof(items), "Property is not nullable for class PlaceholderPage.");
+                throw new ArgumentNullException(nameof(items), "Property is not nullable for class ProjectPage.");
 
             if (page.IsSet && page.Value == null)
-                throw new ArgumentNullException(nameof(page), "Property is not nullable for class PlaceholderPage.");
+                throw new ArgumentNullException(nameof(page), "Property is not nullable for class ProjectPage.");
 
             if (pageSize.IsSet && pageSize.Value == null)
-                throw new ArgumentNullException(nameof(pageSize), "Property is not nullable for class PlaceholderPage.");
+                throw new ArgumentNullException(nameof(pageSize), "Property is not nullable for class ProjectPage.");
 
             if (totalCount.IsSet && totalCount.Value == null)
-                throw new ArgumentNullException(nameof(totalCount), "Property is not nullable for class PlaceholderPage.");
+                throw new ArgumentNullException(nameof(totalCount), "Property is not nullable for class ProjectPage.");
 
-            return new PlaceholderPage(items.Value!, page.Value!.Value!, pageSize.Value!.Value!, totalCount);
+            return new ProjectPage(items.Value!, page.Value!.Value!, pageSize.Value!.Value!, totalCount);
         }
 
         /// <summary>
-        /// Serializes a <see cref="PlaceholderPage" />
+        /// Serializes a <see cref="ProjectPage" />
         /// </summary>
         /// <param name="writer"></param>
-        /// <param name="placeholderPage"></param>
+        /// <param name="projectPage"></param>
         /// <param name="jsonSerializerOptions"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public override void Write(Utf8JsonWriter writer, PlaceholderPage placeholderPage, JsonSerializerOptions jsonSerializerOptions)
+        public override void Write(Utf8JsonWriter writer, ProjectPage projectPage, JsonSerializerOptions jsonSerializerOptions)
         {
             writer.WriteStartObject();
 
-            WriteProperties(writer, placeholderPage, jsonSerializerOptions);
+            WriteProperties(writer, projectPage, jsonSerializerOptions);
             writer.WriteEndObject();
         }
 
         /// <summary>
-        /// Serializes the properties of <see cref="PlaceholderPage" />
+        /// Serializes the properties of <see cref="ProjectPage" />
         /// </summary>
         /// <param name="writer"></param>
-        /// <param name="placeholderPage"></param>
+        /// <param name="projectPage"></param>
         /// <param name="jsonSerializerOptions"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public void WriteProperties(Utf8JsonWriter writer, PlaceholderPage placeholderPage, JsonSerializerOptions jsonSerializerOptions)
+        public void WriteProperties(Utf8JsonWriter writer, ProjectPage projectPage, JsonSerializerOptions jsonSerializerOptions)
         {
-            if (placeholderPage.Items == null)
-                throw new ArgumentNullException(nameof(placeholderPage.Items), "Property is required for class PlaceholderPage.");
+            if (projectPage.Items == null)
+                throw new ArgumentNullException(nameof(projectPage.Items), "Property is required for class ProjectPage.");
 
             writer.WritePropertyName("items");
-            JsonSerializer.Serialize(writer, placeholderPage.Items, jsonSerializerOptions);
-            writer.WriteNumber("page", placeholderPage.Page);
+            JsonSerializer.Serialize(writer, projectPage.Items, jsonSerializerOptions);
+            writer.WriteNumber("page", projectPage.Page);
 
-            writer.WriteNumber("pageSize", placeholderPage.PageSize);
+            writer.WriteNumber("pageSize", projectPage.PageSize);
 
-            if (placeholderPage.TotalCountOption.IsSet)
-                writer.WriteNumber("totalCount", placeholderPage.TotalCountOption.Value!.Value);
+            if (projectPage.TotalCountOption.IsSet)
+                writer.WriteNumber("totalCount", projectPage.TotalCountOption.Value!.Value);
         }
     }
 }

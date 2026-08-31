@@ -6,13 +6,13 @@ build.sh
 src/GotIssues.Contracts/.gitignore
 src/GotIssues.Contracts/Attributes/ValidateModelStateAttribute.cs
 src/GotIssues.Contracts/Authentication/ApiAuthentication.cs
-src/GotIssues.Contracts/Controllers/PlaceholderApi.cs
+src/GotIssues.Contracts/Controllers/ProjectsApi.cs
 src/GotIssues.Contracts/Converters/CustomEnumConverter.cs
 src/GotIssues.Contracts/Formatters/InputFormatterStream.cs
 src/GotIssues.Contracts/GotIssues.Contracts.csproj
 src/GotIssues.Contracts/GotIssues.Contracts.nuspec
-src/GotIssues.Contracts/Models/CreatePlaceholderRequest.cs
-src/GotIssues.Contracts/Models/Placeholder.cs
-src/GotIssues.Contracts/Models/PlaceholderPage.cs
+src/GotIssues.Contracts/Models/CreateProjectRequest.cs
 src/GotIssues.Contracts/Models/Problem.cs
+src/GotIssues.Contracts/Models/Project.cs
+src/GotIssues.Contracts/Models/ProjectPage.cs
 src/GotIssues.Contracts/OpenApi/TypeExtensions.cs

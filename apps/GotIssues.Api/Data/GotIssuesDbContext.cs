@@ -5,7 +5,7 @@ namespace GotIssues.Api.Data;
 public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> options)
     : DbContext(options)
 {
-    public DbSet<PlaceholderRecord> PlaceholderRecords => Set<PlaceholderRecord>();
+    public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
 
     public DbSet<UserRecord> Users => Set<UserRecord>();
 
@@ -29,10 +29,19 @@ public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> opti
             entity.Property(e => e.LastSeenAt).IsRequired();
         });
 
-        modelBuilder.Entity<PlaceholderRecord>(entity =>
+        modelBuilder.Entity<ProjectRecord>(entity =>
         {
-            entity.ToTable("placeholder_records");
+            entity.ToTable("projects");
             entity.HasKey(e => e.Id);
+
+            // The unique index is the guarantee; the pre-insert check in the
+            // controller is only the error message. Two concurrent creates both pass
+            // a read-then-insert check and only the database can refuse the second
+            // (T-0004 AC1c).
+            entity.HasIndex(e => e.Key).IsUnique();
+
+            entity.Property(e => e.Key).HasMaxLength(10);
+            entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.CreatedAt).IsRequired();
         });
     }

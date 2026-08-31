@@ -43,14 +43,14 @@ namespace GotIssues.Client.Client
             _jsonOptions.Converters.Add(new DateTimeNullableJsonConverter());
             _jsonOptions.Converters.Add(new DateOnlyJsonConverter());
             _jsonOptions.Converters.Add(new DateOnlyNullableJsonConverter());
-            _jsonOptions.Converters.Add(new CreatePlaceholderRequestJsonConverter());
-            _jsonOptions.Converters.Add(new PlaceholderJsonConverter());
-            _jsonOptions.Converters.Add(new PlaceholderPageJsonConverter());
+            _jsonOptions.Converters.Add(new CreateProjectRequestJsonConverter());
             _jsonOptions.Converters.Add(new ProblemJsonConverter());
+            _jsonOptions.Converters.Add(new ProjectJsonConverter());
+            _jsonOptions.Converters.Add(new ProjectPageJsonConverter());
             JsonSerializerOptionsProvider jsonSerializerOptionsProvider = new(_jsonOptions);
             _services.AddSingleton(jsonSerializerOptionsProvider);
             _services.AddSingleton<IApiFactory, ApiFactory>();
-            _services.AddSingleton<PlaceholderApiEvents>();
+            _services.AddSingleton<ProjectsApiEvents>();
         }
 
         /// <summary>
@@ -68,7 +68,7 @@ namespace GotIssues.Client.Client
 
             List<IHttpClientBuilder> builders = new List<IHttpClientBuilder>();
 
-            builders.Add(_services.AddHttpClient<IPlaceholderApi, PlaceholderApi>(client));
+            builders.Add(_services.AddHttpClient<IProjectsApi, ProjectsApi>(client));
             
             if (builder != null)
                 foreach (IHttpClientBuilder instance in builders)

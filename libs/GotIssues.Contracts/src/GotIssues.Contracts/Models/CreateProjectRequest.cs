@@ -24,15 +24,26 @@ namespace GotIssues.Contracts.Models
     /// 
     /// </summary>
     [DataContract]
-    public class CreatePlaceholderRequest : IEquatable<CreatePlaceholderRequest>
+    public class CreateProjectRequest : IEquatable<CreateProjectRequest>
     {
         /// <summary>
-        /// An optional human-readable label. Explicitly null is accepted and means the same as omitting it — declared here because the API accepts it, and a contract that forbids what the API allows is as wrong as the reverse. 
+        /// The key this project&#39;s issues are numbered under, for example &#x60;GOTI&#x60;. Cannot be changed afterwards, so it is worth choosing deliberately. 
         /// </summary>
-        /// <value>An optional human-readable label. Explicitly null is accepted and means the same as omitting it — declared here because the API accepts it, and a contract that forbids what the API allows is as wrong as the reverse. </value>
+        /// <value>The key this project&#39;s issues are numbered under, for example &#x60;GOTI&#x60;. Cannot be changed afterwards, so it is worth choosing deliberately. </value>
+        [Required]
+        [RegularExpression("^[A-Z][A-Z0-9]{1,9}$")]
+        [StringLength(10, MinimumLength=2)]
+        [DataMember(Name="key", EmitDefaultValue=false)]
+        public string Key { get; set; }
+
+        /// <summary>
+        /// The project&#39;s display name.
+        /// </summary>
+        /// <value>The project&#39;s display name.</value>
+        [Required]
         [StringLength(200, MinimumLength=1)]
-        [DataMember(Name="label", EmitDefaultValue=true)]
-        public string? Label { get; set; }
+        [DataMember(Name="name", EmitDefaultValue=false)]
+        public string Name { get; set; }
 
         /// <summary>
         /// Returns the string presentation of the object
@@ -41,8 +52,9 @@ namespace GotIssues.Contracts.Models
         public override string ToString()
         {
             var sb = new StringBuilder();
-            sb.Append("class CreatePlaceholderRequest {\n");
-            sb.Append("  Label: ").Append(Label).Append("\n");
+            sb.Append("class CreateProjectRequest {\n");
+            sb.Append("  Key: ").Append(Key).Append("\n");
+            sb.Append("  Name: ").Append(Name).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
         }
@@ -70,24 +82,29 @@ namespace GotIssues.Contracts.Models
         {
             if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((CreatePlaceholderRequest)obj);
+            return obj.GetType() == GetType() && Equals((CreateProjectRequest)obj);
         }
 
         /// <summary>
-        /// Returns true if CreatePlaceholderRequest instances are equal
+        /// Returns true if CreateProjectRequest instances are equal
         /// </summary>
-        /// <param name="other">Instance of CreatePlaceholderRequest to be compared</param>
+        /// <param name="other">Instance of CreateProjectRequest to be compared</param>
         /// <returns>Boolean</returns>
-        public bool Equals(CreatePlaceholderRequest other)
+        public bool Equals(CreateProjectRequest other)
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return 
                 (
-                    Label == other.Label ||
-                    Label != null &&
-                    Label.Equals(other.Label)
+                    Key == other.Key ||
+                    Key != null &&
+                    Key.Equals(other.Key)
+                ) && 
+                (
+                    Name == other.Name ||
+                    Name != null &&
+                    Name.Equals(other.Name)
                 );
         }
 
@@ -101,8 +118,10 @@ namespace GotIssues.Contracts.Models
             {
                 var hashCode = 41;
                 // Suitable nullity checks etc, of course :)
-                    if (Label != null)
-                    hashCode = hashCode * 59 + Label.GetHashCode();
+                    if (Key != null)
+                    hashCode = hashCode * 59 + Key.GetHashCode();
+                    if (Name != null)
+                    hashCode = hashCode * 59 + Name.GetHashCode();
                 return hashCode;
             }
         }
@@ -110,12 +129,12 @@ namespace GotIssues.Contracts.Models
         #region Operators
         #pragma warning disable 1591
 
-        public static bool operator ==(CreatePlaceholderRequest left, CreatePlaceholderRequest right)
+        public static bool operator ==(CreateProjectRequest left, CreateProjectRequest right)
         {
             return Equals(left, right);
         }
 
-        public static bool operator !=(CreatePlaceholderRequest left, CreatePlaceholderRequest right)
+        public static bool operator !=(CreateProjectRequest left, CreateProjectRequest right)
         {
             return !Equals(left, right);
         }

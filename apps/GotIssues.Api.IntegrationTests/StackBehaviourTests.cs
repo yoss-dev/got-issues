@@ -51,7 +51,7 @@ public sealed class StackBehaviourTests(PostgresContainerFixture postgres) : IAs
             }
         }
 
-        Assert.Contains("placeholder_records", tables);
+        Assert.Contains("projects", tables);
         Assert.Contains("__EFMigrationsHistory", tables);
     }
 
@@ -144,18 +144,20 @@ public sealed class StackBehaviourTests(PostgresContainerFixture postgres) : IAs
         using (var scope = _factory.Services.CreateScope())
         {
             var mine = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
-            mine.PlaceholderRecords.Add(new PlaceholderRecord
+            mine.Projects.Add(new ProjectRecord
             {
                 Id = Guid.NewGuid(),
+                Key = "ISOL",
+                Name = "Isolation",
                 CreatedAt = DateTimeOffset.UtcNow,
             });
             await mine.SaveChangesAsync();
-            Assert.Equal(1, await mine.PlaceholderRecords.CountAsync());
+            Assert.Equal(1, await mine.Projects.CountAsync());
         }
 
         using var otherScope = otherFactory.Services.CreateScope();
         var theirs = otherScope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
-        Assert.Equal(0, await theirs.PlaceholderRecords.CountAsync());
+        Assert.Equal(0, await theirs.Projects.CountAsync());
     }
 
     [Fact]
@@ -164,13 +166,15 @@ public sealed class StackBehaviourTests(PostgresContainerFixture postgres) : IAs
         using var scope = _factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
 
-        context.PlaceholderRecords.Add(new PlaceholderRecord
+        context.Projects.Add(new ProjectRecord
         {
             Id = Guid.NewGuid(),
+            Key = "WRITE",
+            Name = "Writes are visible",
             CreatedAt = DateTimeOffset.UtcNow,
         });
         await context.SaveChangesAsync();
 
-        Assert.Equal(1, await context.PlaceholderRecords.CountAsync());
+        Assert.Equal(1, await context.Projects.CountAsync());
     }
 }

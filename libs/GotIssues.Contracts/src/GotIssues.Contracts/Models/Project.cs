@@ -21,41 +21,45 @@ using GotIssues.Contracts.Converters;
 namespace GotIssues.Contracts.Models
 { 
     /// <summary>
-    /// One page of results. Collection endpoints are always paginated — an unbounded result set is forbidden by the project&#39;s engineering standards. 
+    /// A project, which groups related work and owns the key its issues are numbered under.
     /// </summary>
     [DataContract]
-    public class PlaceholderPage : IEquatable<PlaceholderPage>
+    public class Project : IEquatable<Project>
     {
         /// <summary>
-        /// The records on this page.
+        /// The project&#39;s identifier.
         /// </summary>
-        /// <value>The records on this page.</value>
+        /// <value>The project&#39;s identifier.</value>
         [Required]
-        [DataMember(Name="items", EmitDefaultValue=false)]
-        public List<Placeholder> Items { get; set; }
+        [DataMember(Name="id", EmitDefaultValue=true)]
+        public Guid Id { get; set; }
 
         /// <summary>
-        /// The 1-based page number this response represents.
+        /// The project&#39;s key: 2-10 characters, uppercase letters and digits, starting with a letter. Unique across the deployment and immutable once set. 
         /// </summary>
-        /// <value>The 1-based page number this response represents.</value>
+        /// <value>The project&#39;s key: 2-10 characters, uppercase letters and digits, starting with a letter. Unique across the deployment and immutable once set. </value>
         [Required]
-        [DataMember(Name="page", EmitDefaultValue=true)]
-        public int Page { get; set; }
+        [RegularExpression("^[A-Z][A-Z0-9]{1,9}$")]
+        [StringLength(10, MinimumLength=2)]
+        [DataMember(Name="key", EmitDefaultValue=false)]
+        public string Key { get; set; }
 
         /// <summary>
-        /// How many records this page can hold.
+        /// The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data. 
         /// </summary>
-        /// <value>How many records this page can hold.</value>
+        /// <value>The project&#39;s display name. Names need not be unique — the key is the identifier, and requiring unique names would be a constraint on people rather than on data. </value>
         [Required]
-        [DataMember(Name="pageSize", EmitDefaultValue=true)]
-        public int PageSize { get; set; }
+        [StringLength(200, MinimumLength=1)]
+        [DataMember(Name="name", EmitDefaultValue=false)]
+        public string Name { get; set; }
 
         /// <summary>
-        /// Total records matching the query, across all pages.
+        /// When the project was created, in UTC.
         /// </summary>
-        /// <value>Total records matching the query, across all pages.</value>
-        [DataMember(Name="totalCount", EmitDefaultValue=true)]
-        public int? TotalCount { get; set; }
+        /// <value>When the project was created, in UTC.</value>
+        [Required]
+        [DataMember(Name="createdAt", EmitDefaultValue=true)]
+        public DateTime CreatedAt { get; set; }
 
         /// <summary>
         /// Returns the string presentation of the object
@@ -64,11 +68,11 @@ namespace GotIssues.Contracts.Models
         public override string ToString()
         {
             var sb = new StringBuilder();
-            sb.Append("class PlaceholderPage {\n");
-            sb.Append("  Items: ").Append(Items).Append("\n");
-            sb.Append("  Page: ").Append(Page).Append("\n");
-            sb.Append("  PageSize: ").Append(PageSize).Append("\n");
-            sb.Append("  TotalCount: ").Append(TotalCount).Append("\n");
+            sb.Append("class Project {\n");
+            sb.Append("  Id: ").Append(Id).Append("\n");
+            sb.Append("  Key: ").Append(Key).Append("\n");
+            sb.Append("  Name: ").Append(Name).Append("\n");
+            sb.Append("  CreatedAt: ").Append(CreatedAt).Append("\n");
             sb.Append("}\n");
             return sb.ToString();
         }
@@ -96,40 +100,39 @@ namespace GotIssues.Contracts.Models
         {
             if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((PlaceholderPage)obj);
+            return obj.GetType() == GetType() && Equals((Project)obj);
         }
 
         /// <summary>
-        /// Returns true if PlaceholderPage instances are equal
+        /// Returns true if Project instances are equal
         /// </summary>
-        /// <param name="other">Instance of PlaceholderPage to be compared</param>
+        /// <param name="other">Instance of Project to be compared</param>
         /// <returns>Boolean</returns>
-        public bool Equals(PlaceholderPage other)
+        public bool Equals(Project other)
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return 
                 (
-                    Items == other.Items ||
-                    Items != null &&
-                    other.Items != null &&
-                    Items.SequenceEqual(other.Items)
+                    Id == other.Id ||
+                    
+                    Id.Equals(other.Id)
                 ) && 
                 (
-                    Page == other.Page ||
-                    
-                    Page.Equals(other.Page)
+                    Key == other.Key ||
+                    Key != null &&
+                    Key.Equals(other.Key)
                 ) && 
                 (
-                    PageSize == other.PageSize ||
-                    
-                    PageSize.Equals(other.PageSize)
+                    Name == other.Name ||
+                    Name != null &&
+                    Name.Equals(other.Name)
                 ) && 
                 (
-                    TotalCount == other.TotalCount ||
+                    CreatedAt == other.CreatedAt ||
                     
-                    TotalCount.Equals(other.TotalCount)
+                    CreatedAt.Equals(other.CreatedAt)
                 );
         }
 
@@ -143,14 +146,14 @@ namespace GotIssues.Contracts.Models
             {
                 var hashCode = 41;
                 // Suitable nullity checks etc, of course :)
-                    if (Items != null)
-                    hashCode = hashCode * 59 + Items.GetHashCode();
                     
-                    hashCode = hashCode * 59 + Page.GetHashCode();
+                    hashCode = hashCode * 59 + Id.GetHashCode();
+                    if (Key != null)
+                    hashCode = hashCode * 59 + Key.GetHashCode();
+                    if (Name != null)
+                    hashCode = hashCode * 59 + Name.GetHashCode();
                     
-                    hashCode = hashCode * 59 + PageSize.GetHashCode();
-                    
-                    hashCode = hashCode * 59 + TotalCount.GetHashCode();
+                    hashCode = hashCode * 59 + CreatedAt.GetHashCode();
                 return hashCode;
             }
         }
@@ -158,12 +161,12 @@ namespace GotIssues.Contracts.Models
         #region Operators
         #pragma warning disable 1591
 
-        public static bool operator ==(PlaceholderPage left, PlaceholderPage right)
+        public static bool operator ==(Project left, Project right)
         {
             return Equals(left, right);
         }
 
-        public static bool operator !=(PlaceholderPage left, PlaceholderPage right)
+        public static bool operator !=(Project left, Project right)
         {
             return !Equals(left, right);
         }

@@ -73,7 +73,7 @@ public sealed class ResourceServerTests(PostgresContainerFixture postgres) : IAs
         using var factory = new AuthenticatedApiFactory(_connectionString);
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync(new Uri("/placeholders", UriKind.Relative));
+        var response = await client.GetAsync(new Uri("/projects", UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal(

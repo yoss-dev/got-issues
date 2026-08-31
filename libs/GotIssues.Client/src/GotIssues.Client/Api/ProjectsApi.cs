@@ -28,66 +28,66 @@ namespace GotIssues.Client.Api
     /// Represents a collection of functions to interact with the API endpoints
     /// This class is registered as transient.
     /// </summary>
-    public interface IPlaceholderApi : IApi
+    public interface IProjectsApi : IApi
     {
         /// <summary>
         /// The class containing the events
         /// </summary>
-        PlaceholderApiEvents Events { get; }
+        ProjectsApiEvents Events { get; }
 
         /// <summary>
-        /// Create a placeholder record.
+        /// Create a project.
         /// </summary>
         /// <remarks>
-        /// 
+        /// Creates a project with a name and a key.  **Requires the &#x60;admin&#x60; role.** Creating a project is one of the three administrative acts in this system; a caller holding only &#x60;member&#x60; receives 403. The restriction is a property of the caller&#39;s role claim rather than of an OAuth scope, so it cannot be expressed in this document&#39;s security requirements — it is declared here, and in the 403 response, so that a client generating from this contract knows the endpoint can refuse an authenticated caller.  The key must be unique across the deployment. A key already in use is rejected with 409 rather than silently reused. 
         /// </remarks>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
-        /// <param name="createPlaceholderRequest"></param>
+        /// <param name="createProjectRequest"></param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="ICreatePlaceholderApiResponse"/>&gt;</returns>
-        Task<ICreatePlaceholderApiResponse> CreatePlaceholderAsync(CreatePlaceholderRequest createPlaceholderRequest, System.Threading.CancellationToken cancellationToken = default);
+        /// <returns><see cref="Task"/>&lt;<see cref="ICreateProjectApiResponse"/>&gt;</returns>
+        Task<ICreateProjectApiResponse> CreateProjectAsync(CreateProjectRequest createProjectRequest, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Create a placeholder record.
+        /// Create a project.
         /// </summary>
         /// <remarks>
-        /// 
+        /// Creates a project with a name and a key.  **Requires the &#x60;admin&#x60; role.** Creating a project is one of the three administrative acts in this system; a caller holding only &#x60;member&#x60; receives 403. The restriction is a property of the caller&#39;s role claim rather than of an OAuth scope, so it cannot be expressed in this document&#39;s security requirements — it is declared here, and in the 403 response, so that a client generating from this contract knows the endpoint can refuse an authenticated caller.  The key must be unique across the deployment. A key already in use is rejected with 409 rather than silently reused. 
         /// </remarks>
-        /// <param name="createPlaceholderRequest"></param>
+        /// <param name="createProjectRequest"></param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="ICreatePlaceholderApiResponse"/>?&gt;</returns>
-        Task<ICreatePlaceholderApiResponse?> CreatePlaceholderOrDefaultAsync(CreatePlaceholderRequest createPlaceholderRequest, System.Threading.CancellationToken cancellationToken = default);
+        /// <returns><see cref="Task"/>&lt;<see cref="ICreateProjectApiResponse"/>?&gt;</returns>
+        Task<ICreateProjectApiResponse?> CreateProjectOrDefaultAsync(CreateProjectRequest createProjectRequest, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// List placeholder records.
+        /// List projects.
         /// </summary>
         /// <remarks>
-        /// Returns a page of placeholder records, newest first.
+        /// Returns a page of projects, newest first.  Any caller holding a recognised role may list projects; there is no per-project visibility, because roles in this system are global. 
         /// </remarks>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
-        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound is declared so the constraint lives in the contract rather than only in the server&#39;s code; this API does not support paging beyond that depth.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
-        /// <param name="pageSize">Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 20)</param>
+        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
+        /// <param name="pageSize">Projects per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse.  (optional, default to 20)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="IListPlaceholdersApiResponse"/>&gt;</returns>
-        Task<IListPlaceholdersApiResponse> ListPlaceholdersAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default);
+        /// <returns><see cref="Task"/>&lt;<see cref="IListProjectsApiResponse"/>&gt;</returns>
+        Task<IListProjectsApiResponse> ListProjectsAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// List placeholder records.
+        /// List projects.
         /// </summary>
         /// <remarks>
-        /// Returns a page of placeholder records, newest first.
+        /// Returns a page of projects, newest first.  Any caller holding a recognised role may list projects; there is no per-project visibility, because roles in this system are global. 
         /// </remarks>
-        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound is declared so the constraint lives in the contract rather than only in the server&#39;s code; this API does not support paging beyond that depth.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
-        /// <param name="pageSize">Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 20)</param>
+        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
+        /// <param name="pageSize">Projects per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse.  (optional, default to 20)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="IListPlaceholdersApiResponse"/>?&gt;</returns>
-        Task<IListPlaceholdersApiResponse?> ListPlaceholdersOrDefaultAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default);
+        /// <returns><see cref="Task"/>&lt;<see cref="IListProjectsApiResponse"/>?&gt;</returns>
+        Task<IListProjectsApiResponse?> ListProjectsOrDefaultAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default);
     }
 
     /// <summary>
-    /// The <see cref="ICreatePlaceholderApiResponse"/>
+    /// The <see cref="ICreateProjectApiResponse"/>
     /// </summary>
-    public interface ICreatePlaceholderApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Placeholder?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>
+    public interface ICreateProjectApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Project?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, IConflict<GotIssues.Client.Model.Problem?>
     {
         /// <summary>
         /// Returns true if the response is 201 Created
@@ -106,12 +106,24 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <returns></returns>
         bool IsUnauthorized { get; }
+
+        /// <summary>
+        /// Returns true if the response is 403 Forbidden
+        /// </summary>
+        /// <returns></returns>
+        bool IsForbidden { get; }
+
+        /// <summary>
+        /// Returns true if the response is 409 Conflict
+        /// </summary>
+        /// <returns></returns>
+        bool IsConflict { get; }
     }
 
     /// <summary>
-    /// The <see cref="IListPlaceholdersApiResponse"/>
+    /// The <see cref="IListProjectsApiResponse"/>
     /// </summary>
-    public interface IListPlaceholdersApiResponse : GotIssues.Client.Client.IApiResponse, IOk<GotIssues.Client.Model.PlaceholderPage?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>
+    public interface IListProjectsApiResponse : GotIssues.Client.Client.IApiResponse, IOk<GotIssues.Client.Model.ProjectPage?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>
     {
         /// <summary>
         /// Returns true if the response is 200 Ok
@@ -130,58 +142,64 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <returns></returns>
         bool IsUnauthorized { get; }
+
+        /// <summary>
+        /// Returns true if the response is 403 Forbidden
+        /// </summary>
+        /// <returns></returns>
+        bool IsForbidden { get; }
     }
 
     /// <summary>
     /// Represents a collection of functions to interact with the API endpoints
     /// </summary>
-    public class PlaceholderApiEvents
+    public class ProjectsApiEvents
     {
         /// <summary>
         /// The event raised after the server response
         /// </summary>
-        public event EventHandler<ApiResponseEventArgs>? OnCreatePlaceholder;
+        public event EventHandler<ApiResponseEventArgs>? OnCreateProject;
 
         /// <summary>
         /// The event raised after an error querying the server
         /// </summary>
-        public event EventHandler<ExceptionEventArgs>? OnErrorCreatePlaceholder;
+        public event EventHandler<ExceptionEventArgs>? OnErrorCreateProject;
 
-        internal void ExecuteOnCreatePlaceholder(PlaceholderApi.CreatePlaceholderApiResponse apiResponse)
+        internal void ExecuteOnCreateProject(ProjectsApi.CreateProjectApiResponse apiResponse)
         {
-            OnCreatePlaceholder?.Invoke(this, new ApiResponseEventArgs(apiResponse));
+            OnCreateProject?.Invoke(this, new ApiResponseEventArgs(apiResponse));
         }
 
-        internal void ExecuteOnErrorCreatePlaceholder(Exception exception)
+        internal void ExecuteOnErrorCreateProject(Exception exception)
         {
-            OnErrorCreatePlaceholder?.Invoke(this, new ExceptionEventArgs(exception));
+            OnErrorCreateProject?.Invoke(this, new ExceptionEventArgs(exception));
         }
 
         /// <summary>
         /// The event raised after the server response
         /// </summary>
-        public event EventHandler<ApiResponseEventArgs>? OnListPlaceholders;
+        public event EventHandler<ApiResponseEventArgs>? OnListProjects;
 
         /// <summary>
         /// The event raised after an error querying the server
         /// </summary>
-        public event EventHandler<ExceptionEventArgs>? OnErrorListPlaceholders;
+        public event EventHandler<ExceptionEventArgs>? OnErrorListProjects;
 
-        internal void ExecuteOnListPlaceholders(PlaceholderApi.ListPlaceholdersApiResponse apiResponse)
+        internal void ExecuteOnListProjects(ProjectsApi.ListProjectsApiResponse apiResponse)
         {
-            OnListPlaceholders?.Invoke(this, new ApiResponseEventArgs(apiResponse));
+            OnListProjects?.Invoke(this, new ApiResponseEventArgs(apiResponse));
         }
 
-        internal void ExecuteOnErrorListPlaceholders(Exception exception)
+        internal void ExecuteOnErrorListProjects(Exception exception)
         {
-            OnErrorListPlaceholders?.Invoke(this, new ExceptionEventArgs(exception));
+            OnErrorListProjects?.Invoke(this, new ExceptionEventArgs(exception));
         }
     }
 
     /// <summary>
     /// Represents a collection of functions to interact with the API endpoints
     /// </summary>
-    public sealed partial class PlaceholderApi : IPlaceholderApi
+    public sealed partial class ProjectsApi : IProjectsApi
     {
         private JsonSerializerOptions _jsonSerializerOptions;
 
@@ -193,7 +211,7 @@ namespace GotIssues.Client.Api
         /// <summary>
         /// The logger
         /// </summary>
-        public ILogger<PlaceholderApi> Logger { get; }
+        public ILogger<ProjectsApi> Logger { get; }
 
         /// <summary>
         /// The HttpClient
@@ -203,7 +221,7 @@ namespace GotIssues.Client.Api
         /// <summary>
         /// The class containing the events
         /// </summary>
-        public PlaceholderApiEvents Events { get; }
+        public ProjectsApiEvents Events { get; }
 
         /// <summary>
         /// A token provider of type <see cref="BearerToken"/>
@@ -211,42 +229,42 @@ namespace GotIssues.Client.Api
         public TokenProvider<BearerToken> BearerTokenProvider { get; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="PlaceholderApi"/> class.
+        /// Initializes a new instance of the <see cref="ProjectsApi"/> class.
         /// </summary>
         /// <returns></returns>
-        public PlaceholderApi(ILogger<PlaceholderApi> logger, ILoggerFactory loggerFactory, HttpClient httpClient, JsonSerializerOptionsProvider jsonSerializerOptionsProvider, PlaceholderApiEvents placeholderApiEvents,
+        public ProjectsApi(ILogger<ProjectsApi> logger, ILoggerFactory loggerFactory, HttpClient httpClient, JsonSerializerOptionsProvider jsonSerializerOptionsProvider, ProjectsApiEvents projectsApiEvents,
             TokenProvider<BearerToken> bearerTokenProvider)
         {
             _jsonSerializerOptions = jsonSerializerOptionsProvider.Options;
             LoggerFactory = loggerFactory;
-            Logger = LoggerFactory.CreateLogger<PlaceholderApi>();
+            Logger = LoggerFactory.CreateLogger<ProjectsApi>();
             HttpClient = httpClient;
-            Events = placeholderApiEvents;
+            Events = projectsApiEvents;
             BearerTokenProvider = bearerTokenProvider;
         }
 
-        partial void FormatCreatePlaceholder(CreatePlaceholderRequest createPlaceholderRequest);
+        partial void FormatCreateProject(CreateProjectRequest createProjectRequest);
 
         /// <summary>
         /// Validates the request parameters
         /// </summary>
-        /// <param name="createPlaceholderRequest"></param>
+        /// <param name="createProjectRequest"></param>
         /// <returns></returns>
-        private void ValidateCreatePlaceholder(CreatePlaceholderRequest createPlaceholderRequest)
+        private void ValidateCreateProject(CreateProjectRequest createProjectRequest)
         {
-            if (createPlaceholderRequest == null)
-                throw new ArgumentNullException(nameof(createPlaceholderRequest));
+            if (createProjectRequest == null)
+                throw new ArgumentNullException(nameof(createProjectRequest));
         }
 
         /// <summary>
         /// Processes the server response
         /// </summary>
         /// <param name="apiResponseLocalVar"></param>
-        /// <param name="createPlaceholderRequest"></param>
-        private void AfterCreatePlaceholderDefaultImplementation(ICreatePlaceholderApiResponse apiResponseLocalVar, CreatePlaceholderRequest createPlaceholderRequest)
+        /// <param name="createProjectRequest"></param>
+        private void AfterCreateProjectDefaultImplementation(ICreateProjectApiResponse apiResponseLocalVar, CreateProjectRequest createProjectRequest)
         {
             bool suppressDefaultLog = false;
-            AfterCreatePlaceholder(ref suppressDefaultLog, apiResponseLocalVar, createPlaceholderRequest);
+            AfterCreateProject(ref suppressDefaultLog, apiResponseLocalVar, createProjectRequest);
             if (!suppressDefaultLog)
                 Logger.LogInformation("{0,-9} | {1} | {2}", (apiResponseLocalVar.DownloadedAt - apiResponseLocalVar.RequestedAt).TotalSeconds, apiResponseLocalVar.StatusCode, apiResponseLocalVar.Path);
         }
@@ -256,8 +274,8 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <param name="suppressDefaultLog"></param>
         /// <param name="apiResponseLocalVar"></param>
-        /// <param name="createPlaceholderRequest"></param>
-        partial void AfterCreatePlaceholder(ref bool suppressDefaultLog, ICreatePlaceholderApiResponse apiResponseLocalVar, CreatePlaceholderRequest createPlaceholderRequest);
+        /// <param name="createProjectRequest"></param>
+        partial void AfterCreateProject(ref bool suppressDefaultLog, ICreateProjectApiResponse apiResponseLocalVar, CreateProjectRequest createProjectRequest);
 
         /// <summary>
         /// Logs exceptions that occur while retrieving the server response
@@ -265,11 +283,11 @@ namespace GotIssues.Client.Api
         /// <param name="exceptionLocalVar"></param>
         /// <param name="pathFormatLocalVar"></param>
         /// <param name="pathLocalVar"></param>
-        /// <param name="createPlaceholderRequest"></param>
-        private void OnErrorCreatePlaceholderDefaultImplementation(Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, CreatePlaceholderRequest createPlaceholderRequest)
+        /// <param name="createProjectRequest"></param>
+        private void OnErrorCreateProjectDefaultImplementation(Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, CreateProjectRequest createProjectRequest)
         {
             bool suppressDefaultLogLocalVar = false;
-            OnErrorCreatePlaceholder(ref suppressDefaultLogLocalVar, exceptionLocalVar, pathFormatLocalVar, pathLocalVar, createPlaceholderRequest);
+            OnErrorCreateProject(ref suppressDefaultLogLocalVar, exceptionLocalVar, pathFormatLocalVar, pathLocalVar, createProjectRequest);
             if (!suppressDefaultLogLocalVar)
                 Logger.LogError(exceptionLocalVar, "An error occurred while sending the request to the server.");
         }
@@ -281,20 +299,20 @@ namespace GotIssues.Client.Api
         /// <param name="exceptionLocalVar"></param>
         /// <param name="pathFormatLocalVar"></param>
         /// <param name="pathLocalVar"></param>
-        /// <param name="createPlaceholderRequest"></param>
-        partial void OnErrorCreatePlaceholder(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, CreatePlaceholderRequest createPlaceholderRequest);
+        /// <param name="createProjectRequest"></param>
+        partial void OnErrorCreateProject(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, CreateProjectRequest createProjectRequest);
 
         /// <summary>
-        /// Create a placeholder record. 
+        /// Create a project. Creates a project with a name and a key.  **Requires the &#x60;admin&#x60; role.** Creating a project is one of the three administrative acts in this system; a caller holding only &#x60;member&#x60; receives 403. The restriction is a property of the caller&#39;s role claim rather than of an OAuth scope, so it cannot be expressed in this document&#39;s security requirements — it is declared here, and in the 403 response, so that a client generating from this contract knows the endpoint can refuse an authenticated caller.  The key must be unique across the deployment. A key already in use is rejected with 409 rather than silently reused. 
         /// </summary>
-        /// <param name="createPlaceholderRequest"></param>
+        /// <param name="createProjectRequest"></param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="ICreatePlaceholderApiResponse"/>&gt;</returns>
-        public async Task<ICreatePlaceholderApiResponse?> CreatePlaceholderOrDefaultAsync(CreatePlaceholderRequest createPlaceholderRequest, System.Threading.CancellationToken cancellationToken = default)
+        /// <returns><see cref="Task"/>&lt;<see cref="ICreateProjectApiResponse"/>&gt;</returns>
+        public async Task<ICreateProjectApiResponse?> CreateProjectOrDefaultAsync(CreateProjectRequest createProjectRequest, System.Threading.CancellationToken cancellationToken = default)
         {
             try
             {
-                return await CreatePlaceholderAsync(createPlaceholderRequest, cancellationToken).ConfigureAwait(false);
+                return await CreateProjectAsync(createProjectRequest, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception)
             {
@@ -303,21 +321,21 @@ namespace GotIssues.Client.Api
         }
 
         /// <summary>
-        /// Create a placeholder record. 
+        /// Create a project. Creates a project with a name and a key.  **Requires the &#x60;admin&#x60; role.** Creating a project is one of the three administrative acts in this system; a caller holding only &#x60;member&#x60; receives 403. The restriction is a property of the caller&#39;s role claim rather than of an OAuth scope, so it cannot be expressed in this document&#39;s security requirements — it is declared here, and in the 403 response, so that a client generating from this contract knows the endpoint can refuse an authenticated caller.  The key must be unique across the deployment. A key already in use is rejected with 409 rather than silently reused. 
         /// </summary>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
-        /// <param name="createPlaceholderRequest"></param>
+        /// <param name="createProjectRequest"></param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="ICreatePlaceholderApiResponse"/>&gt;</returns>
-        public async Task<ICreatePlaceholderApiResponse> CreatePlaceholderAsync(CreatePlaceholderRequest createPlaceholderRequest, System.Threading.CancellationToken cancellationToken = default)
+        /// <returns><see cref="Task"/>&lt;<see cref="ICreateProjectApiResponse"/>&gt;</returns>
+        public async Task<ICreateProjectApiResponse> CreateProjectAsync(CreateProjectRequest createProjectRequest, System.Threading.CancellationToken cancellationToken = default)
         {
             UriBuilder uriBuilderLocalVar = new UriBuilder();
 
             try
             {
-                ValidateCreatePlaceholder(createPlaceholderRequest);
+                ValidateCreateProject(createProjectRequest);
 
-                FormatCreatePlaceholder(createPlaceholderRequest);
+                FormatCreateProject(createProjectRequest);
 
                 using (HttpRequestMessage httpRequestMessageLocalVar = new HttpRequestMessage())
                 {
@@ -325,12 +343,12 @@ namespace GotIssues.Client.Api
                     uriBuilderLocalVar.Port = HttpClient.BaseAddress.Port;
                     uriBuilderLocalVar.Scheme = HttpClient.BaseAddress.Scheme;
                     uriBuilderLocalVar.Path = HttpClient.BaseAddress.AbsolutePath == "/"
-                        ? "/placeholders"
-                        : string.Concat(HttpClient.BaseAddress.AbsolutePath, "/placeholders");
+                        ? "/projects"
+                        : string.Concat(HttpClient.BaseAddress.AbsolutePath, "/projects");
 
-                    httpRequestMessageLocalVar.Content = (createPlaceholderRequest as object) is System.IO.Stream stream
+                    httpRequestMessageLocalVar.Content = (createProjectRequest as object) is System.IO.Stream stream
                         ? httpRequestMessageLocalVar.Content = new StreamContent(stream)
-                        : httpRequestMessageLocalVar.Content = new StringContent(JsonSerializer.Serialize(createPlaceholderRequest, _jsonSerializerOptions));
+                        : httpRequestMessageLocalVar.Content = new StringContent(JsonSerializer.Serialize(createProjectRequest, _jsonSerializerOptions));
 
                     List<TokenBase> tokenBaseLocalVars = new List<TokenBase>();
                     httpRequestMessageLocalVar.RequestUri = uriBuilderLocalVar.Uri;
@@ -366,21 +384,21 @@ namespace GotIssues.Client.Api
 
                     using (HttpResponseMessage httpResponseMessageLocalVar = await HttpClient.SendAsync(httpRequestMessageLocalVar, cancellationToken).ConfigureAwait(false))
                     {
-                        ILogger<CreatePlaceholderApiResponse> apiResponseLoggerLocalVar = LoggerFactory.CreateLogger<CreatePlaceholderApiResponse>();
-                        CreatePlaceholderApiResponse apiResponseLocalVar;
+                        ILogger<CreateProjectApiResponse> apiResponseLoggerLocalVar = LoggerFactory.CreateLogger<CreateProjectApiResponse>();
+                        CreateProjectApiResponse apiResponseLocalVar;
 
                         switch ((int)httpResponseMessageLocalVar.StatusCode) {
                             default: {
                                 string responseContentLocalVar = await httpResponseMessageLocalVar.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                                apiResponseLocalVar = new(apiResponseLoggerLocalVar, httpRequestMessageLocalVar, httpResponseMessageLocalVar, responseContentLocalVar, "/placeholders", requestedAtLocalVar, _jsonSerializerOptions);
+                                apiResponseLocalVar = new(apiResponseLoggerLocalVar, httpRequestMessageLocalVar, httpResponseMessageLocalVar, responseContentLocalVar, "/projects", requestedAtLocalVar, _jsonSerializerOptions);
 
                                 break;
                             }
                         }
 
-                        AfterCreatePlaceholderDefaultImplementation(apiResponseLocalVar, createPlaceholderRequest);
+                        AfterCreateProjectDefaultImplementation(apiResponseLocalVar, createProjectRequest);
 
-                        Events.ExecuteOnCreatePlaceholder(apiResponseLocalVar);
+                        Events.ExecuteOnCreateProject(apiResponseLocalVar);
 
                         if (apiResponseLocalVar.StatusCode == (HttpStatusCode) 429)
                             foreach(TokenBase tokenBaseLocalVar in tokenBaseLocalVars)
@@ -392,24 +410,24 @@ namespace GotIssues.Client.Api
             }
             catch(Exception e)
             {
-                OnErrorCreatePlaceholderDefaultImplementation(e, "/placeholders", uriBuilderLocalVar.Path, createPlaceholderRequest);
-                Events.ExecuteOnErrorCreatePlaceholder(e);
+                OnErrorCreateProjectDefaultImplementation(e, "/projects", uriBuilderLocalVar.Path, createProjectRequest);
+                Events.ExecuteOnErrorCreateProject(e);
                 throw;
             }
         }
 
         /// <summary>
-        /// The <see cref="CreatePlaceholderApiResponse"/>
+        /// The <see cref="CreateProjectApiResponse"/>
         /// </summary>
-        public partial class CreatePlaceholderApiResponse : GotIssues.Client.Client.ApiResponse, ICreatePlaceholderApiResponse
+        public partial class CreateProjectApiResponse : GotIssues.Client.Client.ApiResponse, ICreateProjectApiResponse
         {
             /// <summary>
             /// The logger
             /// </summary>
-            public ILogger<CreatePlaceholderApiResponse> Logger { get; }
+            public ILogger<CreateProjectApiResponse> Logger { get; }
 
             /// <summary>
-            /// The <see cref="CreatePlaceholderApiResponse"/>
+            /// The <see cref="CreateProjectApiResponse"/>
             /// </summary>
             /// <param name="logger"></param>
             /// <param name="httpRequestMessage"></param>
@@ -418,14 +436,14 @@ namespace GotIssues.Client.Api
             /// <param name="path"></param>
             /// <param name="requestedAt"></param>
             /// <param name="jsonSerializerOptions"></param>
-            public CreatePlaceholderApiResponse(ILogger<CreatePlaceholderApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, string rawContent, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, rawContent, path, requestedAt, jsonSerializerOptions)
+            public CreateProjectApiResponse(ILogger<CreateProjectApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, string rawContent, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, rawContent, path, requestedAt, jsonSerializerOptions)
             {
                 Logger = logger;
                 OnCreated(httpRequestMessage, httpResponseMessage);
             }
 
             /// <summary>
-            /// The <see cref="CreatePlaceholderApiResponse"/>
+            /// The <see cref="CreateProjectApiResponse"/>
             /// </summary>
             /// <param name="logger"></param>
             /// <param name="httpRequestMessage"></param>
@@ -434,7 +452,7 @@ namespace GotIssues.Client.Api
             /// <param name="path"></param>
             /// <param name="requestedAt"></param>
             /// <param name="jsonSerializerOptions"></param>
-            public CreatePlaceholderApiResponse(ILogger<CreatePlaceholderApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
+            public CreateProjectApiResponse(ILogger<CreateProjectApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
             {
                 Logger = logger;
                 OnCreated(httpRequestMessage, httpResponseMessage);
@@ -452,11 +470,11 @@ namespace GotIssues.Client.Api
             /// Deserializes the response if the response is 201 Created
             /// </summary>
             /// <returns></returns>
-            public GotIssues.Client.Model.Placeholder? Created()
+            public GotIssues.Client.Model.Project? Created()
             {
                 // This logic may be modified with the AsModel.mustache template
                 return IsCreated
-                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Placeholder>(RawContent, _jsonSerializerOptions)
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Project>(RawContent, _jsonSerializerOptions)
                     : null;
             }
 
@@ -465,7 +483,7 @@ namespace GotIssues.Client.Api
             /// </summary>
             /// <param name="result"></param>
             /// <returns></returns>
-            public bool TryCreated([NotNullWhen(true)]out GotIssues.Client.Model.Placeholder? result)
+            public bool TryCreated([NotNullWhen(true)]out GotIssues.Client.Model.Project? result)
             {
                 result = null;
 
@@ -556,6 +574,82 @@ namespace GotIssues.Client.Api
                 return result != null;
             }
 
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public bool IsForbidden => 403 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Forbidden()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsForbidden
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryForbidden([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Forbidden();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)403);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 409 Conflict
+            /// </summary>
+            /// <returns></returns>
+            public bool IsConflict => 409 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 409 Conflict
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Conflict()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsConflict
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 409 Conflict and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryConflict([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Conflict();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)409);
+                }
+
+                return result != null;
+            }
+
             private void OnDeserializationErrorDefaultImplementation(Exception exception, HttpStatusCode httpStatusCode)
             {
                 bool suppressDefaultLog = false;
@@ -567,7 +661,7 @@ namespace GotIssues.Client.Api
             partial void OnDeserializationError(ref bool suppressDefaultLog, Exception exception, HttpStatusCode httpStatusCode);
         }
 
-        partial void FormatListPlaceholders(ref Option<int> page, ref Option<int> pageSize);
+        partial void FormatListProjects(ref Option<int> page, ref Option<int> pageSize);
 
         /// <summary>
         /// Processes the server response
@@ -575,10 +669,10 @@ namespace GotIssues.Client.Api
         /// <param name="apiResponseLocalVar"></param>
         /// <param name="page"></param>
         /// <param name="pageSize"></param>
-        private void AfterListPlaceholdersDefaultImplementation(IListPlaceholdersApiResponse apiResponseLocalVar, Option<int> page, Option<int> pageSize)
+        private void AfterListProjectsDefaultImplementation(IListProjectsApiResponse apiResponseLocalVar, Option<int> page, Option<int> pageSize)
         {
             bool suppressDefaultLog = false;
-            AfterListPlaceholders(ref suppressDefaultLog, apiResponseLocalVar, page, pageSize);
+            AfterListProjects(ref suppressDefaultLog, apiResponseLocalVar, page, pageSize);
             if (!suppressDefaultLog)
                 Logger.LogInformation("{0,-9} | {1} | {2}", (apiResponseLocalVar.DownloadedAt - apiResponseLocalVar.RequestedAt).TotalSeconds, apiResponseLocalVar.StatusCode, apiResponseLocalVar.Path);
         }
@@ -590,7 +684,7 @@ namespace GotIssues.Client.Api
         /// <param name="apiResponseLocalVar"></param>
         /// <param name="page"></param>
         /// <param name="pageSize"></param>
-        partial void AfterListPlaceholders(ref bool suppressDefaultLog, IListPlaceholdersApiResponse apiResponseLocalVar, Option<int> page, Option<int> pageSize);
+        partial void AfterListProjects(ref bool suppressDefaultLog, IListProjectsApiResponse apiResponseLocalVar, Option<int> page, Option<int> pageSize);
 
         /// <summary>
         /// Logs exceptions that occur while retrieving the server response
@@ -600,10 +694,10 @@ namespace GotIssues.Client.Api
         /// <param name="pathLocalVar"></param>
         /// <param name="page"></param>
         /// <param name="pageSize"></param>
-        private void OnErrorListPlaceholdersDefaultImplementation(Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, Option<int> page, Option<int> pageSize)
+        private void OnErrorListProjectsDefaultImplementation(Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, Option<int> page, Option<int> pageSize)
         {
             bool suppressDefaultLogLocalVar = false;
-            OnErrorListPlaceholders(ref suppressDefaultLogLocalVar, exceptionLocalVar, pathFormatLocalVar, pathLocalVar, page, pageSize);
+            OnErrorListProjects(ref suppressDefaultLogLocalVar, exceptionLocalVar, pathFormatLocalVar, pathLocalVar, page, pageSize);
             if (!suppressDefaultLogLocalVar)
                 Logger.LogError(exceptionLocalVar, "An error occurred while sending the request to the server.");
         }
@@ -617,20 +711,20 @@ namespace GotIssues.Client.Api
         /// <param name="pathLocalVar"></param>
         /// <param name="page"></param>
         /// <param name="pageSize"></param>
-        partial void OnErrorListPlaceholders(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, Option<int> page, Option<int> pageSize);
+        partial void OnErrorListProjects(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, Option<int> page, Option<int> pageSize);
 
         /// <summary>
-        /// List placeholder records. Returns a page of placeholder records, newest first.
+        /// List projects. Returns a page of projects, newest first.  Any caller holding a recognised role may list projects; there is no per-project visibility, because roles in this system are global. 
         /// </summary>
-        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound is declared so the constraint lives in the contract rather than only in the server&#39;s code; this API does not support paging beyond that depth.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
-        /// <param name="pageSize">Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 20)</param>
+        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
+        /// <param name="pageSize">Projects per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse.  (optional, default to 20)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="IListPlaceholdersApiResponse"/>&gt;</returns>
-        public async Task<IListPlaceholdersApiResponse?> ListPlaceholdersOrDefaultAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default)
+        /// <returns><see cref="Task"/>&lt;<see cref="IListProjectsApiResponse"/>&gt;</returns>
+        public async Task<IListProjectsApiResponse?> ListProjectsOrDefaultAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default)
         {
             try
             {
-                return await ListPlaceholdersAsync(page, pageSize, cancellationToken).ConfigureAwait(false);
+                return await ListProjectsAsync(page, pageSize, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception)
             {
@@ -639,20 +733,20 @@ namespace GotIssues.Client.Api
         }
 
         /// <summary>
-        /// List placeholder records. Returns a page of placeholder records, newest first.
+        /// List projects. Returns a page of projects, newest first.  Any caller holding a recognised role may list projects; there is no per-project visibility, because roles in this system are global. 
         /// </summary>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
-        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize. The upper bound is declared so the constraint lives in the contract rather than only in the server&#39;s code; this API does not support paging beyond that depth.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
-        /// <param name="pageSize">Records per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse. Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 20)</param>
+        /// <param name="page">1-based page number. Out-of-range values are rejected with 400 rather than silently adjusted, matching pageSize.  Enforcement is the server&#39;s. Declaring a bound does not mean a generated client checks it before dispatching — the C# client generated from this document does not.  (optional, default to 1)</param>
+        /// <param name="pageSize">Projects per page. The maximum is a declared constraint, so a larger value is rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse.  (optional, default to 20)</param>
         /// <param name="cancellationToken">Cancellation Token to cancel the request.</param>
-        /// <returns><see cref="Task"/>&lt;<see cref="IListPlaceholdersApiResponse"/>&gt;</returns>
-        public async Task<IListPlaceholdersApiResponse> ListPlaceholdersAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default)
+        /// <returns><see cref="Task"/>&lt;<see cref="IListProjectsApiResponse"/>&gt;</returns>
+        public async Task<IListProjectsApiResponse> ListProjectsAsync(Option<int> page = default, Option<int> pageSize = default, System.Threading.CancellationToken cancellationToken = default)
         {
             UriBuilder uriBuilderLocalVar = new UriBuilder();
 
             try
             {
-                FormatListPlaceholders(ref page, ref pageSize);
+                FormatListProjects(ref page, ref pageSize);
 
                 using (HttpRequestMessage httpRequestMessageLocalVar = new HttpRequestMessage())
                 {
@@ -660,8 +754,8 @@ namespace GotIssues.Client.Api
                     uriBuilderLocalVar.Port = HttpClient.BaseAddress.Port;
                     uriBuilderLocalVar.Scheme = HttpClient.BaseAddress.Scheme;
                     uriBuilderLocalVar.Path = HttpClient.BaseAddress.AbsolutePath == "/"
-                        ? "/placeholders"
-                        : string.Concat(HttpClient.BaseAddress.AbsolutePath, "/placeholders");
+                        ? "/projects"
+                        : string.Concat(HttpClient.BaseAddress.AbsolutePath, "/projects");
 
                     System.Collections.Specialized.NameValueCollection parseQueryStringLocalVar = System.Web.HttpUtility.ParseQueryString(string.Empty);
 
@@ -698,21 +792,21 @@ namespace GotIssues.Client.Api
 
                     using (HttpResponseMessage httpResponseMessageLocalVar = await HttpClient.SendAsync(httpRequestMessageLocalVar, cancellationToken).ConfigureAwait(false))
                     {
-                        ILogger<ListPlaceholdersApiResponse> apiResponseLoggerLocalVar = LoggerFactory.CreateLogger<ListPlaceholdersApiResponse>();
-                        ListPlaceholdersApiResponse apiResponseLocalVar;
+                        ILogger<ListProjectsApiResponse> apiResponseLoggerLocalVar = LoggerFactory.CreateLogger<ListProjectsApiResponse>();
+                        ListProjectsApiResponse apiResponseLocalVar;
 
                         switch ((int)httpResponseMessageLocalVar.StatusCode) {
                             default: {
                                 string responseContentLocalVar = await httpResponseMessageLocalVar.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                                apiResponseLocalVar = new(apiResponseLoggerLocalVar, httpRequestMessageLocalVar, httpResponseMessageLocalVar, responseContentLocalVar, "/placeholders", requestedAtLocalVar, _jsonSerializerOptions);
+                                apiResponseLocalVar = new(apiResponseLoggerLocalVar, httpRequestMessageLocalVar, httpResponseMessageLocalVar, responseContentLocalVar, "/projects", requestedAtLocalVar, _jsonSerializerOptions);
 
                                 break;
                             }
                         }
 
-                        AfterListPlaceholdersDefaultImplementation(apiResponseLocalVar, page, pageSize);
+                        AfterListProjectsDefaultImplementation(apiResponseLocalVar, page, pageSize);
 
-                        Events.ExecuteOnListPlaceholders(apiResponseLocalVar);
+                        Events.ExecuteOnListProjects(apiResponseLocalVar);
 
                         if (apiResponseLocalVar.StatusCode == (HttpStatusCode) 429)
                             foreach(TokenBase tokenBaseLocalVar in tokenBaseLocalVars)
@@ -724,24 +818,24 @@ namespace GotIssues.Client.Api
             }
             catch(Exception e)
             {
-                OnErrorListPlaceholdersDefaultImplementation(e, "/placeholders", uriBuilderLocalVar.Path, page, pageSize);
-                Events.ExecuteOnErrorListPlaceholders(e);
+                OnErrorListProjectsDefaultImplementation(e, "/projects", uriBuilderLocalVar.Path, page, pageSize);
+                Events.ExecuteOnErrorListProjects(e);
                 throw;
             }
         }
 
         /// <summary>
-        /// The <see cref="ListPlaceholdersApiResponse"/>
+        /// The <see cref="ListProjectsApiResponse"/>
         /// </summary>
-        public partial class ListPlaceholdersApiResponse : GotIssues.Client.Client.ApiResponse, IListPlaceholdersApiResponse
+        public partial class ListProjectsApiResponse : GotIssues.Client.Client.ApiResponse, IListProjectsApiResponse
         {
             /// <summary>
             /// The logger
             /// </summary>
-            public ILogger<ListPlaceholdersApiResponse> Logger { get; }
+            public ILogger<ListProjectsApiResponse> Logger { get; }
 
             /// <summary>
-            /// The <see cref="ListPlaceholdersApiResponse"/>
+            /// The <see cref="ListProjectsApiResponse"/>
             /// </summary>
             /// <param name="logger"></param>
             /// <param name="httpRequestMessage"></param>
@@ -750,14 +844,14 @@ namespace GotIssues.Client.Api
             /// <param name="path"></param>
             /// <param name="requestedAt"></param>
             /// <param name="jsonSerializerOptions"></param>
-            public ListPlaceholdersApiResponse(ILogger<ListPlaceholdersApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, string rawContent, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, rawContent, path, requestedAt, jsonSerializerOptions)
+            public ListProjectsApiResponse(ILogger<ListProjectsApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, string rawContent, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, rawContent, path, requestedAt, jsonSerializerOptions)
             {
                 Logger = logger;
                 OnCreated(httpRequestMessage, httpResponseMessage);
             }
 
             /// <summary>
-            /// The <see cref="ListPlaceholdersApiResponse"/>
+            /// The <see cref="ListProjectsApiResponse"/>
             /// </summary>
             /// <param name="logger"></param>
             /// <param name="httpRequestMessage"></param>
@@ -766,7 +860,7 @@ namespace GotIssues.Client.Api
             /// <param name="path"></param>
             /// <param name="requestedAt"></param>
             /// <param name="jsonSerializerOptions"></param>
-            public ListPlaceholdersApiResponse(ILogger<ListPlaceholdersApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
+            public ListProjectsApiResponse(ILogger<ListProjectsApiResponse> logger, System.Net.Http.HttpRequestMessage httpRequestMessage, System.Net.Http.HttpResponseMessage httpResponseMessage, System.IO.Stream contentStream, string path, DateTime requestedAt, System.Text.Json.JsonSerializerOptions jsonSerializerOptions) : base(httpRequestMessage, httpResponseMessage, contentStream, path, requestedAt, jsonSerializerOptions)
             {
                 Logger = logger;
                 OnCreated(httpRequestMessage, httpResponseMessage);
@@ -784,11 +878,11 @@ namespace GotIssues.Client.Api
             /// Deserializes the response if the response is 200 Ok
             /// </summary>
             /// <returns></returns>
-            public GotIssues.Client.Model.PlaceholderPage? Ok()
+            public GotIssues.Client.Model.ProjectPage? Ok()
             {
                 // This logic may be modified with the AsModel.mustache template
                 return IsOk
-                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.PlaceholderPage>(RawContent, _jsonSerializerOptions)
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.ProjectPage>(RawContent, _jsonSerializerOptions)
                     : null;
             }
 
@@ -797,7 +891,7 @@ namespace GotIssues.Client.Api
             /// </summary>
             /// <param name="result"></param>
             /// <returns></returns>
-            public bool TryOk([NotNullWhen(true)]out GotIssues.Client.Model.PlaceholderPage? result)
+            public bool TryOk([NotNullWhen(true)]out GotIssues.Client.Model.ProjectPage? result)
             {
                 result = null;
 
@@ -883,6 +977,44 @@ namespace GotIssues.Client.Api
                 } catch (Exception e)
                 {
                     OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)401);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public bool IsForbidden => 403 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 403 Forbidden
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Forbidden()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsForbidden
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 403 Forbidden and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryForbidden([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Forbidden();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)403);
                 }
 
                 return result != null;

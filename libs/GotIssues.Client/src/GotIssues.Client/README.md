@@ -54,9 +54,9 @@ namespace YourProject
         public static async Task Main(string[] args)
         {
             var host = CreateHostBuilder(args).Build();
-            var api = host.Services.GetRequiredService<IPlaceholderApi>();
-            ICreatePlaceholderApiResponse apiResponse = await api.CreatePlaceholderAsync("todo");
-            Placeholder? model = apiResponse.Ok();
+            var api = host.Services.GetRequiredService<IProjectsApi>();
+            ICreateProjectApiResponse apiResponse = await api.CreateProjectAsync("todo");
+            Project? model = apiResponse.Ok();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) => Host.CreateDefaultBuilder(args)

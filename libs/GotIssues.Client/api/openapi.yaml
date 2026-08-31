@@ -15,21 +15,27 @@ security:
 - bearerAuth: []
 tags:
 - description: |
-    Disposable. This resource exists only to prove the specification →
-    generation → implementation pipeline end to end. T-0004 replaces it with
-    the first real resource (projects) and deletes it.
-  name: Placeholder
+    A project groups related work and owns a **key** — a short uppercase
+    identifier such as `GOTI` that becomes the human-quotable half of every
+    issue reference (`GOTI-123`).
+
+    The key is chosen at creation and cannot be changed afterwards. Every issue
+    reference derives from it, including ones written down outside this system,
+    so renaming a key would orphan them all.
+  name: Projects
 paths:
-  /placeholders:
+  /projects:
     get:
-      description: "Returns a page of placeholder records, newest first."
-      operationId: listPlaceholders
+      description: |
+        Returns a page of projects, newest first.
+
+        Any caller holding a recognised role may list projects; there is no
+        per-project visibility, because roles in this system are global.
+      operationId: listProjects
       parameters:
       - description: |
           1-based page number. Out-of-range values are rejected with 400 rather
-          than silently adjusted, matching pageSize. The upper bound is declared so
-          the constraint lives in the contract rather than only in the server's
-          code; this API does not support paging beyond that depth.
+          than silently adjusted, matching pageSize.
 
           Enforcement is the server's. Declaring a bound does not mean a generated
           client checks it before dispatching — the C# client generated from this
@@ -45,12 +51,9 @@ paths:
           type: integer
         style: form
       - description: |
-          Records per page. The maximum is a declared constraint, so a larger
+          Projects per page. The maximum is a declared constraint, so a larger
           value is rejected with 400 rather than silently reduced — a client
           asking for 10 000 and receiving 100 without being told is worse.
-          Enforcement is the server's. Declaring a bound does not mean a generated
-          client checks it before dispatching — the C# client generated from this
-          document does not.
         explode: true
         in: query
         name: pageSize
@@ -66,37 +69,56 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PlaceholderPage"
-          description: A page of placeholder records.
+                $ref: "#/components/schemas/ProjectPage"
+          description: A page of projects.
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-      summary: List placeholder records.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      summary: List projects.
       tags:
-      - Placeholder
+      - Projects
     post:
-      operationId: createPlaceholder
+      description: |
+        Creates a project with a name and a key.
+
+        **Requires the `admin` role.** Creating a project is one of the three
+        administrative acts in this system; a caller holding only `member` receives
+        403. The restriction is a property of the caller's role claim rather than of
+        an OAuth scope, so it cannot be expressed in this document's security
+        requirements — it is declared here, and in the 403 response, so that a client
+        generating from this contract knows the endpoint can refuse an authenticated
+        caller.
+
+        The key must be unique across the deployment. A key already in use is
+        rejected with 409 rather than silently reused.
+      operationId: createProject
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreatePlaceholderRequest"
+              $ref: "#/components/schemas/CreateProjectRequest"
         required: true
       responses:
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Placeholder"
-          description: The record was created.
+                $ref: "#/components/schemas/Project"
+          description: The project was created.
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-      summary: Create a placeholder record.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      summary: Create a project.
       tags:
-      - Placeholder
+      - Projects
 components:
   responses:
     BadRequest:
@@ -111,6 +133,22 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
       description: "No credentials were supplied, or they were not valid."
+    Forbidden:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The credentials were valid, but the caller's role does not permit this
+        operation. Distinct from 401: the caller is known, and still refused.
+    Conflict:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The request conflicts with something that already exists — for a project,
+        a key already in use.
   schemas:
     Problem:
       description: |
@@ -132,42 +170,67 @@ components:
         instance:
           description: A URI identifying this specific occurrence.
           type: string
-    Placeholder:
-      description: A disposable record. See the Placeholder tag.
+    Project:
+      description: "A project, which groups related work and owns the key its issues\
+        \ are numbered under."
       example:
         createdAt: 2000-01-23T04:56:07.000+00:00
+        name: name
         id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        label: label
+        key: key
       properties:
         id:
-          description: The record's identifier.
+          description: The project's identifier.
           format: uuid
           type: string
-        label:
-          description: An optional human-readable label; null when none was given.
-          nullable: true
+        key:
+          description: |
+            The project's key: 2-10 characters, uppercase letters and digits,
+            starting with a letter. Unique across the deployment and immutable
+            once set.
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        name:
+          description: |
+            The project's display name. Names need not be unique — the key is the
+            identifier, and requiring unique names would be a constraint on people
+            rather than on data.
+          maxLength: 200
+          minLength: 1
           type: string
         createdAt:
-          description: "When the record was created, in UTC."
+          description: "When the project was created, in UTC."
           format: date-time
           type: string
       required:
       - createdAt
       - id
-    CreatePlaceholderRequest:
+      - key
+      - name
+    CreateProjectRequest:
       example:
-        label: label
+        name: name
+        key: key
       properties:
-        label:
+        key:
           description: |
-            An optional human-readable label. Explicitly null is accepted and means
-            the same as omitting it — declared here because the API accepts it, and
-            a contract that forbids what the API allows is as wrong as the reverse.
+            The key this project's issues are numbered under, for example `GOTI`.
+            Cannot be changed afterwards, so it is worth choosing deliberately.
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        name:
+          description: The project's display name.
           maxLength: 200
           minLength: 1
-          nullable: true
           type: string
-    PlaceholderPage:
+      required:
+      - key
+      - name
+    ProjectPage:
       description: |
         One page of results. Collection endpoints are always paginated — an
         unbounded result set is forbidden by the project's engineering standards.
@@ -177,25 +240,27 @@ components:
         totalCount: 1
         items:
         - createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          label: label
+          key: key
         - createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
           id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          label: label
+          key: key
       properties:
         items:
-          description: The records on this page.
+          description: The projects on this page.
           items:
-            $ref: "#/components/schemas/Placeholder"
+            $ref: "#/components/schemas/Project"
           type: array
         page:
           description: The 1-based page number this response represents.
           type: integer
         pageSize:
-          description: How many records this page can hold.
+          description: How many projects this page can hold.
           type: integer
         totalCount:
-          description: "Total records matching the query, across all pages."
+          description: "Total projects matching the query, across all pages."
           type: integer
       required:
       - items
