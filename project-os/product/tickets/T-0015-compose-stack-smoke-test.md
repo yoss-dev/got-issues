@@ -168,3 +168,86 @@ That also settles how it splits if it does overrun: **the seam is stack (AC1–A
 - **Open questions / blockers:** none.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — claimed, with the implementation plan
+
+Claimed at `a21302b`. Dependencies verified `done` in their own files, not assumed from the
+sprint table: T-0003 and T-0010 both read `status: done`.
+
+#### Approach
+
+Refinement's recommendation taken: an xUnit project `apps/GotIssues.SmokeTests`, kept **out
+of `GotIssues.slnx`** so `dotnet test` keeps meaning exactly what it means today (AC5), and
+invoked through `tools/smoke.sh`. If it turns out the solution file globs rather than lists,
+I will say so and fall back to the trait filter, recording why.
+
+The check drives the real `compose.yaml` with `-f`, never a copy — a smoke test against a
+duplicated compose file verifies the duplicate.
+
+#### Files expected to change
+
+| Path | Why |
+| --- | --- |
+| `apps/GotIssues.SmokeTests/` (new) | the check itself |
+| `tools/smoke.sh` (new) | the one documented entry point |
+| `README.md` | how to run it (AC5) |
+| `project-os/architecture/ARCHITECTURE.md` | a new verification tier is a state change |
+
+#### Test plan, criterion by criterion
+
+| AC | How it is verified |
+| --- | --- |
+| AC1 | `compose up -d --wait` on fresh volumes; assert every long-running service healthy and both migrators exited 0 |
+| AC2 | write a row, `compose down` (volumes kept), `up` again; assert the row survives, `__EFMigrationsHistory` is unchanged in count, migrator exit 0 |
+| AC3 | start `api` with `--no-deps` and no database; assert the container stays running rather than exiting, and reports unhealthy; start postgres and the migrator; assert it becomes healthy |
+| AC4 | derive a mutated compose file *from the real one* (migration step neutered; `service_healthy` condition dropped) and assert the same assertions fail |
+| AC5 | the project is outside the solution; `dotnet test` at the root is unchanged; README documents `tools/smoke.sh` |
+| AC6 | a genuine token from the token endpoint is accepted; expired, wrong-audience and unknown-key tokens each refused 401 |
+| AC7 | start `identity` with `--no-deps` against an empty schema; assert no tables and no seeded rows |
+| AC8 | attempt a token carrying `sub`; if the identity host cannot issue one, defer with a **named successor** per the criterion |
+
+#### Three things I want to settle before writing code, not at acceptance
+
+**1. Ports — the project's own repeated defect.** `compose.yaml` publishes `${API_PORT:-8080}`
+and `${IDENTITY_PORT:-8081}`. A distinct `-p` project name does **not** prevent a host port
+collision, and this project has produced a port-collision false pass twice, the second time
+by the person who had just written up the first. The check will publish on **ephemeral ports**
+(`API_PORT=0`), discover the real port with `docker compose port`, and assert container
+`running`/`healthy` before trusting any HTTP response, per TESTING.md's attribution rule.
+
+**2. AC6's expired token, and a genuine finding underneath it.** The API sets no `ClockSkew`,
+so `JwtBearer` keeps the default **five-minute** grace: a token five minutes past `exp` is
+still accepted. Waiting out that window would make the check unusable, so the three refusal
+cases will be **minted against the identity host's real signing key** (read from the
+`identity-keys` volume) with `exp` well outside the window — deterministic, no waiting, and no
+production change smuggled in under a coverage ticket. The accepted case uses a genuine token
+from the token endpoint, so the happy path is never synthetic.
+
+The five-minute grace itself is a **decision nobody made** — it is the `JwtBearer` default, not
+a choice recorded anywhere. It is out of scope here (this ticket adds verification, it does not
+change the resource server), so I will raise it as its own ticket rather than fix it in passing.
+
+**3. AC8 will probably defer, and the successor does not exist yet.** Client-credentials tokens
+carry no `sub` by construction, and no ticket in the backlog covers user provisioning. If the
+identity host cannot be made to issue a subject-carrying token without inventing a
+provisioning model — which would be scope creep of the worst kind — I will create the successor
+ticket through `create-ticket` and name it in AC8, as the criterion itself demands.
+
+#### Risks
+
+- **Cost is entirely in standing the harness up**, per refinement; the per-criterion work is
+  small once containers can be driven and asserted against.
+- **Image builds dominate the runtime.** The check must build the same images the stack uses,
+  so first run is minutes. That is inherent, and it is why AC5 keeps this out of the habitual
+  tier.
+- **AC3 is a race by construction.** Driving it with `--no-deps` makes it deterministic:
+  the API is started with nothing to wait for and must be observed *not exiting*.
+
+- **Did:** Claimed the ticket; verified dependencies from their own files; loaded
+  `compose.yaml`, `TESTING.md`, both `Program.cs` migrate paths and the seeder before planning.
+- **Decided:** ephemeral ports and container-state assertions before any HTTP trust; refusal
+  tokens minted against the real signing key rather than waiting out the clock-skew window.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none blocking; two items (the five-minute grace, AC8's
+  successor) will become tickets rather than silent fixes.
+- **Test state:** not started.
