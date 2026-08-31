@@ -14,7 +14,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | in-progress | T-0004 |
+| 1 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | in-acceptance | T-0004 |
 | 2 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | committed | T-0005, T-0009 |
 | 3 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
 | 4 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
