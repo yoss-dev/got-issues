@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using GotIssues.Api.IntegrationTests.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -52,6 +53,32 @@ public sealed class ResourceServerTests(PostgresContainerFixture postgres) : IAs
         // 401 without ever contacting the authority: there is no token to validate,
         // so the challenge happens before any metadata fetch.
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_unauthenticated_refusal_carries_a_problem_document()
+    {
+        // The specification declares application/problem+json for 401, and the
+        // Problem schema states that every failure in this API uses that shape. The
+        // 401 was returning an empty body with no content type, making that sentence
+        // false for the most common failure a client meets — and it survived two
+        // review passes because the refusal tests asserted only the status code.
+        //
+        // Asserted here rather than in GeneratedContractTests because this factory
+        // exercises the API's own pipeline; that one injects authentication through
+        // an IStartupFilter which short-circuits before the app's middleware.
+        using var factory = new AuthenticatedApiFactory(_connectionString);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync(new Uri("/placeholders", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(401, document.RootElement.GetProperty("status").GetInt32());
     }
 
     [Fact]

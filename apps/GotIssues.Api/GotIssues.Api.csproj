@@ -17,6 +17,12 @@
     is hand-authored in spec/openapi.yaml and code is generated from it (T-0002).
   -->
   <ItemGroup>
+    <!-- The generated server contract. Controllers implement it and declare no
+         routes of their own (ADR-0004). -->
+    <ProjectReference Include="../../libs/GotIssues.Contracts/src/GotIssues.Contracts/GotIssues.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">

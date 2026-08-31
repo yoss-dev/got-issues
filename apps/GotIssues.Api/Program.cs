@@ -38,6 +38,13 @@ if (!string.IsNullOrWhiteSpace(authority))
     builder.Services.AddAuthorization();
 }
 
+// Every failure returns application/problem+json, including the ones the framework
+// produces without reaching a controller — an unauthenticated 401 is the most common
+// failure a client meets, and it was returning an empty body while the specification
+// declared a problem document for it. UseStatusCodePages fills in status-only
+// responses; AddProblemDetails gives them the RFC 9457 shape.
+builder.Services.AddProblemDetails();
+
 builder.Services.AddControllers();
 builder.Services.AddDbContext<GotIssuesDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -45,6 +52,8 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
 
 var app = builder.Build();
+
+app.UseStatusCodePages();
 
 // --- Explicit migration step -------------------------------------------------
 // ADR-0003: migrations are applied by a deliberate, observable action, never

@@ -4,6 +4,15 @@ WORKDIR /src
 
 # The lock file is copied with the project file so --locked-mode can fail the
 # build if the container would resolve anything the dev build did not (PROJECT.md §5).
+# The API references the generated contract library, so libs/ must reach the build
+# context before restore — the ProjectReference cannot resolve otherwise.
+#
+# This does mean a change to any generated file invalidates the restore layer:
+# libs/ is regenerated whenever the spec changes, so the cache is less effective
+# than the csproj-only copy below suggests. Correctness first; the alternative is
+# copying the generated .csproj files individually and keeping that list in sync
+# by hand, which is a worse trade.
+COPY libs/ libs/
 COPY apps/GotIssues.Api/GotIssues.Api.csproj apps/GotIssues.Api/packages.lock.json apps/GotIssues.Api/
 RUN dotnet restore apps/GotIssues.Api/GotIssues.Api.csproj --locked-mode
 

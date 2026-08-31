@@ -66,7 +66,7 @@ Gathered for convenience; [`PROJECT.md`](../PROJECT.md) §4–5 and the ADRs rem
 - **Not a git forge**: no repositories, git transport, or issue↔commit linking. Self-hosted git is a separate future effort.
 - The OpenAPI specification is authored first; controllers and clients are generated from it. Hand-writing generated artefacts is a defect.
 - .NET 10 / C# / ASP.NET Core, PostgreSQL via EF Core, Duende IdentityServer — changing any of these requires a superseding ADR.
-- Code generation requires a JDK in the developer and CI toolchain (OpenAPI Generator is a Java tool).
+- Code generation runs from a pinned OpenAPI Generator **container image**, so it requires Docker but **no host JDK** (T-0002, 2026-08-31 — this previously named a JDK prerequisite).
 - Pagination is mandatory on every collection endpoint; no unbounded result sets.
 
 ## Active architectural concerns

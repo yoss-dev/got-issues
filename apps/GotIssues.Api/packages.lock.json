@@ -44,6 +44,14 @@
         "resolved": "2.14.1",
         "contentHash": "lQKvtaTDOXnoVJ20ibTuSIOf2i0uO0MPbDhd1jm238I+U/2ZnRENj0cktKZhtchBMtCUSRQ5v4xBCUbKNmyVMw=="
       },
+      "JsonSubTypes": {
+        "type": "Transitive",
+        "resolved": "1.8.0",
+        "contentHash": "pBChxyl9mt0F1s1giHlN6yQ9WWb5FljluCNhMnSb7sspPfPRPTrc0a0psdu2/FVb5nZu5bQN50OMMaSp8jm8xQ==",
+        "dependencies": {
+          "Newtonsoft.Json": "10.0.1"
+        }
+      },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -276,6 +284,13 @@
         "dependencies": {
           "Microsoft.IdentityModel.JsonWebTokens": "8.19.2",
           "Microsoft.IdentityModel.Tokens": "8.19.2"
+        }
+      },
+      "gotissues.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "JsonSubTypes": "[1.8.0, )",
+          "Newtonsoft.Json": "[13.0.3, )"
         }
       }
     }

@@ -1,0 +1,50 @@
+<Project>
+
+  <!--
+    Overrides for generated projects. This is a .targets file, not .props,
+    deliberately: .props is imported BEFORE a project's own PropertyGroup and would
+    lose to it, while .targets is imported after and wins. The generated .csproj
+    files hard-code values we must change and must not be hand-edited (ADR-0004),
+    so this is the only place the change can live.
+  -->
+
+  <!--
+    NOTE: the target framework is NOT set here. Setting it in a .targets file makes
+    MSBuild *report* net10.0 while still building net8.0 — the property query agrees
+    and the compiler does not. tools/generate.sh rewrites the generated .csproj
+    instead, which is the only mechanism that actually changes the build.
+  -->
+
+  <PropertyGroup>
+    <!--
+      Generated code is not ours to fix. ENGINEERING.md excludes generated
+      directories from analyzers; the .editorconfig covers formatting and code
+      style, and this covers the analyzer pass and the doc-comment warnings the
+      generator's own XML docs trigger.
+    -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <RunAnalyzers>false</RunAnalyzers>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS0618;CS8669;NU1510</NoWarn>
+
+    <!--
+      Vulnerability warnings are NOT suppressed here. TreatWarningsAsErrors is off
+      for generated code, which would otherwise let NU1903 pass silently — and
+      SECURITY.md says vulnerability findings are triaged, never muted. Promoting
+      it back to an error keeps the guard the pipeline's own risk notes rely on.
+    -->
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The aspnetcore generator pulls JsonSubTypes, which drags in a Newtonsoft.Json
+      carrying a high-severity advisory (GHSA-5crp-9r3c-p9vr) — and setting
+      useNewtonsoft=false does NOT remove it, because the dependency is JsonSubTypes',
+      not the MVC package's. Pinning it forward clears the advisory here, in our own
+      file, so the never-hand-edit-generated-code rule holds.
+    -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>

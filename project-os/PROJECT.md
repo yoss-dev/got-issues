@@ -73,7 +73,7 @@ Hard constraints that override ticket-level convenience:
 | API contract & codegen | Spec-first; [OpenAPI Generator](https://openapi-generator.tech) CLI (`aspnetcore` server stubs + `csharp` client) — [ADR-0004](architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) | `[confirmed]` |
 | Authentication | Duende IdentityServer (OpenID Connect / OAuth 2.1), self-hosted in compose; API validates JWT bearer tokens | `[confirmed]` |
 | Authorization model | **Global roles `admin` and `member`**, carried as a claim in the Duende token — the API reads the claim per request and never stores roles. `admin` additionally performs administrative acts: creating and archiving projects, deleting issues and comments. Role *assignment* happens in Duende, not through this API. Scope-based access for machine clients | `[confirmed]` |
-| Package / build tooling | .NET SDK (`dotnet build/test`), NuGet with a lock file; OpenAPI Generator CLI runs on the JDK (25 verified locally) | `[confirmed]` |
+| Package / build tooling | .NET SDK (`dotnet build/test`), NuGet with a lock file; OpenAPI Generator runs from a **pinned container image**, so no host JDK is required — only Docker (T-0002, 2026-08-31; previously this row named a JDK prerequisite) | `[confirmed]` |
 | Testing frameworks | xUnit; `WebApplicationFactory` for API-level tests; Testcontainers for PostgreSQL | `[default]` |
 | CI/CD system | None yet — no remote (solo mode). The validator and test suite are run locally before every merge | `[open]` (Q6) |
 | Hosting / cloud provider | None — local Docker Compose only for now | `[confirmed]` |

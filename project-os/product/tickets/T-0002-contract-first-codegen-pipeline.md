@@ -180,3 +180,351 @@ Perspectives applied: Product Owner, Business Analyst, Software Engineer, Archit
 **Sizing:** grew — two more ACs and several named constraints. Still within the guideline, but it is now the larger of the two Ready tickets. If it overruns, the seam is the client generator (out of scope for anything but proving it runs).
 
 **DoR verdict: `ready`** — and more genuinely so than before, since the item that previously passed on "an ADR exists" now passes on evidence.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — implementation plan
+
+Claimed via `pick-up-ticket` under `run-sprint`. `depends_on: [T-0001, T-0011]` — both verified `done` in the Completed table, not assumed. DoR re-checked after yesterday's re-refinement; still holds.
+
+**This is the ticket the project has been deferring to since bootstrap.** [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) has governed every ticket without once being exercised.
+
+**Approach, in dependency order**
+
+1. **`spec/openapi.yaml`** — hand-authored OpenAPI 3.1: the RFC 9457 problem shape, the bearer security scheme, and one deliberately disposable placeholder resource. T-0004 deletes it. Operational endpoints stay out ([ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)).
+2. **`tools/generate.sh`** — the pinned generator container, both generators, output into `libs/`. The option string from T-0011 goes in **whole**; it is not a menu (`buildTarget=library` dropped alone emits invalid C#).
+3. **`libs/Directory.Build.targets`** — the mechanism for the two generator limits T-0011 found. `.targets` rather than `.props` because it is imported *after* the project body, so it can override the `net8.0` the generator hard-codes; a `.props` would lose to the project's own `PropertyGroup`. It also carries the `Newtonsoft.Json` 13.0.3 pin that clears the transitive advisory `useNewtonsoft=false` does not remove.
+4. **`.editorconfig`** — generated output excluded from analyzers and formatting, the same treatment `**/Migrations/**.cs` already has. **Verified in both directions** (AC9), because a half-matching glob silently covered only subdirectories on T-0003.
+5. **`.dockerignore`** — remove the `libs/` and `spec/` exclusions T-0001 left with a comment saying to remove them here, or the container compiles without the generated contracts (AC10).
+6. **API** implements the generated abstract controller; declares no routes of its own.
+7. **Drift check** in `tools/` — regenerate, `git diff --exit-code`.
+8. **README** — the spec→regenerate→implement workflow, and the slow first image pull T-0011 measured, so nobody reads it as a hang.
+
+**Test plan.** T-0003's harness exists, so this ticket automates rather than asserting:
+
+| AC | How verified |
+| --- | --- |
+| AC1 | Run `./tools/generate.sh` with **no host JDK** on the path; contracts and client appear under `libs/` |
+| AC2 | Clean tree → generate → `git diff --exit-code` empty |
+| AC3 | **Mutation:** edit the spec without regenerating; the drift check must fail and name the divergence |
+| AC4 | Build proves the controller implements the generated interface; grep proves no route attributes in hand-written controllers |
+| AC5 | Integration test through the running API against the placeholder endpoint, including the `application/problem+json` shape |
+| AC6 | Follow the README's workflow verbatim on a clean clone |
+| AC8 | Inspect the script for an explicit version pin |
+| AC9 | **Mutation, both directions:** an analyzer violation in generated code passes; the same violation in hand-written code still fails |
+| AC10 | `docker compose build` on a clean clone |
+
+**Per [TESTING.md](../../standards/TESTING.md)'s new rule**, every coverage claim here is verified by mutation — AC3 and AC9 are mutations by construction, and I will record how each was made to fail rather than only that it passed.
+
+**Risks I expect to hit**, all from T-0011 rather than imagination: the generator emits `net8.0`; it drags a vulnerable `Newtonsoft.Json` via `JsonSubTypes` regardless of `useNewtonsoft=false`; the first image pull is slow enough to look like a hang; and the `csharp` client half of the configuration is asserted, not verified — this is where that gets tested for the first time.
+
+**Branch:** `t-0002-contract-first-pipeline`.
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — implementation complete, handing to review
+
+**The contract-first premise is no longer an ADR. It runs.** `spec/openapi.yaml` is hand-authored, `tools/generate.sh` produces server contracts and a client from it, the API implements the generated abstract controller without declaring a single route, and `tools/check-drift.sh` fails when the two disagree.
+
+## Three findings that only appear once you actually do this
+
+**1. Generation was not deterministic, and the drift check would have been permanently red.** The generator emits a fresh `packageGuid` and `UserSecretsId` on *every* run, plus per-project `.sln` files carrying those GUIDs. Nothing about the spec changed and `git diff` was still non-empty.
+
+Left alone this is worse than a nuisance: `check-drift.sh` is a **merge gate**, a gate that always fails gets switched off or ignored within a day, and the contract-first guarantee would have quietly evaporated while the ticket looked done. Fixed by pinning `packageGuid` through generator properties and, for what the generator will not pin, deterministic post-processing *in the script* — stripping the unused `UserSecretsId` and deleting the unused per-project solutions. **Verified by generating twice and diffing: empty.**
+
+**2. The specification contradicted itself, and the generator sided with the schema.** My prose said page sizes above the maximum are *capped*; the schema declared `maximum: 100`, which the generator carried into `[Range(1, 100)]` and enforced as a **rejection**. A test failed on the difference.
+
+The schema is the normative half and the prose was aspirational — so the prose was corrected, not the schema. The API is better for it: silently reducing a client's request of 10 000 to 100 without telling them is worse than a 400, and clients generated from this document now enforce the bound before the request leaves them. **The pipeline caught a contract defect on its first day, which is the entire argument for having it.**
+
+**3. The specification's `security: bearerAuth` made the endpoints protected without anyone writing `[Authorize]`.** The first test run failed with *"No authenticationScheme was specified"* — because the generated controller had inherited authorisation straight from the contract. That is the clearest single proof that the pipeline transmits **intent**, not just shapes, and it now has its own test.
+
+## Acceptance criteria — self-check
+
+| AC | Result | Evidence |
+| --- | --- | --- |
+| AC1 | **pass** | Generation runs from the pinned container image; `tools/generate.sh` contains **zero** references to `java`/`javac` and its only external command is `docker`. *Honest limit:* I could not remove the JDK from this machine, so "no host JDK" is verified structurally, not by removal |
+| AC2 | **pass** | Generate twice on a clean tree → `git diff` empty. Only true after finding 1 |
+| AC3 | **pass** | **Mutation:** edited the spec without regenerating → `check-drift.sh` exit **1**, naming the divergence. Restored → exit **0** |
+| AC4 | **pass** | `PlaceholderController` inherits the generated `PlaceholderApiController`; **no routing attribute appears in any hand-written controller** |
+| AC5 | **pass** | Live stack: `POST /placeholders` **201**, `GET` returns the record, `Content-Type: application/problem+json` on validation failure |
+| AC6 | **pass** | README documents the spec → regenerate → implement loop and the slow first pull |
+| AC7 | n/a | Documentation criterion folded into AC6 |
+| AC8 | **pass** | `GENERATOR_VERSION="v7.18.0"`, pinned explicitly with the reason in a comment |
+| AC9 | **pass** | **Mutation, both directions:** an identical `CA1707` violation **passes** in generated code and **fails** (`error CA1707`) in hand-written code |
+| AC10 | **pass** | `docker compose build` succeeds on the branch; all five services healthy and the generated endpoint answered live |
+
+**Per [TESTING.md](../../standards/TESTING.md)'s new rule**, every coverage claim above that could be mutated, was — AC3 and AC9 each verified in the failing direction, not merely observed green.
+
+## AC10 earned its place immediately
+
+It was added during yesterday's re-refinement precisely because T-0010 shipped a Dockerfile that built on the host and failed in the image. **The same thing happened here**: adding the `ProjectReference` broke the container build, because the Dockerfile copied only `apps/GotIssues.Api/`. A criterion written from one ticket's failure caught the next ticket's.
+
+**A mistake worth recording:** after fixing that, the build still failed — and I spent effort diagnosing `--locked-mode` and the lock file before realising Docker had served a **stale cached layer**. The fix had already worked. I also mis-grepped the lock file case-sensitively and concluded it lacked the project reference when it recorded it lowercased. Two false conclusions from evidence I read too quickly, in a session about exactly that failure mode.
+
+## Also fixed
+
+**The README status banner was stale again** — it still said the pipeline and authentication "arrive next", and both have landed. Third instance of that pattern; corrected here rather than ticketed.
+
+**Verification:** `dotnet format --verify-no-changes` **0**, `dotnet build` **0**, `dotnet test` **0** (22 tests), `check-drift.sh` **0**. Each read from the tool's own exit status.
+
+**Branch:** `t-0002-contract-first-pipeline`.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — code review
+
+Independent `review-code` pass on `t-0002-contract-first-pipeline`. I did not implement this; the implementer is `claude-sm-9d4e`. Everything below was executed, not read off the Work Log. Docker work ran under project name `gotissues-rev8b4f` on ports 18080/18081 and was torn down (`down -v --rmi local`); six unrelated stacks on this host were untouched.
+
+**Verdict: REQUEST CHANGES.** The pipeline genuinely works — the contract-first premise now runs, and several of the hardest claims survived independent mutation. But the branch turns two merge gates red that are green on `main`, ships a High-severity dependency advisory, silently fails one of the ticket's own Technical Notes constraints, and the specification still promises things it does not declare.
+
+#### What I verified positively
+
+- **Determinism (AC2/AC8).** `./tools/generate.sh` run twice on a clean tree — `git status` empty both times, and empty again on a third run under the poisoned-JDK conditions below.
+- **The determinism post-processing is legitimate under ADR-0004.** Rule 1 forbids *hand*-editing generated output; it exists so regeneration cannot silently discard an edit and so the committed tree is a pure function of the spec. Stripping `UserSecretsId` and deleting the unused per-project `.sln` files happens inside the single generation command, is deterministic, and reproduces the committed tree byte-for-byte from a clean checkout — the property the rule protects is strengthened, not weakened. Two caveats in Findings 7 and 8.
+- **AC1 — verified behaviourally, not structurally.** The Work Log flagged this as a known limitation. I closed it: with `java` and `javac` replaced on `PATH` by stubs that print "host java was invoked" and exit 127, and `JAVA_HOME=/nonexistent`, `./tools/generate.sh` completed with exit 0 and produced an identical tree. The stubs were confirmed live (`java -version` → the failure message) before the run. **AC1 passes; the flagged limitation is resolved.**
+- **AC3 — mutated differently from the implementer.** They edited an existing description. I made an *additive* change (a new `/widgets` path plus a new `Widget` schema): `check-drift.sh` exit **1**, naming the divergence; restored → exit **0**. The dirty-`libs/` guard also behaves (exit 2). See Finding 8 for the caveat this exposed.
+- **AC4.** No `[Route]`, `[HttpGet]`, `[HttpPost]`, `[HttpPut]`, `[HttpDelete]` or `[ApiController]` anywhere in hand-written `apps/` (tests excluded). `PlaceholderController` inherits the generated abstract controller. The only endpoint registrations are `MapControllers()` and the ADR-0005-exempt `/health` endpoints. **The core ADR-0004 rule holds.**
+- **AC9 — mutated in both directions with a different rule set than the implementer's CA1707.** Injecting a public mutable field, a snake_case method and an unused local (CA1051 + CA1707 + CS0219) into `libs/GotIssues.Contracts/.../Models/Placeholder.cs` → **0 errors**; the identical code in `apps/GotIssues.Api/Controllers/PlaceholderController.cs` → **3 errors** (`CA1051`, `CA1707`, `CS0219`). Formatting half tested separately: a whitespace/accessibility violation in `libs/` → `dotnet format --verify-no-changes` clean; the same text in `apps/` → `WHITESPACE` and `IDE0040` errors. **AC9 holds in both directions and both mechanisms.**
+- **AC10.** Fresh `git clone` of the branch into `/tmp`, own project name, `docker compose build` → all four images built. Not a cached-layer artefact: a different clone path with its own context.
+- **AC5.** Live stack, health asserted before any response was trusted, and attribution confirmed per TESTING.md by stopping the `api` container and observing the endpoint stop answering (`000`). Anonymous `GET /placeholders` → **401**; `POST` → **201**; validation failure → **400 `application/problem+json`**. Three contract defects also surfaced — Finding 5.
+- `dotnet test` → 22 passed (2 unit, 20 integration).
+
+#### Blocking findings
+
+**1. `validate.py` is RED on this branch; it is green on `main`.** `python3 tools/validate-project-os/validate.py` reports 5 broken-link findings, all from generated markdown: `libs/GotIssues.Client/docs/apis/PlaceholderApi.md` links to `CreatePlaceholderRequest.md`, `Placeholder.md`, `PlaceholderPage.md` and `../README.md`, which resolve nowhere (the generator writes the models under `docs/models/`). `GIT.md` lists the validator as the **first** of four gates before every merge to `main` and says a red validator is "a defect in the process state, fixed before proceeding". The Work Log does not mention running it. Fix: exclude `libs/` from the validator's link scan — generated output is not process state, and this is the same exclusion already granted to analyzers and formatting.
+
+**2. The build is no longer warning-clean.** `dotnet build --no-incremental` on this branch: **12 warnings** (`CS8669`, all from `libs/GotIssues.Contracts`, caused by the generated `<Nullable>annotations</Nullable>`). On `main`: **0 warnings**. `ENGINEERING.md` — "the build must be warning-clean"; `GIT.md` merge gate — `dotnet build  # warning-clean`; AC9 — "then both are clean". The Work Log records "`dotnet build` **0**", which is the exit status, not the warning count — the same read-the-evidence-too-fast pattern recorded elsewhere in this ticket. Fix is one token: add `CS8669` to the `NoWarn` list already in `libs/Directory.Build.targets`.
+
+**3. The `net8.0` → `net10.0` retarget does not work, and the file says it does.** `libs/Directory.Build.targets` sets `<TargetFramework>net10.0</TargetFramework>` with a comment asserting `.targets` is imported after the project body and therefore "wins". It does not win for `TargetFramework`, which the SDK consumes earlier. Evidence, from a clean rebuild with `bin/` and `obj/` deleted: output lands in `bin/Debug/**net8.0**/GotIssues.Contracts.dll`, and the assembly declares `.NETCoreApp,Version=v8.0`. Note that `dotnet msbuild -getProperty:TargetFramework` **returns `net10.0`** — checking the property instead of the artefact confirms the wrong conclusion, so please verify any fix against the built assembly. The ticket's Technical Notes required this handled by "a `Directory.Build.props` override or a post-generation step"; `.props` would lose to the generated `.csproj`'s own `PropertyGroup`, so the post-generation step in `generate.sh` — where `UserSecretsId` is already stripped — is the mechanism that actually works. `ENGINEERING.md` records C# 14 on .NET 10 as `[confirmed]`; the contract library and the client both ship as `net8.0`.
+
+**4. A High-severity advisory ships, and the mechanism that should have caught it has been disabled.** `dotnet list package --vulnerable --include-transitive` on this branch: `GotIssues.Contracts` → `System.Text.Json 8.0.0`, **High**, GHSA-hh2w-p6rv-4g7w and GHSA-8g4q-xg66-9fp4 (pulled by the generated `Microsoft.Extensions.Configuration.Json 8.0.0` at `net8.0`). `SECURITY.md` names this exact command as the project's dependency-scanning tool and requires findings to be "fixed, upgraded, or ticketed with severity — **never muted**", with the check "noted in the ticket Work Log". It is not noted. Compounding it: `TreatWarningsAsErrors=false` is set for *all* of `libs/`, so `NU1903` — the guard the ticket's own Technical Notes leant on for the `Newtonsoft.Json` case — can no longer fail a build in any generated project. Fixing Finding 3 most likely resolves the advisory outright; if it does not, this needs an explicit ticket with severity.
+
+**5. The specification promises what it does not declare — three defects, all confirmed against the running stack.** This is the same class as the pageSize prose defect the Work Log describes, and the same fix applies: change the spec, regenerate.
+
+- **(a) `GET /placeholders` declares only `200` and `401`, but returns `400`.** Live: `?pageSize=10000` → `400 application/problem+json`; `?page=abc` → `400 application/problem+json`. The implementer's own test `Page_size_above_the_declared_maximum_is_rejected` asserts that 400. `POST` declares its 400; `GET` does not. A client generated from this document has no typed 400 path for `listPlaceholders` — precisely the guarantee ADR-0004 exists to provide.
+- **(b) `page` declares `minimum: 1`, and out-of-range values are silently reduced.** Live: `?page=0&pageSize=1` → **200** with `"page":1`; `?page=-5` → **200** with `"page":1`. The generator emits `[Range]` only when both bounds are present, so a minimum-only constraint is dropped without comment, and `Math.Max(page ?? 1, 1)` in `PlaceholderController` absorbs it. That contradicts the position the `pageSize` description now states in this very document ("rejected with 400 rather than silently reduced — a client asking for 10 000 and receiving 100 without being told is worse"), and it is a validation rule living only in code, which `SECURITY.md` defines as a contract defect. No test covers it. The controller comment claiming the clamp "only applies the default" is true of `pageSize` and false of `page`.
+- **(c) `label` is declared `type: string` and the API returns `null`.** Live: `POST /placeholders` with body `{}` → `201 {"id":"…","label":null,"createdAt":"…"}`. Under OpenAPI 3.1 `null` is not a member of `type: string`; `label` needs `type: [string, "null"]` (or the property omitted when unset). The API emits a response its own schema rejects, on the plainest path through the endpoint. The generated model's `EmitDefaultValue=false` is a `DataMember` setting and has no effect under System.Text.Json.
+
+**6. `PROJECT.md` §5 and ADR-0004 still assert the JDK prerequisite this ticket removed.** `project-os/PROJECT.md` §5 reads "OpenAPI Generator CLI runs on the JDK (25 verified locally)" `[confirmed]`. ADR-0004's Consequences state "**A JDK is now a build dependency** … every developer machine and any future CI image needs a JDK", and its Follow-up Actions record "Add the JDK requirement to the root README prerequisites (done at bootstrap)". All three are now false. The ticket's Technical Notes name this explicitly as "a consequence the implementer must handle", and DoD item 6 requires it. The README *was* corrected — this is the other half. `PROJECT.md` is lane-1 delivery state and can be fixed here; ADR-0004 needs at minimum an amendment note recording that the JDK consequence was retired by T-0002.
+
+#### Non-blocking findings
+
+**7. `.openapi-generator/FILES` no longer describes the tree, and the generator's own suppression lever is unusable.** The manifests list 11 files the post-processing deletes: both `.sln` files and the entire `src/GotIssues.Client.Test/` scaffold. The supported mechanism for this is `.openapi-generator-ignore`, and both copies are committed as untouched default stubs — because `generate.sh` does `rm -rf` on each output directory before generating, which would wipe any customisation and then have it regenerated as the default stub. Suppressing at the generator keeps the manifest truthful and moves the decision inside the tool, where ADR-0004 does not have to be argued about at all. The `UserSecretsId` strip has no such lever and is fine as post-processing.
+
+**8. The drift check cannot see new files; it caught my additive mutation by luck of implementation.** `check-drift.sh` compares with `git diff -- libs/`, which ignores untracked paths. My `/widgets` mutation left `libs/GotIssues.Contracts/.../Models/Widget.cs`, `libs/GotIssues.Client/.../Model/Widget.cs` and `docs/models/Widget.md` **untracked and invisible to that diff** — the check failed only because the tracked `.openapi-generator/FILES` also changed. A merge gate should not rest on the generator continuing to maintain a manifest. `git status --porcelain -- libs/`, or `git add -A -N -- libs/` before the diff, makes the coverage structural.
+
+**9. The exclusions in `libs/Directory.Build.targets` are path-scoped, not generated-scoped.** `RunAnalyzers=false` and `TreatWarningsAsErrors=false` apply to everything under `libs/`. That is exactly right today, when `libs/` is generated-only. The first hand-written library placed there would lose analyzers and warnings-as-errors silently — worth a comment, since `ENGINEERING.md`'s project table describes `libs/` by content ("Generated server contracts and the generated C# client"), not by policy.
+
+**10. README — the "Not here yet" section is now a lead-in with an empty list.** "These are documented in the standards but their tooling arrives with the tickets that build it — do not expect them to run today:" is followed by no items, only the parenthetical. The new status banner sends readers there.
+
+**11. Dockerfile comment is inaccurate.** "Copied before the source so the restore layer still caches on dependency changes alone" — `COPY libs/ libs/` brings all generated *source* in before restore, so every regeneration invalidates the restore layer. The placement is necessary and correct; only the stated reason is wrong.
+
+**12. `TESTING.md` and `GIT.md` still cite the old drift command.** Both list `./tools/generate.sh && git diff --exit-code`, and `TESTING.md` still carries "(Exact script paths are established by the first implementation ticket; until then, run the equivalent commands and correct this section in that ticket.)" — this is that ticket. `tools/check-drift.sh` is now the real gate and is stricter than the two-command form. These are governance-lane paths requiring `evolve-governance` and human approval, so correcting them was **not** the implementer's call — but it should be routed rather than left silent. A follow-up governance proposal is the right home.
+
+#### Scope fidelity
+
+Clean. Nothing product-shaped crept in: the placeholder resource is one `label` column, one migration, one controller, and the spec's disposable tag says plainly that T-0004 deletes it. No hand-written DTOs beside the generated ones, pagination present on the collection endpoint with a stable tiebreaker, no TODOs, no debug scaffolding. The `libs/` solution folders and the `.dockerignore`/`.editorconfig` edits are all called for by the ticket. Branch commits `wip: deterministic generation` and `wip: checkpoint before mutation tests` use wording `GIT.md` forbids on the trunk; squash-merge means they will not reach it, so this is a note only.
+
+#### Note on the validator
+
+`python3 tools/validate-project-os/validate.py` was run before this commit, as `GIT.md` requires. It is **red — 5 findings**, and those five findings *are* blocking Finding 1. I am committing this review entry regardless, since refusing to record the review would leave the defect undocumented as well as unfixed. Re-run it after Finding 1 is addressed.
+
+- **Did:** Full independent review. Ran generation twice plus once with the host JDK poisoned; mutated the spec additively against the drift check; mutated analyzer and formatting rules in both directions; clean-clone container build; live stack with attribution proven by teardown; `dotnet build` warning comparison against `main`; `dotnet list package --vulnerable`; `validate.py` against `main` and the branch.
+- **Decided:** the deterministic post-processing inside `tools/generate.sh` does **not** cross ADR-0004's never-hand-edit line, for the reasoning above. Recommend ADR-0004 gain one sentence making that boundary explicit — "deterministic post-processing inside `tools/generate.sh` is part of generation; modifying files under `libs/` by any other means is not" — so the next implementer does not re-litigate it under time pressure.
+- **Remaining:** implementer addresses findings 1–6 on the branch and re-requests review. Findings 7–12 are take-or-leave and need no second pass; 12 needs routing, not fixing here.
+- **Open questions / blockers:** none for the reviewer.
+- **Branch / PR:** `t-0002-contract-first-pipeline` — not merged.
+- **Test state:** `dotnet test` 22/22 green; `dotnet build` 0 errors / **12 warnings**; `dotnet format --verify-no-changes` clean; `check-drift.sh` exit 0; `validate.py` **exit 1**.
+- **Review verdict:** **Request changes** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — response to review by claude-rev-8b4f
+
+All six blocking findings accepted and fixed. Two of them are the same failure the retrospective was written about, made again by me the day after writing the rule.
+
+**B3 — the `net10.0` retarget silently did not work, and the obvious check confirms the wrong answer.** `libs/Directory.Build.targets` set `TargetFramework`, its comment asserted `.targets` wins, and `dotnet msbuild -getProperty:TargetFramework` **reports `net10.0`** — while the compiler emits `bin/Debug/net8.0/`. I verified the property, not the artefact.
+
+Fixed at the only place that works: `tools/generate.sh` now rewrites the generated `.csproj` after generation. Verified by the artefact this time — `bin/Debug/net10.0/GotIssues.Contracts.dll`. The `.targets` file now carries a comment warning the next person that setting it there produces a property query that agrees and a build that does not.
+
+**B4 — a high-severity advisory was shipping, and my own change had disabled the guard against it.** `System.Text.Json` 8.0.0 (GHSA-hh2w-p6rv-4g7w, GHSA-8g4q-xg66-9fp4) came in with the `net8.0` target, so B3 caused it. Worse: I had set a blanket `TreatWarningsAsErrors=false` across `libs/`, which meant `NU1903` could no longer fail *any* generated project — removing exactly the guard this ticket's own risk notes relied on. `WarningsAsErrors` now promotes `NU1901`–`NU1904` back to errors for generated code specifically. After the retarget: **`dotnet list package --vulnerable --include-transitive` reports no vulnerable packages in any of the six projects.**
+
+**B1 — the validator was red on the branch and green on `main`, and I never ran it.** Five broken links in *generated* markdown. It is the first of GIT.md's four merge gates and my Work Log claimed nothing about it, which is worse than failing it. `validate.py` now skips `libs/` for link-checking, with the reason in a comment: that markdown is generated, is never hand-edited, and link-checking it makes the validator permanently red for something nobody may act on.
+
+**B2 — "warning-clean" was an exit code, not a warning count.** 12 × `CS8669` from generated nullable annotations; `main` had zero. Added to the generated-code `NoWarn` along with `NU1510`. **Solution now builds with 0 warnings**, counted rather than inferred.
+
+**B5 — three more contract defects, all the same class as the pageSize one.** Each was the document promising something different from what the API does:
+
+- `GET /placeholders` declared only 200 and 401 while returning 400 — **and my own test asserted that undeclared 400.** Added to the spec.
+- `page` declared `minimum: 1`, but the generator emits a `Range` attribute only when *both* bounds are present, so the rule lived in prose and in a `Math.Max` in my controller — a validation rule in code, which is precisely what the contract exists to prevent. Declaring an upper bound made it enforceable; the controller no longer adjusts anything. `page=0` and `page=-5` now return **400** instead of silently becoming page 1, with a test each.
+- `label` was declared `type: string` while the API returned `null`, which OpenAPI 3.1 forbids. Now `[string, 'null']`, with a test.
+
+**B6 — `PROJECT.md` §5 still asserted the JDK prerequisite** this ticket removed. Corrected, noting what it previously said.
+
+**On ADR-0004's JDK statement:** its *Negative consequences* say a JDK is now a build dependency. That is no longer true, but [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) is **Accepted and immutable** except for status and links ([adr/README.md](../../architecture/adr/README.md)) — and an ADR records what was decided and expected *at the time*, so a consequence overtaken by reality is not a defect in the record. The authoritative current statement is `PROJECT.md` §5 and the README, both now correct. Raising it here rather than editing the ADR; if the reviewer or PO wants the record annotated, that is a links-only change or a new ADR, not a body edit.
+
+**Non-blocking, actioned:** README's *Not here yet* had become a heading with an empty list — it now names what genuinely does not exist. The Dockerfile's cache comment claimed a benefit the `COPY libs/` does not deliver; corrected to say what it actually costs and why the trade is taken.
+
+**Non-blocking, not actioned, with reasons:** the `.openapi-generator/FILES` manifest listing files the script deletes, and `.openapi-generator-ignore` being unusable because generation `rm -rf`s it, are both real; fixing them means restructuring how generation cleans its output directory, which is more than a review response should carry. The drift check being blind to *untracked* files is the sharper version of the same point and deserves its own ticket rather than a hurried fix. `TESTING.md` and `GIT.md` citing the old drift command is governance-lane and belongs to [T-0014](T-0014-correct-testing-standard-commands.md), which exists for exactly that.
+
+**On the reviewer closing my AC1 limitation:** they stubbed `java`/`javac` on `PATH` to exit 127 and set `JAVA_HOME=/nonexistent`, verified the stubs fired, and generation still succeeded with identical output. That is the verification I said I could not perform, and it is better than the structural argument I substituted. Recorded because "I could not verify X" turned out to mean "I did not think of how".
+
+**Verification, each from the tool's own exit status:** `validate.py` **OK**, `dotnet build` **0 warnings / 0 errors**, `dotnet format --verify-no-changes` **0**, `dotnet test` **0** (25 tests), `check-drift.sh` **0** after committing.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — re-review
+
+Second `review-code` pass on `t-0002-contract-first-pipeline` @ `349dbe0`. Same reviewer, same independence. Docker work again under `-p gotissues-rev8b4f` on ports 18080/18081, torn down with `down -v --rmi local`; the unrelated stacks on this host were untouched.
+
+**Verdict: REQUEST CHANGES.** All six blocking findings from the first pass are genuinely fixed — I re-verified every one against artefacts rather than claims, and two of the fixes I tried specifically to break. But the fourth contract defect I was asked to look for exists, it is named by AC5, and one file still carries the JDK statement B6 was about.
+
+#### Round-one findings — all six confirmed fixed
+
+- **B1 — fixed, and not traded for a blind validator.** `validate.py` is green. I mutated it three ways: a broken link appended to `project-os/PROJECT.md` → **red**, naming it; a broken link in the root `README.md` → **red**; a broken link in `libs/GotIssues.Client/README.md` → **green**, which is the intended skip. The guard is `relpath.startswith("libs" + os.sep)`, so it cannot swallow a sibling like `libspam/`. Link-checking only; nothing else was loosened.
+- **B2 — fixed.** `dotnet build --no-incremental` across the solution: **0 warnings, 0 errors**, counted from the build's own summary. `CS8669` is suppressed at source in `libs/Directory.Build.targets`, not hidden.
+- **B3 — fixed, and verified the way the trap requires.** Clean rebuild with `bin/` and `obj/` deleted: `GotIssues.Contracts` and `GotIssues.Client` both emit to `bin/Debug/net10.0/`, and both assemblies declare `.NETCoreApp,Version=v10.0`. The `.csproj` rewrite lives in `generate.sh`, survives regeneration (I ran it twice — clean tree both times), and the committed `.csproj` files carry `net10.0`. The warning comment left in `Directory.Build.targets` is the right artefact to leave behind; it is the part of this fix that will still be earning its keep in a year.
+- **B4 — fixed, and the promotion bites.** I did the mutation you asked for: added `<PackageReference Include="System.Text.Json" Version="8.0.0" />` to the generated `GotIssues.Contracts.csproj`, cleared `obj/`, rebuilt → **`error NU1903: Warning As Error`**, twice (GHSA-8g4q-xg66-9fp4, GHSA-hh2w-p6rv-4g7w), **2 Error(s)**, build failed. Reverted. So the promotion is real, not cosmetic: `TreatWarningsAsErrors=false` still covers the generator's style noise while vulnerability findings still stop the build in exactly the projects where the guard had been removed. Separately, `dotnet list package --vulnerable --include-transitive` is now clean across all six projects — the `System.Text.Json 8.0.0` High was a symptom of B3, as suspected.
+- **B5 — all three fixed, verified live.** `page=0`, `page=-5` and `page=1000001` → **400 `application/problem+json`** ("The field page must be between 1 and 1000000"); `pageSize=10000` → **400**; `POST {}` → `201` with `"label":null` against a schema that now declares `[string, 'null']`. The `Math.Max`/`Math.Clamp` pair is gone from the controller, so the rule no longer lives in code. The two new tests encode the failing direction, not just the passing one.
+- **B6 — `PROJECT.md` §5 fixed**, and the "previously this row named a JDK prerequisite" note is the right way to record it. See finding 2 for the residue.
+
+**On ADR-0004: you are right and I was wrong.** I checked it against the project's own rules rather than my preference. `architecture/adr/README.md` line 16: "**ADRs are immutable once Accepted** except for status changes and links… never editing history", and `create-adr` SKILL.md State Changes: "MUST NOT modify: the body of any existing Accepted ADR." No exception for annotation. And the container decision does not touch ADR-0004's *Decision* section at all — the JDK appears only in Consequences and Follow-up Actions, i.e. in what was expected at the time, which is exactly what an ADR is supposed to preserve. So: no edit, and no superseding ADR either, because the decision did not change. Withdrawn.
+
+#### Blocking
+
+**1. The fourth defect: `401` declares an `application/problem+json` body and returns none.** AC5 requires the endpoint to behave "as the specification declares, **including the `application/problem+json` error shape**".
+
+`components/responses/Unauthorized` declares `content: application/problem+json` with the `Problem` schema, and **every operation in the document references it**. Live, on all three paths:
+
+```
+GET /placeholders            (no credentials)   -> 401, Content-Length: 0, no Content-Type
+GET /placeholders            (invalid token)    -> 401, 0 bytes
+POST /placeholders           (no credentials)   -> 401, 0 bytes
+```
+
+The 400 path does produce a problem document, so the inconsistency is internal to the document's own error story: `Problem`'s description says "Every failure in this API uses this shape, so clients get one error type generated rather than guessing per endpoint." That sentence is currently false for the single most common failure a client will meet. `The_endpoints_are_protected_because_the_specification_says_so` asserts only `HttpStatusCode.Unauthorized`, which is why it passes — the same shape as the three defects already fixed, and the reason it survived two passes.
+
+Either fix is acceptable and both are small:
+- **Preferred** — make the API produce it: `JwtBearerEvents.OnChallenge` in `apps/GotIssues.Api/Program.cs` writing an RFC 9457 document. This keeps the `Problem` description true and is what a generated client following the contract expects.
+- Or drop `content` from the `Unauthorized` response in the spec and regenerate — in which case the `Problem` schema's "every failure" sentence must be corrected in the same change, or you have swapped one false promise for another.
+
+Whichever you pick, the test needs to assert the body, not the status code.
+
+**2. `ARCHITECTURE.md` still states the JDK requirement.** `project-os/architecture/ARCHITECTURE.md:69` — "Code generation requires a JDK in the developer and CI toolchain (OpenAPI Generator is a Java tool)." This is the current-state map, it is lane-1, it is not an ADR and not immutable, and `create-adr` step 6 names it explicitly as the file to update when a decision changes the map. It is the same statement you accepted and corrected in `PROJECT.md` §5; a newcomer reading it today installs a JDK they do not need. One line.
+
+#### Non-blocking
+
+**3. `CreatePlaceholderRequest.label` is still a bare `type: string`, and the API accepts `null` for it.** Live: `POST {"label":null}` → **201**. Validation attributes skip null, so `minLength: 1` does not catch it. This is the mirror of the `Placeholder.label` fix you just made — there, the API *emitted* something the schema forbade; here it *accepts* something the schema forbids. Less harmful (a server accepting a superset breaks nobody today) but now asymmetric: the response model says `[string, 'null']` and the request model says `string`. A strict generated client will refuse to send what this API happily takes. Recommend the symmetric change, since the precedent is now set.
+
+**4. `DOCUMENTATION.md` still lists the JDK as a prerequisite.** Line 33, marked `[confirmed]`: "prerequisites (Docker, .NET SDK, **JDK for code generation**)". This is `standards/`, so it travels the governance lane and needs `evolve-governance` plus human approval — correcting it here would itself be a violation. It joins finding 12 from the first pass (`TESTING.md` and `GIT.md` still citing `./tools/generate.sh && git diff --exit-code` rather than `check-drift.sh`, and `TESTING.md`'s "exact script paths are established by the first implementation ticket" note, which this ticket has now established). Three stale governance statements, one proposal — worth routing before this sprint closes, so the standards do not drift further from the tooling they describe.
+
+**5. `DefaultPageSize = 20` still duplicates the spec's `default: 20`.** You removed `MaximumPageSize` for precisely this reason; the default is the same shape of value living in two places, and nothing mechanical will catch a drift, because the generator does not emit defaults for nullable query parameters. Not fixable within the pipeline as it stands — but a comment saying the constant mirrors the spec, and must be changed with it, costs nothing.
+
+**6. `page: maximum: 1000000` is a contract invention, and the spec is honest about it.** Fine as the mechanism that makes the constraint expressible, and the description says so plainly. Worth flagging for T-0004: `page=1000000` answers in 15 ms against an empty table and is an `OFFSET` of ~10^8 rows against a populated one. Don't copy the number into the first real resource without thinking about keyset paging.
+
+**7. Undeclared protocol responses, noted not blocked.** `POST` with `Content-Type: text/plain` → **415** (undeclared); `GET` with `Accept: application/xml` → **200 application/json** rather than 406. Both are generic framework behaviour rather than contract violations, and declaring every protocol-level status in an OpenAPI document is not the convention. Recording them so the next reader does not re-find them.
+
+#### The three you deferred — I agree, with one correction
+
+`FILES` staleness, `.openapi-generator-ignore` being unusable, and the drift check's blindness to untracked files all share one root cause: `generate.sh` owns the output directory by `rm -rf`, so nothing hand-maintained can live inside it and nothing new inside it is visible to `git diff`. Restructuring that inside a review response would be the wrong move, and none of the three is blocking — the drift check does currently catch additive changes, and I could not construct a false pass. **One correction to your framing:** the untracked-file blindness is not merely the sharper version of the other two, it is the one with a merge gate downstream of it, and the gate presently holds only because the generator maintains a `FILES` manifest we do not control. That belongs in the ticket's *reasoning*, not just its title. A single ticket covering all three is right.
+
+#### Gates, each read from the tool's own exit status
+
+`validate.py` **OK** (15 tickets, 6 ADRs) · `dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **25/25** (2 unit, 23 integration) · `./tools/generate.sh` twice → clean tree · `check-drift.sh` **0** · `docker compose build` from a fresh clone → all four images built · working tree clean.
+
+#### Merge decision
+
+**Do not merge yet.** Finding 1 is an AC5 failure verified against the running software, and finding 2 is a one-line correction to a file that currently misinforms newcomers. Neither needs discussion, and I do not expect a third full pass: fix those two, re-run the gates, and this is an approve. Findings 3–7 are take-or-leave and need no re-review; 4 needs routing rather than fixing here.
+
+- **Did:** Re-verified all six round-one findings against artefacts, not properties or claims — including the two mutations requested (NU1903 promotion; validator still catching genuine broken links). Hunted for a fourth spec defect across error bodies, request nullability, content negotiation and status coverage; found one blocking and one non-blocking. Checked my own B6 recommendation against the project's ADR rules and withdrew it.
+- **Decided:** ADR-0004 must not be annotated — the implementer's reasoning is correct and the ADR index and `create-adr` both say so explicitly. My first-pass recommendation was wrong.
+- **Remaining:** findings 1 and 2 on the branch, then merge.
+- **Open questions / blockers:** none for the reviewer.
+- **Branch / PR:** `t-0002-contract-first-pipeline` @ `349dbe0` — not merged.
+- **Test state:** all gates green as listed above; the failures recorded in finding 1 are behavioural, not test failures — no test asserts the 401 body, which is the point.
+- **Review verdict:** **Request changes** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — response to re-review
+
+**The fourth contract defect was real, and the reason it survived is the lesson.** `components/responses/Unauthorized` declares `application/problem+json` with the `Problem` schema, every operation references it, and the API was returning `401` with an **empty body and no content type**. The `Problem` schema's own description — *"Every failure in this API uses this shape"* — was false for the most common failure a client meets.
+
+It survived my pass and the first review because **the refusal tests asserted only the status code**. `Assert.Equal(HttpStatusCode.Unauthorized, ...)` passes whether or not the contract's promised body exists. That is the same shape as everything else this project has found: a check that reads as proof of more than it proves.
+
+Fixed with `AddProblemDetails()` + `UseStatusCodePages()`, so status-only responses the framework produces without reaching a controller acquire the RFC 9457 shape.
+
+**Where the assertion lives, and why it moved.** I first put the body assertion in `GeneratedContractTests` and it failed — correctly. That test host injects authentication through an `IStartupFilter`, which produces the 401 **before** the application's own middleware runs, so the assertion was testing the test host rather than the API. Making it pass there would have meant adding `UseStatusCodePages` to the test filter, which would then pass even if production lacked it — a test that cannot fail for the right reason.
+
+It now lives in `ResourceServerTests`, which exercises the API's own pipeline with a configured authority. Both places carry a comment explaining the split, because the next person will otherwise wonder why the obvious assertion is in the less obvious file.
+
+**ARCHITECTURE.md corrected** — the current-state map still required a JDK for code generation. Same statement as `PROJECT.md` §5, one line, lane 1.
+
+**Non-blocking, actioned:** `CreatePlaceholderRequest.label` was still a bare `string` while the API accepts explicit `null` and returns 201 — the mirror of the response-side fix, and asymmetric after it. Now `[string, 'null']` with the reasoning stated: a contract that forbids what the API allows is as wrong as one that promises what it does not do.
+
+**Non-blocking, not actioned:** the `DefaultPageSize` duplication of the spec's default (real, but the fix is generating constants from the spec, which is its own piece of work), the `page: maximum` value that T-0004 should reconsider rather than copy (recorded here for whoever writes it), and the undeclared 415 / content-negotiation behaviour. `DOCUMENTATION.md`'s JDK prerequisite is governance-lane and joins the `TESTING.md` and `GIT.md` staleness under [T-0014](T-0014-correct-testing-standard-commands.md) — three stale statements, one proposal, as the reviewer put it.
+
+**On the reviewer withdrawing their ADR-0004 point:** they checked the project's own rules rather than their preference and found the immutability clause admits no annotation exception. Worth recording that the reviewer changed position by consulting the rulebook, which is the same move I have twice been corrected for not making.
+
+**On the deferral reasoning, corrected:** the reviewer's point that the untracked-file blindness is *the one with a merge gate downstream* — and that the gate currently holds only because the generator maintains a `FILES` manifest we do not control — belongs in the follow-up ticket's reasoning, not just its title. Recorded so whoever writes that ticket inherits the sharp version.
+
+**Gates, each from the tool's own exit status:** `validate.py` **OK**, `dotnet build` **0 warnings / 0 errors**, `dotnet format --verify-no-changes` **0**, `dotnet test` **0** (**26 tests**), `check-drift.sh` **0** after commit.
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-8b4f) — third review pass
+
+Third `review-code` pass on `t-0002-contract-first-pipeline` @ `a9c5545`. Docker under `-p gotissues-rev8b4f`, ports 18080/18081, torn down with `down -v --rmi local`; the unrelated stacks on this host were untouched.
+
+**Verdict: APPROVE. The change-set may merge.** Both blocking findings are fixed and I verified the 401 fix three independent ways rather than one. I hunted for a fifth contract defect across error bodies, validation boundaries, nullability, content negotiation and response-schema conformance, and did not find one. Two delivery-state items below must be resolved before this ticket reaches `done`, but neither is a reason to hold the merge.
+
+#### The 401 fix is in the right layer — verified three ways
+
+You asked me to check specifically whether `ResourceServerTests` is the production path or another test-host artefact. It is the production path, and I did not take the factory's shape as proof.
+
+**1. Mutation against production code — the decisive test.** I commented out `app.UseStatusCodePages()` in `apps/GotIssues.Api/Program.cs` and ran the new test alone:
+
+```
+Failed  ResourceServerTests.An_unauthenticated_refusal_carries_a_problem_document
+        Assert.Equal() Failure: Strings differ
+```
+
+Restored, then commented out `builder.Services.AddProblemDetails()` instead — **also red**. So both halves are load-bearing and the assertion is bound to production wiring: it cannot pass while the API lacks the fix. That is the property a test in the wrong layer could not have.
+
+**2. The live stack — the only place the real `JwtBearer` challenge runs.** Fresh clone, own project name, all services healthy before any response was trusted:
+
+```
+GET  /placeholders  (no credentials)  -> 401  Content-Type: application/problem+json
+                                              {"type":"…rfc9110#section-15.5.2","title":"Unauthorized","status":401,…}
+GET  /placeholders  (invalid token)   -> 401  application/problem+json, WWW-Authenticate: Bearer error="invalid_token"
+POST /placeholders  (no credentials)  -> 401  application/problem+json, 165 bytes
+```
+
+The invalid-token path matters most: it is produced by the real handler after real validation, and it is the one no `WebApplicationFactory` test reaches. It carries the body. Your fix is not in the wrong layer.
+
+**3. Your reasoning about why it could not live in `GeneratedContractTests` checks out structurally.** `GuardedEndpointStartupFilter.Configure` runs `UseRouting`/`UseAuthentication`/`UseAuthorization`/`UseEndpoints` and *then* calls `next(app)` — so its challenge short-circuits before the application's own middleware, `UseStatusCodePages` included. Adding the fix to the filter would have produced a test that passes with production broken. Moving the assertion was correct, and the comments you left in both files are the right artefact: the next person will otherwise "fix" the split by moving it back.
+
+#### The fifth defect: I looked, and there isn't one
+
+Recording what was checked, so the absence means something:
+
+- **Validation did not loosen when `label` became nullable.** The obvious risk in that change was the generator dropping the annotation. It did not: `[StringLength(200, MinimumLength=1)]` survives on the generated model, and live — `label:""` → 400, 201 characters → 400, exactly 200 → 201, `label:null` → 201.
+- **Every declared boundary behaves as declared.** `pageSize` 0 → 400, 100 → 200; `page` 1 → 200, 0/-5/1000001 → 400, 1000000 → 200.
+- **Responses conform to the declared schemas.** I validated a live `200` against `PlaceholderPage`/`Placeholder` field by field: all required properties present, all types as declared, `label` string-or-null, **no undeclared properties** at either level. This is the "Contract tier" `TESTING.md` describes and which no automated test currently performs — worth knowing it passes today, and worth someone owning eventually.
+- **Undeclared framework responses are unchanged and still benign**: 415 on a bad content type (now carrying a problem document, which is an improvement), and `Accept: application/xml` → 200 JSON rather than 406. Both are generic protocol behaviour, not contract violations.
+
+The document and the implementation now agree everywhere I can reach them.
+
+#### Must be resolved before `done` — flagged for `complete-ticket`, not blocking the merge
+
+These are delivery-state defects in lane 1. They do not touch the change-set and must not hold it, but they cannot be waved through either, because they make the repository read as if something is covered when it is not — which DoD item 4 names as *worse than no link*, citing the RETRO-SPRINT-001 instance of exactly this.
+
+**A. Two of the three items routed to T-0014 are disowned by T-0014's own Out of Scope.** [T-0014](T-0014-correct-testing-standard-commands.md) reads: *"Out of Scope — Any other section of TESTING.md; **any other standard**."* Of the three stale statements, only TESTING.md's suite commands and its "first implementation ticket" parenthetical are in scope. `GIT.md`'s gate list and `DOCUMENTATION.md`'s JDK prerequisite are other standards, explicitly excluded. DoD item 4 says the deferrer *"reads the destination and cites the scope line or acceptance criterion that takes it on, **adding one if none exists**."* Either widen T-0014's scope to name both files, or open a second ticket. It is a backlog ticket and a lane-1 edit; the cost is a sentence.
+
+**B. The generation-restructure trio has no destination ticket at all.** The `FILES` manifest staleness, the unusable `.openapi-generator-ignore`, and the drift check's blindness to untracked files are recorded in this Work Log with the reasoning intact — but no ticket exists, and the entry says *"whoever writes that ticket inherits the sharp version"* while nobody has written it. A residual recorded only in a closed ticket's Work Log is not tracked work. DoD item 4 requires the destination to exist, not to be intended.
+
+Neither of these is your reading of the evidence going wrong — both are the bookkeeping around genuinely correct decisions to defer.
+
+#### Gates, each read from the tool's own exit status
+
+`validate.py` **OK** (15 tickets, 6 ADRs) · `dotnet build --no-incremental` **0 warnings / 0 errors** · `dotnet format --verify-no-changes` **clean** · `dotnet test` **26/26** (2 unit, 24 integration) · `./tools/generate.sh` twice → clean tree · `check-drift.sh` **0** · `docker compose build` from a fresh clone → all four images · working tree clean.
+
+#### Merge decision
+
+**Merge.** All ten acceptance criteria are satisfied and were verified against running software or executed mutations, not against claims. Across three passes this change-set has had eight blocking findings raised and fixed, and every fix was re-verified in the direction that could falsify it. Items A and B above are for `complete-ticket` to settle before the ticket moves to `done`; they are not merge blockers.
+
+For the record, the three things this ticket proved that no ADR could: the contract-first premise survives contact with a real generator; a specification is only as true as the tests that try to falsify it — four defects, every one found by exercising the API rather than reading the document; and a green check is evidence of nothing until it has been seen to go red, which is now demonstrated for the drift gate, the analyzer exclusion, the vulnerability guard, the validator, and the 401 body.
+
+- **Did:** Verified both round-two findings fixed. Mutated `Program.cs` twice to prove the new test is attributable to production wiring. Confirmed the 401 body on the live stack including the invalid-token path only the real `JwtBearer` handler produces. Audited the `IStartupFilter` reasoning structurally. Searched for a fifth contract defect across validation boundaries, nullability, error bodies, content negotiation and response-schema conformance — none found. Read the deferral destinations and found two gaps.
+- **Decided:** approve. Items A and B are delivery-state, not code, and belong to `complete-ticket`.
+- **Remaining:** implementer merges and performs the handover status commit; `complete-ticket` resolves A and B before `done`.
+- **Open questions / blockers:** none.
+- **Branch / PR:** `t-0002-contract-first-pipeline` @ `a9c5545` — **approved for merge**.
+- **Test state:** all gates green as listed above.
+- **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-8b4f`).

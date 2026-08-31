@@ -9,5 +9,8 @@ public sealed class PlaceholderRecord
 {
     public Guid Id { get; set; }
 
+    /// <summary>Optional human-readable label, as declared in the specification.</summary>
+    public string? Label { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 }

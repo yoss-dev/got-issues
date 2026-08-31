@@ -4,7 +4,7 @@ A self-hosted, API-first issue and task tracker for the company's own engineerin
 
 This is a **proof of concept** — a step toward running the company's development tooling in-house (self-hosted git being the eventual prize) and a test of whether contract-first delivery holds up in practice. Full project facts, constraints, and their confidence levels are in [`project-os/PROJECT.md`](project-os/PROJECT.md).
 
-> **Status: the stack runs.** The API, PostgreSQL, and an explicit migration step come up under Docker Compose ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)); the commands below work as written. There are no product endpoints yet — the contract-first pipeline ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)) and authentication arrive next. See *Not here yet* below for what does not exist.
+> **Status: the pipeline is real.** The API, PostgreSQL, an explicit migration step and a self-hosted identity host come up under Docker Compose ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)); the commands below work as written. The API's endpoints are generated from [`spec/openapi.yaml`](spec/openapi.yaml) ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)). What exists so far is a deliberately disposable placeholder resource proving that pipeline end to end — the real product resources come next. See *Not here yet* for what does not exist.
 
 ## Repository layout
 
@@ -72,11 +72,30 @@ dotnet test           # unit + integration; needs Docker running
 
 The integration tier starts a real PostgreSQL container ([Testcontainers](https://dotnet.testcontainers.org)) and drives the API through its real HTTP pipeline — never an in-memory database, which enforces no constraints and translates no real SQL. One container per run, a fresh database per test. With Docker stopped, the integration tier fails fast and names the container runtime rather than timing out against a database.
 
+### The contract, and changing it
+
+[`spec/openapi.yaml`](spec/openapi.yaml) is the API. It is written by hand, first; server contracts and clients are generated from it. **The workflow is one-directional:**
+
+```bash
+# 1. edit spec/openapi.yaml
+./tools/generate.sh      # 2. regenerate into libs/
+                         # 3. implement the generated interface in apps/
+./tools/check-drift.sh    # 4. prove the two agree
+```
+
+Generated code under `libs/` is **never hand-edited** — a change there is lost on the next run. If the API needs to change, the specification changes first ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)).
+
+`check-drift.sh` is a **merge gate**: it regenerates and fails if the result differs from what is committed. It is what makes the rule above real rather than aspirational.
+
+The generator runs from a pinned container image, so **no JDK is needed** — only Docker. The first run pulls about a gigabyte and can take several minutes; that is a slow pull, not a hang.
+
+*Operational endpoints (`/health` and friends) are deliberately absent from the specification — they serve operators, not clients generating against it ([ADR-0005](project-os/architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)).*
+
 ### Not here yet
 
-These are documented in the standards but their tooling arrives with the tickets that build it — do not expect them to run today:
+- Product resources — projects, issues, comments. What exists is a disposable placeholder proving the pipeline; [T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md) brings the first real one.
+- Role-based authorisation. Tokens carry a `role` claim, but nothing reads it yet — that is [T-0009](project-os/product/tickets/T-0009-role-authorisation-and-user-projection.md).
 
-- `./tools/generate.sh` and the OpenAPI specification — the contract-first pipeline is [T-0002](project-os/product/tickets/T-0002-contract-first-codegen-pipeline.md). Until it lands, `spec/` holds only its README.
 *(Everything else the standards mention now exists.)*
 
 ### Getting a token

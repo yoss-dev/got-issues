@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  description: |
+    A self-hosted, API-first issue and task tracker for internal engineering work.
+
+    This document is the product's user-facing documentation as well as its
+    contract: every operation and schema is described for a reader who has never
+    seen the implementation.
+  title: Got Issues API
+  version: 0.1.0
+servers:
+- description: Local development stack (docker compose)
+  url: http://localhost:8080
+security:
+- bearerAuth: []
+tags:
+- description: |
+    Disposable. This resource exists only to prove the specification →
+    generation → implementation pipeline end to end. T-0004 replaces it with
+    the first real resource (projects) and deletes it.
+  name: Placeholder
+paths:
+  /placeholders:
+    get:
+      description: "Returns a page of placeholder records, newest first."
+      operationId: listPlaceholders
+      parameters:
+      - description: |
+          1-based page number. Out-of-range values are rejected with 400 rather
+          than silently adjusted, matching pageSize. The upper bound exists so the
+          constraint is expressible in the contract and enforced by generated
+          clients; this API does not support paging beyond that depth.
+        explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          maximum: 1000000
+          minimum: 1
+          type: integer
+        style: form
+      - description: |
+          Records per page. The maximum is a declared constraint, so a larger
+          value is rejected with 400 rather than silently reduced — a client
+          asking for 10 000 and receiving 100 without being told is worse.
+          Clients generated from this document enforce it before the request
+          leaves them.
+        explode: true
+        in: query
+        name: pageSize
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceholderPage"
+          description: A page of placeholder records.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      summary: List placeholder records.
+      tags:
+      - Placeholder
+    post:
+      operationId: createPlaceholder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaceholderRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Placeholder"
+          description: The record was created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      summary: Create a placeholder record.
+      tags:
+      - Placeholder
+components:
+  responses:
+    BadRequest:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: The request was malformed or failed validation.
+    Unauthorized:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: "No credentials were supplied, or they were not valid."
+  schemas:
+    Problem:
+      description: |
+        An RFC 9457 problem document. Every failure in this API uses this shape,
+        so clients get one error type generated rather than guessing per endpoint.
+      properties:
+        type:
+          description: A URI identifying the problem type.
+          type: string
+        title:
+          description: "A short, human-readable summary of the problem type."
+          type: string
+        status:
+          description: The HTTP status code.
+          type: integer
+        detail:
+          description: A human-readable explanation specific to this occurrence.
+          type: string
+        instance:
+          description: A URI identifying this specific occurrence.
+          type: string
+    Placeholder:
+      description: A disposable record. See the Placeholder tag.
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        label: label
+      properties:
+        id:
+          description: The record's identifier.
+          format: uuid
+          type: string
+        label:
+          description: An optional human-readable label; null when none was given.
+          nullable: true
+          type: string
+        createdAt:
+          description: "When the record was created, in UTC."
+          format: date-time
+          type: string
+      required:
+      - createdAt
+      - id
+    CreatePlaceholderRequest:
+      example:
+        label: label
+      properties:
+        label:
+          description: |
+            An optional human-readable label. Explicitly null is accepted and means
+            the same as omitting it — declared here because the API accepts it, and
+            a contract that forbids what the API allows is as wrong as the reverse.
+          maxLength: 200
+          minLength: 1
+          nullable: true
+          type: string
+    PlaceholderPage:
+      description: |
+        One page of results. Collection endpoints are always paginated — an
+        unbounded result set is forbidden by the project's engineering standards.
+      example:
+        pageSize: 6
+        page: 0
+        totalCount: 1
+        items:
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          label: label
+      properties:
+        items:
+          description: The records on this page.
+          items:
+            $ref: "#/components/schemas/Placeholder"
+          type: array
+        page:
+          description: The 1-based page number this response represents.
+          type: integer
+        pageSize:
+          description: How many records this page can hold.
+          type: integer
+        totalCount:
+          description: "Total records matching the query, across all pages."
+          type: integer
+      required:
+      - items
+      - page
+      - pageSize
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: |
+        A JWT issued by the identity host. Machine clients obtain one through the
+        client-credentials flow; the token carries a `role` claim the API reads
+        per request and never stores.
+      scheme: bearer
+      type: http
+

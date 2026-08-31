@@ -5,4 +5,13 @@
     <Project Path="apps/GotIssues.Api/GotIssues.Api.csproj" />
     <Project Path="apps/GotIssues.IdentityHost/GotIssues.IdentityHost.csproj" />
   </Folder>
+  <Folder Name="/libs/" />
+  <Folder Name="/libs/GotIssues.Client/" />
+  <Folder Name="/libs/GotIssues.Client/src/">
+    <Project Path="libs/GotIssues.Client/src/GotIssues.Client/GotIssues.Client.csproj" />
+  </Folder>
+  <Folder Name="/libs/GotIssues.Contracts/" />
+  <Folder Name="/libs/GotIssues.Contracts/src/">
+    <Project Path="libs/GotIssues.Contracts/src/GotIssues.Contracts/GotIssues.Contracts.csproj" />
+  </Folder>
 </Solution>

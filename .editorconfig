@@ -36,6 +36,13 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 [**/Migrations/**.cs]
 generated_code = true
 
+# Everything under libs/ is generated from spec/openapi.yaml by tools/generate.sh
+# and is never hand-edited (ADR-0004). ENGINEERING.md excludes generated directories
+# from analyzers and formatting checks; the analyzer half is in
+# libs/Directory.Build.targets, and this is the formatting half.
+[libs/**.cs]
+generated_code = true
+
 # Test projects. These analyzer rules describe good *library* code and fight
 # idiomatic xUnit; the alternative is renaming tests into something less readable
 # or bolting IDisposable onto classes whose lifetime xUnit already manages.

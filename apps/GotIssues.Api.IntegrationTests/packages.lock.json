@@ -130,6 +130,14 @@
           "Docker.DotNet.Enhanced.Handler.Abstractions": "4.3.3"
         }
       },
+      "JsonSubTypes": {
+        "type": "Transitive",
+        "resolved": "1.8.0",
+        "contentHash": "pBChxyl9mt0F1s1giHlN6yQ9WWb5FljluCNhMnSb7sspPfPRPTrc0a0psdu2/FVb5nZu5bQN50OMMaSp8jm8xQ==",
+        "dependencies": {
+          "Newtonsoft.Json": "10.0.1"
+        }
+      },
       "Microsoft.AspNetCore.Authentication.JwtBearer": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -649,8 +657,17 @@
       "gotissues.api": {
         "type": "Project",
         "dependencies": {
+          "GotIssues.Contracts": "[1.0.0, )",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.11, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )"
+        }
+      },
+      "gotissues.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "JsonSubTypes": "[1.8.0, )",
+          "Microsoft.Extensions.Configuration.Json": "[8.0.0, )",
+          "Newtonsoft.Json": "[13.0.3, )"
         }
       }
     }

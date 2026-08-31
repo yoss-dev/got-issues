@@ -9,8 +9,6 @@
 project-os/
 tools/
 infra/
-# NOTE: libs/ and spec/ are excluded only because nothing needs them yet.
-# T-0002 puts the OpenAPI contract in spec/ and generated code in libs/, and the
-# API will then depend on both — remove these two lines as part of that ticket.
-libs/
-spec/
+# libs/ and spec/ are NOT excluded: the API depends on the generated contracts,
+# and the container build fails without them. (T-0001 left these excluded with a
+# note to remove them here; this is that removal.)

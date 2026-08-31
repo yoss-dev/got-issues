@@ -31,6 +31,9 @@ namespace GotIssues.Api.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Label")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.ToTable("placeholder_records", (string)null);

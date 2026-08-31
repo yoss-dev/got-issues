@@ -185,6 +185,12 @@ for m in re.finditer(r"\[(ADR-\d{4})\]\(([^)]+)\)", adr_index):
 for path in glob.glob(os.path.join(ROOT, "**", "*.md"), recursive=True):
     if os.sep + ".git" + os.sep in path:
         continue
+    # libs/ is generated from spec/openapi.yaml and never hand-edited (ADR-0004).
+    # Its markdown carries the generator's own cross-links, which are not ours to
+    # fix; link-checking them would make this validator permanently red for a
+    # reason no one may act on.
+    if os.path.relpath(path, ROOT).startswith("libs" + os.sep):
+        continue
     d = os.path.dirname(path)
     for m in re.finditer(r"\]\(([^)#\s]+?)(#[^)]*)?\)", read(path)):
         target = m.group(1)
