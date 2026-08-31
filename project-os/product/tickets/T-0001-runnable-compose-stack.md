@@ -2,7 +2,7 @@
 id: T-0001
 title: Runnable Docker Compose stack with API skeleton and PostgreSQL
 type: technical
-status: in-progress
+status: blocked
 priority: high
 owner: claude-sm-9d4e
 implemented_by: none

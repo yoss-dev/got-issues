@@ -14,7 +14,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | in-progress | — |
+| 1 | [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | blocked | — |
 | 2 | [T-0011](tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | spike | committed | — |
 | 3 | [T-0003](tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | technical | committed | T-0001 |
 | 4 | [T-0010](tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | technical | committed | T-0001 |
