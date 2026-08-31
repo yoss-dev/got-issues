@@ -192,6 +192,36 @@ public sealed class IssuesTests(PostgresContainerFixture postgres) : IAsyncLifet
         Assert.Equal(0, await db.Issues.CountAsync());
     }
 
+    [Theory]
+    [InlineData("GOTI", "no number at all")]
+    [InlineData("GOTI-", "a hyphen and nothing after it")]
+    [InlineData("GOTI-0", "zero, which no allocation produces")]
+    [InlineData("GOTI-01", "a leading zero")]
+    [InlineData("goti-1", "a lowercase project key")]
+    [InlineData("GOTI-1234567890", "ten digits, one past what a key can express")]
+    [InlineData("GOTI-1-2", "two separators")]
+    public async Task A_malformed_key_is_refused_by_the_contract_before_the_parse(
+        string issueKey, string why)
+    {
+        // The read path splits the key on its last hyphen and parses the remainder.
+        // That is safe only because the contract's pattern admits nothing else — a
+        // claim nothing asserted until now, and one that has since acquired two more
+        // dependants: the exhaustion guard and the read path both rest on the same
+        // nine-digit limit (review N6, which grew).
+        //
+        // `GOTI-0` is here deliberately: it is the key the backfill defect would have
+        // produced, and it must be refused by the contract rather than merely absent.
+        await CreateProjectAsync("GOTI", "Got Issues");
+        using var client = Member();
+
+        var response = await client.GetAsync(new Uri($"/issues/{issueKey}", UriKind.Relative));
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.BadRequest,
+            $"Expected 400 for a key with {why}, got {(int)response.StatusCode}.");
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
     [Fact]
     public async Task AC4_reading_an_unknown_key_is_404()
     {

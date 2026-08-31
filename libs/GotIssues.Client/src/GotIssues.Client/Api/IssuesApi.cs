@@ -39,7 +39,7 @@ namespace GotIssues.Client.Api
         /// Create an issue in a project.
         /// </summary>
         /// <remarks>
-        /// Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. 
+        /// Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document&#39;s own pattern rejects. 
         /// </remarks>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
         /// <param name="projectKey">The key of the project the issue belongs to, for example &#x60;GOTI&#x60;.</param>
@@ -52,7 +52,7 @@ namespace GotIssues.Client.Api
         /// Create an issue in a project.
         /// </summary>
         /// <remarks>
-        /// Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. 
+        /// Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document&#39;s own pattern rejects. 
         /// </remarks>
         /// <param name="projectKey">The key of the project the issue belongs to, for example &#x60;GOTI&#x60;.</param>
         /// <param name="createIssueRequest"></param>
@@ -87,7 +87,7 @@ namespace GotIssues.Client.Api
     /// <summary>
     /// The <see cref="ICreateIssueApiResponse"/>
     /// </summary>
-    public interface ICreateIssueApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Issue?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, INotFound<GotIssues.Client.Model.Problem?>, IInternalServerError<GotIssues.Client.Model.Problem?>
+    public interface ICreateIssueApiResponse : GotIssues.Client.Client.IApiResponse, ICreated<GotIssues.Client.Model.Issue?>, IBadRequest<GotIssues.Client.Model.Problem?>, IUnauthorized<GotIssues.Client.Model.Problem?>, IForbidden<GotIssues.Client.Model.Problem?>, INotFound<GotIssues.Client.Model.Problem?>, IConflict<GotIssues.Client.Model.Problem?>, IInternalServerError<GotIssues.Client.Model.Problem?>
     {
         /// <summary>
         /// Returns true if the response is 201 Created
@@ -118,6 +118,12 @@ namespace GotIssues.Client.Api
         /// </summary>
         /// <returns></returns>
         bool IsNotFound { get; }
+
+        /// <summary>
+        /// Returns true if the response is 409 Conflict
+        /// </summary>
+        /// <returns></returns>
+        bool IsConflict { get; }
 
         /// <summary>
         /// Returns true if the response is 500 InternalServerError
@@ -329,7 +335,7 @@ namespace GotIssues.Client.Api
         partial void OnErrorCreateIssue(ref bool suppressDefaultLogLocalVar, Exception exceptionLocalVar, string pathFormatLocalVar, string pathLocalVar, string projectKey, CreateIssueRequest createIssueRequest);
 
         /// <summary>
-        /// Create an issue in a project. Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. 
+        /// Create an issue in a project. Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document&#39;s own pattern rejects. 
         /// </summary>
         /// <param name="projectKey">The key of the project the issue belongs to, for example &#x60;GOTI&#x60;.</param>
         /// <param name="createIssueRequest"></param>
@@ -348,7 +354,7 @@ namespace GotIssues.Client.Api
         }
 
         /// <summary>
-        /// Create an issue in a project. Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. 
+        /// Create an issue in a project. Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document&#39;s own pattern rejects. 
         /// </summary>
         /// <exception cref="ApiException">Thrown when fails to make API call</exception>
         /// <param name="projectKey">The key of the project the issue belongs to, for example &#x60;GOTI&#x60;.</param>
@@ -674,6 +680,44 @@ namespace GotIssues.Client.Api
                 } catch (Exception e)
                 {
                     OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)404);
+                }
+
+                return result != null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 409 Conflict
+            /// </summary>
+            /// <returns></returns>
+            public bool IsConflict => 409 == (int)StatusCode;
+
+            /// <summary>
+            /// Deserializes the response if the response is 409 Conflict
+            /// </summary>
+            /// <returns></returns>
+            public GotIssues.Client.Model.Problem? Conflict()
+            {
+                // This logic may be modified with the AsModel.mustache template
+                return IsConflict
+                    ? System.Text.Json.JsonSerializer.Deserialize<GotIssues.Client.Model.Problem>(RawContent, _jsonSerializerOptions)
+                    : null;
+            }
+
+            /// <summary>
+            /// Returns true if the response is 409 Conflict and the deserialized response is not null
+            /// </summary>
+            /// <param name="result"></param>
+            /// <returns></returns>
+            public bool TryConflict([NotNullWhen(true)]out GotIssues.Client.Model.Problem? result)
+            {
+                result = null;
+
+                try
+                {
+                    result = Conflict();
+                } catch (Exception e)
+                {
+                    OnDeserializationErrorDefaultImplementation(e, (HttpStatusCode)409);
                 }
 
                 return result != null;

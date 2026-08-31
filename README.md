@@ -4,7 +4,7 @@ A self-hosted, API-first issue and task tracker for the company's own engineerin
 
 This is a **proof of concept** — a step toward running the company's development tooling in-house (self-hosted git being the eventual prize) and a test of whether contract-first delivery holds up in practice. Full project facts, constraints, and their confidence levels are in [`project-os/PROJECT.md`](project-os/PROJECT.md).
 
-> **Status: the pipeline is real.** The API, PostgreSQL, an explicit migration step and a self-hosted identity host come up under Docker Compose ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)); the commands below work as written. The API's endpoints are generated from [`spec/openapi.yaml`](spec/openapi.yaml) ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)). The first product resource — **projects** — is real and role-guarded ([T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md)); issues and comments come next. See *Not here yet* for what does not exist.
+> **Status: the pipeline is real.** The API, PostgreSQL, an explicit migration step and a self-hosted identity host come up under Docker Compose ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)); the commands below work as written. The API's endpoints are generated from [`spec/openapi.yaml`](spec/openapi.yaml) ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)). **Projects and issues** are real and role-guarded ([T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md), [T-0005](project-os/product/tickets/T-0005-create-and-read-issues.md)): an admin creates a project, anyone with a role files issues in it, and each issue carries a key like `GOTI-1` numbered within its project. Comments and lifecycle fields come next. See *Not here yet* for what does not exist.
 
 ## Repository layout
 
@@ -110,7 +110,7 @@ The generator runs from a pinned container image, so **no JDK is needed** — on
 
 ### Not here yet
 
-- **Issues and comments.** Projects exist ([T-0004](project-os/product/tickets/T-0004-create-and-list-projects.md)); [T-0005](project-os/product/tickets/T-0005-create-and-read-issues.md) and [T-0008](project-os/product/tickets/T-0008-comment-on-an-issue.md) bring the rest. Nothing lists or filters issues yet ([T-0007](project-os/product/tickets/T-0007-list-and-filter-issues.md)).
+- **Issue lifecycle and comments.** An issue can be created and read, but it carries no status, priority or assignee yet ([T-0006](project-os/product/tickets/T-0006-issue-lifecycle-fields.md)), nothing lists or filters issues ([T-0007](project-os/product/tickets/T-0007-list-and-filter-issues.md)), and there are no comments ([T-0008](project-os/product/tickets/T-0008-comment-on-an-issue.md)).
 - **User** tokens. The identity host issues machine-client tokens, which carry a role but no subject — so no endpoint is yet guarded by a *person's* identity, and the user projection stays empty in practice.
 
 *(Everything else the standards mention now exists.)*

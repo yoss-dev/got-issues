@@ -53,10 +53,11 @@ namespace GotIssues.Contracts.Models
         public string ProjectKey { get; set; }
 
         /// <summary>
-        /// The issue&#39;s number within its project. Allocated by the server, starting at 1 in each project, and never reused. 
+        /// The issue&#39;s number within its project. Allocated by the server, starting at 1 in each project, and never reused.  The maximum is not arbitrary: it is the largest number &#x60;key&#x60; can express, since that pattern allows nine digits. Without it the two fields could disagree — a number of ten digits would produce a key violating the very pattern this document declares, and the issue would be unreadable through the only operation that fetches one. A project reaching this limit is refused with 409 rather than issued a key it cannot use. 
         /// </summary>
-        /// <value>The issue&#39;s number within its project. Allocated by the server, starting at 1 in each project, and never reused. </value>
+        /// <value>The issue&#39;s number within its project. Allocated by the server, starting at 1 in each project, and never reused.  The maximum is not arbitrary: it is the largest number &#x60;key&#x60; can express, since that pattern allows nine digits. Without it the two fields could disagree — a number of ten digits would produce a key violating the very pattern this document declares, and the issue would be unreadable through the only operation that fetches one. A project reaching this limit is refused with 409 rather than issued a key it cannot use. </value>
         [Required]
+        [Range(1, 999999999)]
         [DataMember(Name="number", EmitDefaultValue=true)]
         public int Number { get; set; }
 

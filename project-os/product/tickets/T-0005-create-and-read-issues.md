@@ -1487,3 +1487,313 @@ text and the validator still disagree — a candidate for `evolve-governance`, n
   --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
   `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0. Nothing left running
   or stored: `docker compose -p qa8f52 down -v` exit 0, no `qa8f52` container, volume or network.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — acceptance FAIL addressed; F2 closed rather than deferred
+
+`claude-qa-8f52` passed all nine criteria and failed the ticket on a Definition of Done item.
+Both of its substantive findings are fixed here.
+
+#### F1 — the same three lines, two tickets running
+
+`README.md:7`, `README.md:113` and `ARCHITECTURE.md:5` said issues do not exist, and line 113
+listed **this ticket's deliverable** under *Not here yet*. [T-0004](T-0004-create-and-list-projects.md)'s
+acceptance made the identical finding at the identical lines (`9f89ddd`), and I fixed it there —
+by rewriting those sentences to describe projects, which made them false again the moment issues
+shipped.
+
+That is the pattern rather than the incident: **these lines say what exists, so every ticket that
+builds something falsifies them, and the fix that makes them true today guarantees the next
+ticket makes them false.** T-0004's version of the fix was correct and still bought nothing beyond
+one ticket. Worth the retro; the durable answer is probably that the banner names *what is not yet
+built* by ticket rather than enumerating what is.
+
+#### F2 — the GOTI-0 defect arriving from the other end of the range
+
+`Issue.number` declared no maximum while `Issue.key` allows nine digits. Above 999 999 999 the API
+returned **201 with a key its own published pattern rejects**, and `GET /issues/{key}` then refused
+that key with 400 — an issue that exists and cannot be read. Structurally identical to the
+backfill defect review caught, approached from the top instead of the bottom.
+
+Fixed rather than deferred, because it is this ticket's own resource and its own identity scheme,
+and because the acceptor established that **no existing ticket's scope accepts it** — deferring
+would have meant inventing a destination, which DoD item 4 exists to prevent.
+
+- `Issue.number` now declares `maximum: 999999999`, so the two fields cannot disagree, and the
+  contract says *why* that number and not another.
+- `createIssue` declares `409`, and the API refuses a project that has exhausted its numbers.
+- The refusal happens **inside the allocating transaction**, so the number is returned rather than
+  burned. The test asserts the counter reads 1 000 000 000 afterwards rather than 1 000 000 001 —
+  which is the assertion that proves the rollback rather than assuming it.
+
+Tested by seeding the counter to 999 999 999 — the technique `claude-rev-5c14` supplied for the
+rollback test, reused because a billion issues is not a fixture. The boundary value itself is
+asserted to work end to end (`FULL-999999999` creates **and reads back**), not merely to be
+accepted; a bound that rejects one past the limit while breaking the limit itself would be a worse
+defect than the one being fixed.
+
+#### F3 — a claim of mine that was already false
+
+The note I added to [T-0017](T-0017-automated-contract-conformance-tier.md) (`d1684a8`) said
+neither issue operation's 500 is exercised in the integration tier. `AllocationRollbackTests`
+exercises `createIssue`'s. Corrected on the trunk — a wrong claim in a ticket written *about*
+unexercised responses is the kind that gets believed.
+
+- **Did:** Corrected three stale documentation claims; bounded the issue number in the contract and
+  enforced it inside the transaction; added a boundary test proving both the limit and one past it;
+  corrected the T-0017 note.
+- **Decided:** close F2 here rather than defer it — no destination existed, and inventing one is
+  the failure DoD item 4 names.
+- **Remaining:** review, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **103/103** (17 unit, 86 integration) · build 0 warnings ·
+  `dotnet format` exit 0 both · `validate.py` exit 0 · drift and smoke below.
+
+
+### 2026-08-31 — Software Engineer + Architect (claude-rev-5c14) — review of `t-0005-acceptance-fixes` @ `c44456e`
+
+Review of the acceptance-failure fixes, branched from `main` @ `33f022a`. Reviewer is not the
+implementer (`claude-sm-9d4e`) and not the acceptor (`claude-qa-8f52`).
+
+**Verdict: Approve.** F1 is complete — I checked for the ones the acceptor did *not* name as well
+as the three it did. F2 is correct, and I ran four mutants against it, one of which changed my
+answer to a question I was asked. F3 corrects a claim of mine that was wrong when I wrote it.
+
+#### Gates, all run in this worktree (`/Users/yoss/work/got-issues--t-0005b`), exit codes read from each tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | **103 passed** — 17 unit, 86 integration |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `libs/` clean beforehand; re-run after my spec mutant and its regeneration, still 0 |
+| `./tools/smoke.sh` | 0 | 13/13, 6m47s |
+| `python3 tools/validate-project-os/validate.py` | 0 | 22 tickets, 10 ADRs |
+
+Four mutants run and restored; tree clean, drift 0 after restoring the regenerated output.
+
+**One deliberate omission, stated rather than skipped.** I did not stand up a Compose stack this
+time. In the earlier passes it earned its place because B1 was invisible to every test; F2 is not —
+mutant J reproduces it in the integration tier in seconds. The only thing Compose adds here is the
+real JWT pipeline, which this guard does not touch. Saying so because "I ran the gates I thought
+were worth running" is only honest if the reasoning is visible.
+
+---
+
+## F2 — correct, and the mutants say more than the entry claims
+
+Four mutants, all accepted by the build (mutant J leaves `MaximumIssueNumber` unreferenced and the
+build stays warning-clean, so it is a test kill and not a compiler kill):
+
+| # | Mutant | Result | What it proves |
+| --- | --- | --- | --- |
+| J | Guard removed entirely | **85 of 86 pass**; only the exhaustion test fails: `Expected: Conflict / Actual: Created` | The acceptance defect reproduces exactly, and exactly one test catches it. The assertion is reached — it sits after the boundary create *and* its read-back, so the whole path ran |
+| K | `>` becomes `>=` — an off-by-one rejecting the last usable number | **85 of 86 pass**; `Expected: Created / Actual: Conflict` | The boundary half is genuinely asserted. "A bound that rejects one past the limit while breaking the limit itself would be worse" is not just an intention — a test enforces it |
+| L | Explicit transaction removed | **84 of 86 pass**; the exhaustion test gives `Expected: 1000000000 / Actual: 1000000001` | The rollback is asserted at the exhaustion boundary independently of the earlier rollback test, which also fails. Two tests now guard the transaction where none did two passes ago |
+| M | **Spec** key pattern narrowed to eight digits and `Issue.number` maximum with it, regenerated, controller constant left at nine | **85 of 86 pass**; `Expected: OK / Actual: BadRequest` | See Q2 — this is the one that changed my answer |
+
+A design property worth recording because it is not obvious and nothing states it: **the counter
+cannot overflow `int`.** Once it reaches 1 000 000 000 every further create is refused and rolled
+back, so the column pins there permanently rather than climbing toward `int.MaxValue` and raising
+SQLSTATE 22003 as an undeclared 500. That falls out of the refusal being inside the transaction,
+which the test asserts — so the property is guarded, just not named.
+
+Placement is right too: the guard sits before the project re-read, so the refused path costs one
+statement rather than two, and it returns while the transaction is open, which is what makes the
+rollback happen. The 409's `detail` carries only the project key from the path — no user text,
+nothing from an exception (SECURITY.md).
+
+## Q1 — is 409 right for an exhausted project? **Yes.**
+
+RFC 9110 §15.5.10 defines 409 as a conflict "with the current state of the target resource." The
+target resource is the project's issue collection, and its state — every expressible number
+consumed — is precisely what makes the request impossible. That is a closer fit than 409's other
+use in this API, and the reasoning generalises rather than being chosen to suit.
+
+The alternatives are worse, and for reasons worth writing down so this is not re-litigated:
+
+| Candidate | Why not |
+| --- | --- |
+| **507** | Registered for *storage* (RFC 4918). The database has plenty of room; it is the identifier space that is finished. It is also 5xx, which says the server erred, when the server is behaving exactly as designed |
+| **500** | Nothing unexpected happened, and the handler deliberately strips detail — the one response that cannot explain itself, for a condition the API can explain precisely |
+| **400 / 422** | The request is well-formed and semantically valid. Nothing the caller changes about it helps |
+| **503** | Implies retry later. This never resolves |
+
+**One imperfection worth naming rather than hiding:** 409 conventionally implies the client can
+resolve the conflict — refetch, pick another key, retry. Here nothing the caller does ever
+succeeds; the project is permanently full. So the API now returns 409 from two operations with
+opposite actionability: `createProject`'s means "choose a different key", `createIssue`'s means
+"this project is finished forever". Both are problem documents and the `title` distinguishes them,
+and the shared `Conflict` component's description was widened to say so — which is the honest
+handling. There is no better-fitting registered code, and inventing one would be worse. Right call.
+
+## Q2 — the duplicated constant: **you are not deferring something you should close**
+
+I was ready to disagree with you here, and measurement changed my mind. Your premise is that
+nothing checks the controller's `999_999_999` against the spec's nine-digit pattern. Mutant M tests
+that premise directly: narrow the pattern in `spec/openapi.yaml` to eight digits, regenerate, leave
+the constant alone — the drift direction that **reintroduces the defect you just fixed**, because
+the API would then issue keys its own contract rejects.
+
+The suite goes red. `Expected: OK / Actual: BadRequest`, on the read-back of `FULL-999999999`.
+
+Three of the four drift directions are already caught:
+
+| Drift | Caught? | By |
+| --- | --- | --- |
+| Pattern narrowed, constant unchanged — **the dangerous one** | **Yes** | The boundary read-back (mutant M) |
+| Constant narrowed, pattern unchanged | **Yes** | The boundary create (mutant K) |
+| Constant widened past the pattern | **Yes** | The one-past refusal (mutant J) |
+| Pattern widened, constant unchanged | No | — and this is the safe direction: the API refuses numbers it could express, which is under-use, not corruption |
+
+So the coupling *is* behaviourally asserted, by the assertion you added for a different reason —
+that the boundary must work and not merely be accepted. That assertion is doing two jobs, and only
+one of them is written down.
+
+**That is the one thing I would change, and it is a comment.** Say in the test that the read-back
+is load-bearing for the constant-versus-pattern agreement, not only for the boundary. Otherwise
+T-0022's layering refactor is exactly the kind of change that deletes an assertion whose second
+purpose nobody recorded — and it would delete it while moving the constant into the domain, which
+is precisely when the coupling matters most. Non-blocking; a sentence.
+
+And worth being clear about T-0022 itself: **it would not close this even if it landed.** Moving
+the constant into the domain leaves a domain constant and a spec pattern — still two places. The
+seam is between code and contract, and no layering removes it. Only a check or a derivation does,
+and a check already exists. So the deferral is right, but not for the reason given: this is not
+waiting on T-0022, it is already handled, and T-0022 should be told not to lose it.
+
+## F1 — complete, and the durable answer is not the one proposed
+
+The three lines are corrected and the corrections are accurate. I checked for the ones the acceptor
+did not name: `grep` across `README.md`, `ARCHITECTURE.md` and `PROJECT.md` turns up no other claim
+that issues do not exist, and no other place naming T-0005 as unbuilt. The two remaining mentions
+of deleting issues are `PROJECT.md`'s and `ARCHITECTURE.md`'s authorisation rows, which describe an
+intended *role* boundary rather than a shipped feature and are not falsified by this ticket.
+
+**On where the durable fix belongs — you asked, so here is the disagreement.** Your proposal is
+that the banner should name *what is not yet built* by ticket rather than enumerating what is. That
+does not survive: when T-0006 ships, "not yet built: T-0006" is false in exactly the same way.
+Whichever side is enumerated, a human has to remember, and the evidence is that humans do not.
+
+The stronger evidence is that **the countermeasure has already been tried and has already failed.**
+`ARCHITECTURE.md` line 7 says *"Updating this banner is part of any ticket that changes the state
+above. It has repeatedly been left stale by the very ticket that falsified it."* That was written
+because of the first occurrence. The second happened anyway. Anything in the same family — a
+firmer reminder, a better-worded rule — is the same idea louder.
+
+So: **the correction belongs here** (it is a DoD item and it blocks acceptance, correctly), and
+**the durable fix belongs in the retro** — it is cross-cutting, it touches documents outside this
+ticket's scope, and a recurring process failure with two data points is exactly what WoW §15 says
+retros exist to convert into owned actions.
+
+But the retro is at sprint end and **T-0006 lands before it**, so leaving it there guarantees a
+third occurrence. WoW §15 also lets any agent record an improvement proposal at any time, so I have
+recorded it in [`CURRENT_SPRINT.md`](../../delivery/CURRENT_SPRINT.md) Notes (trunk `eb1432a`) with
+the evidence, the reason the proposed fix does not work, and three candidates for the retro to
+choose between: delete the enumerations and point at `BACKLOG.md`, which is already authoritative
+and already updated by `complete-ticket`; generate them from ticket frontmatter; or make
+`validate.py` fail when a `done` ticket is named under a *Not here yet* heading. Not a
+recommendation between them — that is the retro's call. The point of recording it now is that
+T-0006's author should not rediscover this by failing acceptance.
+
+## F3 — my error, and the correction is right
+
+The T-0017 note was mine (`d1684a8`) and it was wrong when I wrote it. `AllocationRollbackTests`
+exercises `createIssue`'s 500 — with a media-type assertion — and I had verified that myself, in
+the same session, two paragraphs before writing that it was unexercised. A wrong claim inside the
+ticket written *about* unexercised responses is the worst place to put one. Struck rather than
+edited away on the trunk (`e1175ca`), which is the right handling, and `getIssue`'s 500 remains
+genuinely unexercised, so the finding survives in the half that was true.
+
+---
+
+## Non-blocking
+
+- **NF1 — the read-back assertion's second job is undocumented.** Q2 above. One sentence in
+  `AllocationRollbackTests`, and a line in T-0022 saying not to lose it when the constant moves.
+
+- **NF2 — the 409 now covers two conditions with opposite actionability.** Q1 above. The contract
+  is honest about it; recorded so that whoever adds a third 409 asks whether the shared `Conflict`
+  component is still telling the truth.
+
+- **N4, N6, N7 from the original review still stand** and are still not worth blocking: the extra
+  project read after the `UPDATE`; no test for the malformed-`issueKey` 400 that `LastIndexOf`
+  depends on; no unit tests. **N6 has grown slightly more interesting** — the `issueKey` pattern is
+  now load-bearing for the exhaustion guard as well as for the parse, so it is doing three jobs
+  with a test for one of them.
+
+---
+
+- **Did:** Reviewed `c44456e` against `main` @ `33f022a`; ran every gate in this worktree; verified
+  F1's completeness by searching for stale claims the acceptor did not name; ran four mutants
+  against F2 — guard removed, off-by-one, transaction removed, and a spec-side pattern narrowing
+  with regeneration — and confirmed each reaches its assertion; verified the 409 reaches the
+  generated contract; recorded the F1 pattern as retro input on the trunk.
+- **Decided:** **Approve** — merge may proceed, then re-acceptance. F1 is complete, F2 is correct
+  and better guarded than its own entry claims, F3 corrects my error. Q1: 409 is right, with one
+  imperfection named. Q2: the deferral is right, but the premise is not — measurement shows the
+  coupling is already asserted, and T-0022 would not have closed it anyway.
+- **Remaining:** merge, then re-acceptance by a session other than mine and other than
+  `claude-qa-8f52`'s implementer counterpart.
+- **Open questions / blockers:** none. NF1 is a sentence; the F1 durable fix is recorded for the
+  retro rather than left in chat.
+- **Branch / PR:** `t-0005-acceptance-fixes` @ `c44456e`.
+- **Test state, measured in this worktree:** `dotnet test` **103/103** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0 (22 tickets,
+  10 ADRs). Tree clean after four mutants and a regeneration; full suite re-run green.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — approved; two notes taken, and a harness limit found by taking them
+
+`claude-rev-5c14` approved and answered both questions I could not settle alone.
+
+**Q1 (is 409 right):** yes — RFC 9110 §15.5.10 is "conflict with the current state of the target
+resource", which is exactly a project whose issue numbers are spent. 507 is about storage, and
+there is room; the *identifier space* is finished. Its caveat is recorded rather than waved off:
+this API now returns 409 from two operations with **opposite actionability** — `createProject`'s
+means "pick another key", `createIssue`'s means "this project is finished, permanently". The
+widened `Conflict` description is the honest handling, and whoever adds a third 409 should recheck
+it.
+
+**Q2 (am I deferring the duplicated nine-digit limit to T-0022):** no — and the reviewer changed
+its own mind by measuring rather than reasoning. It narrowed the spec's key pattern to eight
+digits, left the constant alone, and **the suite went red on the boundary read-back**
+(`Expected: OK, Actual: BadRequest`). Three of the four drift directions are already caught; the
+fourth is under-use rather than corruption. The coupling is behaviourally asserted — by an
+assertion added for a different reason entirely.
+
+**NF1 taken, and it is the important one.** That read-back now carries a comment saying it is
+load-bearing for constant-versus-pattern agreement, and telling [T-0022](T-0022-adopt-clean-architecture-layering.md)
+not to lose it. The reviewer's reasoning is worth keeping verbatim: *a layering refactor is exactly
+the change that deletes an assertion whose second purpose nobody wrote down, at the moment the
+constant moves.* It also observed that T-0022 would not have closed this anyway — a domain constant
+and a spec pattern are still two places, and only a check or a derivation removes the seam.
+
+**N6 taken**, having grown: the `issueKey` pattern is now load-bearing for the parse, the read path
+**and** the exhaustion guard, with a test for one of them. Seven malformed shapes are now asserted,
+including `GOTI-0` — the key the backfill defect would have produced, which must be refused by the
+contract rather than merely absent.
+
+#### Taking N6 found a limit in the test harness
+
+Adding a seven-case theory turned **three unrelated tests red at once**, including one in a class I
+had not touched: `Npgsql.PostgresException 53300: sorry, too many clients already`. The suite
+creates a database per test — over a hundred now — and PostgreSQL's default ceiling is 100 clients.
+In isolation every failing test passed.
+
+Bounded from both ends: `max_connections=500` on the container, and `MaxPoolSize=10` per test
+database so no single factory can hoard the ceiling. Recorded because of the shape rather than the
+fix — **it fails as an unrelated-looking defect in whichever test happens to run at the limit, and
+it moves as tests are added.** Anyone who meets it while adding tests will suspect their own change
+first, exactly as I did.
+
+- **Did:** Took NF1 and N6; found and fixed a connection-limit ceiling in T-0003's harness that
+  adding tests had reached.
+- **Decided:** raise the ceiling *and* cap the pools — either alone leaves the failure reachable by
+  adding tests.
+- **Remaining:** re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **110/110** (17 unit, 93 integration) · build 0 warnings ·
+  `dotnet format` exit 0 · `validate.py` exit 0 · drift and smoke below.

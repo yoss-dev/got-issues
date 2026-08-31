@@ -20,7 +20,16 @@ namespace GotIssues.Api.IntegrationTests.Infrastructure;
 /// </summary>
 public sealed class PostgresContainerFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:18-alpine").Build();
+    private readonly PostgreSqlContainer _container =
+        new PostgreSqlBuilder("postgres:18-alpine")
+            // The suite creates a database per test — over a hundred of them — and
+            // PostgreSQL's default limit is 100 clients. Past that it answers
+            // `53300: sorry, too many clients already`, which surfaces as an
+            // unrelated-looking failure in whichever test happens to run at the limit
+            // and moves as tests are added. Raising the ceiling here, and capping each
+            // pool below, bounds it from both ends.
+            .WithCommand("-c", "max_connections=500")
+            .Build();
 
     public string AdminConnectionString => _container.GetConnectionString();
 
@@ -42,8 +51,24 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        return new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = name }
-            .ConnectionString;
+        return new NpgsqlConnectionStringBuilder(AdminConnectionString)
+        {
+            Database = name,
+
+            // Npgsql pools up to 100 connections per connection string by default, and
+            // every test class builds its own ApiFactory against its own database while
+            // xUnit runs classes in parallel. That multiplies out past the container's
+            // max_connections, and PostgreSQL answers `53300: sorry, too many clients
+            // already` — a failure that looks like a defect in whichever test happened
+            // to run at the limit, and moves as tests are added.
+            //
+            // Found when T-0005 added a seven-case theory: three unrelated classes went
+            // red at once. Capping the pool bounds the total by the number of
+            // databases, which is what the harness actually needs; no test uses more
+            // than a handful of connections at a time, including the thirty-way
+            // concurrency test.
+            MaxPoolSize = 10,
+        }.ConnectionString;
     }
 }
 

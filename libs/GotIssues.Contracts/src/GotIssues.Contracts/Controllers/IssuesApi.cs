@@ -30,7 +30,7 @@ namespace GotIssues.Contracts.Controllers
         /// <summary>
         /// Create an issue in a project.
         /// </summary>
-        /// <remarks>Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. </remarks>
+        /// <remarks>Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding &#x60;admin&#x60; or &#x60;member&#x60; may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document&#39;s own pattern rejects. </remarks>
         /// <param name="projectKey">The key of the project the issue belongs to, for example &#x60;GOTI&#x60;.</param>
         /// <param name="createIssueRequest"></param>
         /// <response code="201">The issue was created.</response>
@@ -38,6 +38,7 @@ namespace GotIssues.Contracts.Controllers
         /// <response code="401">No credentials were supplied, or they were not valid.</response>
         /// <response code="403">The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused. </response>
         /// <response code="404">The addressed resource does not exist — a project that was never created, or an issue key that corresponds to nothing. </response>
+        /// <response code="409">The request conflicts with the state of the system — for a project, a key already in use; for an issue, a project that has exhausted its issue numbers. </response>
         /// <response code="500">The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared. </response>
         [HttpPost]
         [Route("/projects/{projectKey}/issues")]
@@ -49,6 +50,7 @@ namespace GotIssues.Contracts.Controllers
         [ProducesResponseType(statusCode: 401, type: typeof(Problem))]
         [ProducesResponseType(statusCode: 403, type: typeof(Problem))]
         [ProducesResponseType(statusCode: 404, type: typeof(Problem))]
+        [ProducesResponseType(statusCode: 409, type: typeof(Problem))]
         [ProducesResponseType(statusCode: 500, type: typeof(Problem))]
         public abstract Task<IActionResult> CreateIssue([FromRoute (Name = "projectKey")][Required][RegularExpression("^[A-Z][A-Z0-9]{1,9}$")][StringLength(10, MinimumLength=2)]string projectKey, [FromBody]CreateIssueRequest createIssueRequest);
 

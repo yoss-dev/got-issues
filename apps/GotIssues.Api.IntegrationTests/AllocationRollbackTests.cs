@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using GotIssues.Api.Data;
 using GotIssues.Api.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -103,5 +104,82 @@ public sealed class AllocationRollbackTests(PostgresContainerFixture postgres) :
             // And nothing was written.
             Assert.Equal(1, await db.Issues.CountAsync(i => i.ProjectId == projectId));
         }
+    }
+
+    [Fact]
+    public async Task A_project_that_has_exhausted_its_numbers_is_refused_rather_than_given_an_unusable_key()
+    {
+        // Found in acceptance (claude-qa-8f52) as a spec inconsistency: `number`
+        // declared no maximum while `key` allows nine digits, so a create above
+        // 999,999,999 returned 201 with a key violating the pattern this API
+        // publishes — and unreadable through GET, which rejects it with 400. The same
+        // defect as the GOTI-0 backfill, arriving from the other end of the range.
+        //
+        // Reachable only by seeding the counter, which is exactly how the two
+        // properties above are proved: a billion issues is not a test fixture.
+        using var admin = _factory.CreateClient();
+        admin.DefaultRequestHeaders.Add(TestAuthHandler.HeaderName, "exhausted-admin");
+        admin.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeaderName, "admin");
+
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await admin.PostAsJsonAsync(
+                new Uri("/projects", UriKind.Relative),
+                new { key = "FULL", name = "Exhausted" })).StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+            var project = await db.Projects.SingleAsync(p => p.Key == "FULL");
+            project.NextIssueNumber = 999_999_999;
+            await db.SaveChangesAsync();
+        }
+
+        using var member = _factory.CreateClient();
+        member.DefaultRequestHeaders.Add(TestAuthHandler.HeaderName, "exhausted-member");
+        member.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeaderName, "member");
+
+        // The last number a key can express is still allocated normally.
+        var last = await member.PostAsJsonAsync(
+            new Uri("/projects/FULL/issues", UriKind.Relative), new { title = "The last one" });
+        Assert.Equal(HttpStatusCode.Created, last.StatusCode);
+
+        using (var document = JsonDocument.Parse(await last.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("FULL-999999999", document.RootElement.GetProperty("key").GetString());
+        }
+
+        // And it is readable — which carries a second, less obvious job.
+        //
+        // **This assertion is load-bearing for constant-versus-pattern agreement.**
+        // `MaximumIssueNumber` lives in the controller and the nine-digit limit lives
+        // in `spec/openapi.yaml`'s key pattern; nothing declares them equal. Narrow the
+        // pattern to eight digits and leave the constant alone — the drift direction
+        // that reintroduces the defect this test was written for — and *this line* goes
+        // red with `Expected: OK, Actual: BadRequest`. Measured by `claude-rev-5c14`.
+        //
+        // **T-0022 must not lose it.** A layering refactor is exactly the change that
+        // deletes an assertion whose second purpose nobody wrote down, at the moment
+        // the constant moves into the domain.
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await member.GetAsync(new Uri("/issues/FULL-999999999", UriKind.Relative))).StatusCode);
+
+        // One past it is refused, rather than issued a key the contract rejects.
+        var overflow = await member.PostAsJsonAsync(
+            new Uri("/projects/FULL/issues", UriKind.Relative), new { title = "One too many" });
+
+        Assert.Equal(HttpStatusCode.Conflict, overflow.StatusCode);
+        Assert.Equal("application/problem+json", overflow.Content.Headers.ContentType?.MediaType);
+
+        using var scope2 = _factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+
+        // Nothing written, and the number returned rather than burned - the refusal
+        // happens inside the same transaction as the allocation.
+        Assert.Equal(1, await db2.Issues.CountAsync(i => i.Project.Key == "FULL"));
+        Assert.Equal(
+            1_000_000_000,
+            await db2.Projects.Where(p => p.Key == "FULL").Select(p => p.NextIssueNumber).SingleAsync());
     }
 }

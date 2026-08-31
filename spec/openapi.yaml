@@ -154,6 +154,10 @@ paths:
         **Requires a recognised role.** Any caller holding `admin` or `member` may
         create an issue; a token carrying neither receives 403. Unlike creating a
         project, this is not an administrative act.
+
+        A project that has exhausted its issue numbers — 999 999 999 of them, the
+        most a key can express — is refused with 409. Issuing a key beyond that would
+        produce an identifier this document's own pattern rejects.
       parameters:
         - name: projectKey
           in: path
@@ -185,6 +189,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -287,8 +293,9 @@ components:
             $ref: '#/components/schemas/Problem'
     Conflict:
       description: |
-        The request conflicts with something that already exists — for a project,
-        a key already in use.
+        The request conflicts with the state of the system — for a project, a key
+        already in use; for an issue, a project that has exhausted its issue
+        numbers.
       content:
         application/problem+json:
           schema:
@@ -339,9 +346,17 @@ components:
         number:
           type: integer
           minimum: 1
+          maximum: 999999999
           description: |
             The issue's number within its project. Allocated by the server, starting
             at 1 in each project, and never reused.
+
+            The maximum is not arbitrary: it is the largest number `key` can express,
+            since that pattern allows nine digits. Without it the two fields could
+            disagree — a number of ten digits would produce a key violating the very
+            pattern this document declares, and the issue would be unreadable through
+            the only operation that fetches one. A project reaching this limit is
+            refused with 409 rather than issued a key it cannot use.
         title:
           type: string
           minLength: 1

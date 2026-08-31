@@ -36,7 +36,7 @@ namespace GotIssues.Contracts.Controllers
         /// <response code="400">The request was malformed or failed validation.</response>
         /// <response code="401">No credentials were supplied, or they were not valid.</response>
         /// <response code="403">The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused. </response>
-        /// <response code="409">The request conflicts with something that already exists — for a project, a key already in use. </response>
+        /// <response code="409">The request conflicts with the state of the system — for a project, a key already in use; for an issue, a project that has exhausted its issue numbers. </response>
         /// <response code="500">The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared. </response>
         [HttpPost]
         [Route("/projects")]

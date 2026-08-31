@@ -13,7 +13,7 @@ All URIs are relative to *http://localhost:8080*
 
 Create an issue in a project.
 
-Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding `admin` or `member` may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act. 
+Creates an issue and allocates its number within the given project.  The number is allocated by the server and cannot be chosen.  **Requires a recognised role.** Any caller holding `admin` or `member` may create an issue; a token carrying neither receives 403. Unlike creating a project, this is not an administrative act.  A project that has exhausted its issue numbers — 999 999 999 of them, the most a key can express — is refused with 409. Issuing a key beyond that would produce an identifier this document's own pattern rejects. 
 
 
 ### Parameters
@@ -45,6 +45,7 @@ Creates an issue and allocates its number within the given project.  The number 
 | **401** | No credentials were supplied, or they were not valid. |  -  |
 | **403** | The credentials were valid, but the caller&#39;s role does not permit this operation. Distinct from 401: the caller is known, and still refused.  |  -  |
 | **404** | The addressed resource does not exist — a project that was never created, or an issue key that corresponds to nothing.  |  -  |
+| **409** | The request conflicts with the state of the system — for a project, a key already in use; for an issue, a project that has exhausted its issue numbers.  |  -  |
 | **500** | The request could not be completed because of an unexpected failure.  Declared because the API can return it: an operation that reaches the database can fail in ways no validation anticipates, and a contract that lists only the outcomes it likes is as wrong as one that promises a body it does not send. The response is a problem document like every other failure — never an empty body, which is what a caller received before this was declared.  |  -  |
 
 [[Back to top]](#) [[Back to API list]](../../README.md#documentation-for-api-endpoints) [[Back to Model list]](../../README.md#documentation-for-models) [[Back to README]](../../README.md)

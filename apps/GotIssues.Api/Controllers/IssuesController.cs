@@ -21,6 +21,13 @@ namespace GotIssues.Api.Controllers;
 public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiController
 {
     /// <summary>
+    /// The largest number a key can express: `spec/openapi.yaml` allows nine digits.
+    /// Declared here and in the contract, and the two must agree — this constant is
+    /// what makes the refusal happen before a row is written.
+    /// </summary>
+    private const int MaximumIssueNumber = 999_999_999;
+
+    /// <summary>
     /// Creating an issue is open to any recognised role. Only the three acts named in
     /// PROJECT.md §5 are administrative, and this is not one of them.
     /// </summary>
@@ -64,6 +71,23 @@ public sealed class IssuesController(GotIssuesDbContext dbContext) : IssuesApiCo
                 title: "Project not found.",
                 statusCode: StatusCodes.Status404NotFound,
                 detail: $"No project with key '{projectKey}' exists.");
+        }
+
+        // A number beyond nine digits cannot be expressed as a key, because the
+        // pattern in spec/openapi.yaml allows nine. Allocating one anyway would
+        // return 201 with an identifier this API's own contract rejects, and the
+        // issue would be unreachable through the only operation that fetches one —
+        // the same defect as the GOTI-0 backfill, arriving from the other end of the
+        // range. Refuse it instead, and let the transaction return the number.
+        if (allocated[0] > MaximumIssueNumber)
+        {
+            return Problem(
+                type: "https://httpstatuses.io/409",
+                title: "Project has exhausted its issue numbers.",
+                statusCode: StatusCodes.Status409Conflict,
+                detail:
+                    $"Project '{projectKey}' has used all {MaximumIssueNumber} issue numbers "
+                    + "its key can express.");
         }
 
         var project = await dbContext.Projects
