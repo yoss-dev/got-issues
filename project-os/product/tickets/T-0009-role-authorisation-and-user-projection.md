@@ -873,3 +873,126 @@ You put it better than I would have: it belongs alongside "verify by mutation" a
 - **Branch / PR:** `t-0009-acceptance-fixes` @ `5874e7c` — **approved for merge**.
 - **Test state:** 59/59 green, each of the behaviours at issue seen red without its fix.
 - **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-5a71) — Q1, N1 and Q2 re-checked
+
+Targeted re-check on `main` @ `5b0a5fb`. My PASS on AC1–AC8 stands and was not re-derived. Everything below was run against artefacts before I read the fix entry or the review, because the failure this ticket keeps circling is a record that outruns the repository.
+
+**Q1 and N1 are closed. Q2's original defect is fixed, but the fix introduced two new inaccurate statements, and the write-failure class was addressed on one of the two columns rather than both.** Three new items, all small, all recorded below.
+
+#### 1. Q1 — the narrowing did not move the swallow, and the widening is pinned too
+
+`IsDuplicateKey` matches `InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }` — a symbolic constant rather than a literal — and it is the only `catch` in the projection path. So the swallow was removed rather than relocated.
+
+I pinned it from three edges rather than two, each mutation seen failing:
+
+| Mutation | Result |
+| --- | --- |
+| Widen the catch back to `catch (DbUpdateException)` | oversized-subject test **fails** — and the race test still **passes** |
+| Remove the catch entirely | race test **fails**, 3 of 3 runs |
+| Revert the column to 200 | subject-at-the-OIDC-limit test **fails** |
+
+The middle column of the first row is the part worth stating: the two tests bracket the catch **independently**, so neither is carrying the other. And the third edge is one nobody claimed — the widening itself is pinned, not just the narrowing.
+
+`dotnet ef migrations has-pending-model-changes` → *"No changes have been made to the model since the last migration."* The migration is a real `AlterColumn` with a genuine `Down` back to 200.
+
+#### 2. The 255 widening genuinely removes the class — for `Subject`
+
+Measured at the boundary rather than argued:
+
+```
+subject 200 (old column limit)   HTTP 200   row written
+subject 254                      HTTP 200   row written
+subject 255 (the OIDC limit)     HTTP 200   row written
+subject 256 (one past OIDC)      THREW DbUpdateException <- PostgresException   0 rows
+subject 300                      THREW DbUpdateException <- PostgresException   0 rows
+subject 255 multi-byte chars     HTTP 200   row written
+```
+
+OpenID Connect caps `sub` at 255 ASCII characters, so **every specification-legal subject now fits**, and only out-of-spec subjects fail — loudly, which is the correct direction. The class is removed, not shifted. I checked the byte-versus-character trap specifically: PostgreSQL's `character varying(255)` counts *characters*, so 255 multi-byte characters still fit and there is no hidden narrower limit behind the declared one.
+
+#### 3. Q3 — the same class was addressed on `Subject` and not on `DisplayName`
+
+You asked me to push where I found the original, so: the reasoning that fixed `Subject` was *"OIDC permits 255, the column held 200, widen it"* — anchored to a specification. `DisplayName` is still 400, and the OIDC `name` claim has **no length limit at all**, so there is no specification to anchor 400 to. Narrowing the catch changed that column's failure mode exactly the way it changed `Subject`'s, and only `Subject` was followed through:
+
+```
+display name 400 (column limit)                  HTTP 200   row written
+display name 401 (one past)                      THREW DbUpdateException <- PostgresException   0 rows
+display name 500                                 THREW      0 rows
+existing user, name grows to 500 (UPDATE path)   THREW      existing row survives
+... and the next request with a sane name        HTTP 200   recovers
+```
+
+During acceptance I measured the *old* behaviour of the same input: a 450-character display name returned **HTTP 200 with 0 rows**. So this is the identical conversion — silent loss to hard failure — on the column that was not widened.
+
+- **Consequence:** while the identity provider holds an over-long `name`, **every** authenticated request from that caller fails, because the projection runs on every authenticated request and there is no path past it. Not a permanent lockout — it clears the moment the name shortens, and the existing row survives — but a total outage for that user until it does.
+- **Severity: low, and I am not reopening the ticket for it.** It is unreachable today for the same reason everything else in this area is (no token this system issues carries a subject, so the projection never runs against a real token); it needs a display name over 400 characters, which is implausible for a human name if not for a `name` claim populated from a directory DN or a concatenation; and it fails **loudly**, which is the correct direction and the entire point of the narrowing. It is a residual of the fix, not a regression against an acceptance criterion.
+- **Recommendation, not mine to write:** a display name is a convenience field, not identity. Truncating on write is the proportionate treatment — a caller's ability to use the API should not depend on the length of their name. Either that, or accept the loud failure deliberately and say so where the column length is declared.
+
+#### 4. N1 — closed, and the fix is not over-tightened
+
+The primary-identity gate is gone from `HasRole` entirely; `RoleValues` now filters `user.Identities` to authenticated ones before reading either claim type. Both directions mutated:
+
+| Mutation | N1 guard | second-authenticated-scheme test |
+| --- | --- | --- |
+| Revert to the old form (all identities + primary gate) | **fails** | passes |
+| Over-tighten to the primary identity only | passes | **fails** |
+
+So the pair genuinely brackets the fix, and neither test is redundant.
+
+Because this changed the exact claim-reading path the ticket's original bug lived in, I re-ran the promotion hunt against the new code rather than assuming it survived. All fifteen shapes behave as before — plural `roles`, trailing space, quoted, null byte, Cyrillic homoglyph, `ADMIN`, JSON array, `admin;member` and `.../identity/claims/role` all refused; `role=junk AND role=admin` still correctly grants; both controls still grant. And:
+
+```
+authed(no role) + UNauthenticated(admin)     -> admin=False   (was True — N1 closed)
+UNauthenticated-primary + authed(admin)      -> admin=True    (was False — see below)
+authed(member) + 2 UNauthenticated(admin)    -> admin=False, member=True
+```
+
+The middle line is worth recording because nobody claimed it: the old primary-identity gate also had a fail-**closed** bug — a legitimately authenticated identity that happened not to be primary was refused. The fix corrects that too, and the second test is what keeps it corrected.
+
+#### 5. Q2 — the original staleness is fixed; two new inaccuracies came with it
+
+The statements I flagged are genuinely gone, and I verified each replacement claim rather than reading it:
+
+- *"The identity host issues machine-client tokens, which carry a role but no subject"* — **true**; I decoded seven real tokens during acceptance, every one carrying `client_id` and `role`, none carrying `sub`.
+- *"the user projection stays empty in practice"* — **true**; the `users` table held zero rows after a full real-token traffic run, checked in PostgreSQL directly.
+- *"An absent or unrecognised role is refused, never treated as a member"* — **true**; verified with real tokens carrying `superuser`, `Admin`, `' admin'`, `''` and `'member,admin'`.
+- ARCHITECTURE's list of what now exists, and *"the only resource in the specification today is a deliberately disposable placeholder"* — **true**; `spec/openapi.yaml` declares exactly one path, `/placeholders`.
+
+You asked whether a third stale statement had been introduced while fixing the second. Two have.
+
+**Q2a — the recurrence count in the ARCHITECTURE banner is not what the record supports.** The new sentence reads: *"Keeping this banner current is part of the ticket that changes the state. **It** has been found stale four times; each time the ticket that falsified it had not updated it."* "It" reads as this banner. The repository records **this** banner found stale **twice**: once in T-0001 (rewritten in `4bd351a`; that reviewer's note is the *"stale for one merge"* sentence still standing two lines below), and once in my acceptance.
+
+The four came from my own wording — I wrote *"fourth instance of this **pattern**"*, and the pattern spans different documents: T-0001's D1 on the README banner, T-0002's README banner, T-0002's B6 on the JDK statements in `PROJECT.md` and `ARCHITECTURE.md`, and mine. So the sentence attributes a pattern count to a single banner. I seeded the phrasing, so I will own half of it — but a sentence added specifically to keep the banner true should not be the untrue part of it.
+
+The second clause is also too strong: *"each time the ticket that falsified it had not updated it"* is contradicted by T-0002, where the implementer caught and corrected the README banner **inside** the ticket — *"Third instance of that pattern; corrected here rather than ticketed."* That instance is one where the ticket that falsified it did update it, late but on its own.
+
+**Q2b — the README now reads as though endpoints enforce roles today.** The token section gained: *"Two authorisation policies act on it: `admin` is restricted to that role, and `member` is a floor an admin also satisfies."* — immediately followed by *"To prove the round trip:"* and a `curl` against `/health/authenticated`.
+
+**No shipped endpoint uses either policy.** The only `RequireAuthorization` anywhere in `apps/GotIssues.Api` is the bare one on `/health/authenticated`, so an `admin` token and a `member` token both get 200 there and the role is never consulted. A reader who follows that section with both tokens will see identical results and conclude the policies do not work. The *Not here yet* entry does not cover this: it says no endpoint is guarded by a **person's** identity, which is about machine-versus-user tokens, not about roles.
+
+One clause fixes it — that the policies are defined and centrally registered, and that [T-0004](T-0004-create-and-list-projects.md) is the first endpoint to apply one.
+
+#### 6. The AC5/AC8 destination — confirmed by reading the ticket
+
+I flagged before that T-0015's scope did not accept this; it does now, and I checked the ticket rather than the claim. Its In Scope carries a dedicated bullet naming *"The user projection against a token carrying a real subject (from T-0009)"*, with the reasoning intact — the seven decoded tokens, the zero rows, that the blind spot is what hid the claim-mapping bug, and that it is the condition under which the narrowed write-failure handling first becomes reachable — and it says explicitly that the line exists so the residual has a destination that accepts it. AC8 adds the instruction that if no subject-bearing token can be issued when it is implemented, that is **recorded with a named successor rather than passed quietly**. That is the right shape for a residual whose entire history is being invisible. **Accepted as a genuine destination.**
+
+#### 7. DoD items 4 and 6 — my stated conditions
+
+**Item 4 — satisfied for everything I previously raised.** Q1's substance is fixed and pinned from three edges; N1 is closed and pinned in both directions; the AC5/AC8 blind spot has a destination whose scope genuinely accepts it. The three items raised *here* — Q3, Q2a and Q2b — are now recorded, and DoD item 4 asks for more than recording: each needs fixing or a destination that accepts it before `done`. All three are one to two sentences of work and belong to this ticket.
+
+**Item 6 — not yet cleanly met.** The original miss is genuinely fixed and both documents are substantially more accurate than before. But Q2a and Q2b are inaccuracies in the two files the fix touched, and `DOCUMENTATION.md`'s rule is accuracy, not improvement. Fixing them closes item 6.
+
+Neither of these is a reason to reopen the ticket or revisit acceptance. They are the last two sentences of a documentation fix and one judgement call about a column length.
+
+#### Gates, each read from the tool's own exit status
+
+`python3 tools/validate-project-os/validate.py` → **OK** (17 tickets, 6 ADRs) · `dotnet build --no-incremental` → **0 warnings / 0 errors** · `dotnet format --verify-no-changes` → **0** · `dotnet test` → **59/59** (17 unit, 42 integration), **0 skipped** · `dotnet ef migrations has-pending-model-changes` → none · working tree clean. Seven mutations run, each seen failing and restored. No Docker stack was raised for this pass — the questions were about source, migrations, in-process behaviour and prose, and my real-token evidence from acceptance stands; the six unrelated stacks were verified untouched.
+
+- **Did:** Checked the narrowed catch and its constant, then pinned it from three edges by mutation. Measured the length boundary on both columns at 200/254/255/256/300 and 400/401/500, including multi-byte characters and the UPDATE path. Mutated the N1 fix in both directions and re-ran the full promotion hunt against the changed claim-reading path. Verified every replacement sentence in the README and ARCHITECTURE against the code and the repository's own record, including counting the recorded staleness instances. Read T-0015's scope and AC8 rather than accepting that it now accepts the residual.
+- **Decided:** Q1 and N1 are closed. Q3 is a low-severity residual of Q1's fix, in the correct (loud) direction, not a regression against a criterion — recorded, not reopened. Q2's original defect is fixed; Q2a and Q2b are new prose inaccuracies in the same files and are what stands between this and DoD item 6.
+- **Remaining:** `complete-ticket` — Q3, Q2a and Q2b, each fix-or-capture. Nothing else.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged; verified on `main` @ `5b0a5fb`.
+- **Test state:** 59/59 green, 0 skipped; seven mutations each seen failing.
+- **Acceptance verdict:** **PASS stands.** Q1 and N1 closed; Q2 closed in substance with two follow-on corrections recorded — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`.
