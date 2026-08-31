@@ -2,7 +2,7 @@
 id: T-0003
 title: Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers
 type: technical
-status: ready
+status: committed
 priority: high
 owner: none
 implemented_by: none

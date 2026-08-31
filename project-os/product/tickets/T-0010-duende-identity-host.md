@@ -2,7 +2,7 @@
 id: T-0010
 title: Duende IdentityServer host in the stack, with the API as resource server
 type: technical
-status: ready
+status: committed
 priority: high
 owner: none
 implemented_by: none

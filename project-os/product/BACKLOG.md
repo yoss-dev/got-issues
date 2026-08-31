@@ -14,10 +14,10 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | ready | — |
-| 2 | [T-0011](tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | spike | ready | — |
-| 3 | [T-0003](tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | technical | ready | T-0001 |
-| 4 | [T-0010](tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | technical | ready | T-0001 |
+| 1 | [T-0001](tickets/T-0001-runnable-compose-stack.md) | Runnable Docker Compose stack with API skeleton and PostgreSQL | technical | committed | — |
+| 2 | [T-0011](tickets/T-0011-spike-aspnetcore-generator-viability.md) | SPIKE: is OpenAPI Generator's aspnetcore output workable on ASP.NET Core 10? | spike | committed | — |
+| 3 | [T-0003](tickets/T-0003-automated-test-harness.md) | Automated test harness — xUnit, WebApplicationFactory, and PostgreSQL via Testcontainers | technical | committed | T-0001 |
+| 4 | [T-0010](tickets/T-0010-duende-identity-host.md) | Duende IdentityServer host in the stack, with the API as resource server | technical | committed | T-0001 |
 | 5 | [T-0002](tickets/T-0002-contract-first-codegen-pipeline.md) | Contract-first pipeline — OpenAPI spec, code generation, and drift check | technical | ready | T-0001, T-0011 |
 | 6 | [T-0009](tickets/T-0009-role-authorisation-and-user-projection.md) | Role-based authorisation and the user projection from token claims | feature | ready | T-0003, T-0010 |
 | 7 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | backlog | T-0002, T-0003, T-0009 |
@@ -39,6 +39,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 
 - 2026-08-30 — Backlog initialized (empty).
 - 2026-08-30 — Seeded by `bootstrap-project` step 8: T-0001..T-0003, the setup work bootstrap prescribed but did not perform. Ordered by dependency, not by product value — nothing product-facing can be built or verified until the stack, the pipeline, and the harness exist. The four primary use cases were captured as IDEA-001..004 and deliberately **not** promoted (maintainer's call, 2026-08-30).
+- 2026-08-30 — **SPRINT-001 planned.** Committed T-0001, T-0011, T-0003, T-0010 (goal: the stack runs from a clean clone with a working token round-trip, proved by tests). Continuous flow, no end date. T-0002 held back pending T-0011's verdict; T-0009 held back because both its dependencies are in this sprint. Order unchanged.
 - 2026-08-30 — `refinement-session` complete: **T-0001, T-0003, T-0002, T-0009, T-0010 all refined → `ready`** (5 of 5 attempted). Spawned **T-0011**, a 4-hour spike gating T-0002, after the maintainer chose to answer the `aspnetcore` generator question before building the pipeline rather than during it; T-0011 is placed at position 2 because it has no dependencies and its verdict could supersede ADR-0004. T-0010 moved above T-0002 (it only needs T-0001, while T-0002 waits on the spike). Positions 6–11 shifted; relative product-ticket priority unchanged.
 - 2026-08-30 — `refinement-session` (order chosen by the maintainer: T-0001, T-0003, T-0002, T-0009). **T-0001 refined → `ready`**, and **split**: the Duende identity host became **T-0010**, inserted at position 4 ahead of T-0009, which now depends on it rather than on T-0001. T-0001's refinement also produced **ADR-0005** (operational endpoints are outside the API contract), which resolved a circular conflict between the contract-first rule and T-0001's health endpoint. Positions 4–10 shifted down by one; relative priority is otherwise unchanged.
 - 2026-08-30 — Q7 answered (global roles `admin`/`member`, carried as a Duende token claim). IDEA-004 promoted to **T-0009**, placed above the product tickets because T-0004 (admin-only project creation), T-0006 (assignment) and T-0008 (comment authorship) all depend on it. It also closes the "missing user concept" gap those tickets carried.
