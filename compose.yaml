@@ -1,0 +1,64 @@
+# The single supported way to run Got Issues (PROJECT.md §4: no component may
+# require host-installed infrastructure beyond Docker and the .NET SDK).
+#
+# Service order is enforced by conditions, not by retry loops:
+#   postgres healthy -> migrator runs to completion -> api starts
+# That is what makes T-0001 AC7 (a slow database does not crash the API) true by
+# construction.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # postgres:18+ expects a single mount at /var/lib/postgresql and places the
+      # cluster in a version-specific subdirectory. Mounting /var/lib/postgresql/data
+      # (the pre-18 idiom) makes the image refuse to start.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # The explicit migration step (ADR-0003). Same image as the API, invoked with
+  # --migrate, run once, exits 0. The API itself never migrates on startup.
+  migrator:
+    build:
+      context: .
+      dockerfile: apps/GotIssues.Api/Dockerfile
+    command: ["--migrate"]
+    environment:
+      ConnectionStrings__GotIssues: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/GotIssues.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__GotIssues: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  postgres-data:

@@ -1,0 +1,16 @@
+# Never let local credentials into the build context.
+.env
+.env.*
+!.env.example
+
+**/bin/
+**/obj/
+.git/
+project-os/
+tools/
+infra/
+# NOTE: libs/ and spec/ are excluded only because nothing needs them yet.
+# T-0002 puts the OpenAPI contract in spec/ and generated code in libs/, and the
+# API will then depend on both — remove these two lines as part of that ticket.
+libs/
+spec/

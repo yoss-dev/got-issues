@@ -27,29 +27,58 @@ Two rules keep the boundary clean: **delivery-process artifacts live only in `pr
 
 | Tool | Why |
 | --- | --- |
-| Docker + Compose | The whole system runs under Compose — API, PostgreSQL, identity host |
-| .NET SDK 10 | Build and test |
-| A JDK (17+) | OpenAPI Generator is a Java tool ([ADR-0004](project-os/architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)) |
+| Docker (with Compose) | The whole system runs under Compose — API, PostgreSQL, and the migration step |
+| .NET SDK 10 | Building and working on the code outside containers |
 
 ### Run the stack
 
 ```bash
-docker compose up          # API + PostgreSQL + identity host; migrations run as an explicit step
+cp .env.example .env      # then edit .env — it is git-ignored and holds local credentials
+docker compose up --build
 ```
 
-### Build, test, regenerate
+That brings up PostgreSQL, runs the **migration step** to completion, and then starts the API. The ordering is enforced by Compose health conditions, so a slow database delays startup rather than crashing it.
+
+Check it is alive:
 
 ```bash
-dotnet build                                     # must be warning-clean
-dotnet test                                      # unit + integration (needs Docker running)
-./tools/generate.sh && git diff --exit-code      # codegen drift check — must produce no diff
+curl -s localhost:8080/health
+# {"status":"Healthy","checks":{"database":{"status":"Healthy","description":"database reachable"}}}
 ```
 
-The drift check is a **merge gate**, not a nicety: a non-empty diff means the committed code no longer matches the contract.
+`/health` is an **operational** endpoint: it is deliberately not part of the API contract and does not appear in the OpenAPI specification ([ADR-0005](project-os/architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)). It is documented here because operators are a different audience from the clients that generate against the specification.
+
+### Migrations
+
+Schema changes are applied by an explicit step, never silently at API startup ([ADR-0003](project-os/architecture/adr/ADR-0003-initial-technology-stack.md)). `docker compose up` runs it; to run it alone:
+
+```bash
+docker compose run --rm migrator
+```
+
+To scaffold a new migration after changing the model:
+
+```bash
+dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations
+```
+
+### Build
+
+```bash
+dotnet build          # warning-clean: the projects build with warnings as errors
+```
+
+### Not here yet
+
+These are documented in the standards but their tooling arrives with the tickets that build it — do not expect them to run today:
+
+- `dotnet test` — the test harness is [T-0003](project-os/product/tickets/T-0003-automated-test-harness.md).
+- `./tools/generate.sh` and the OpenAPI specification — the contract-first pipeline is [T-0002](project-os/product/tickets/T-0002-contract-first-codegen-pipeline.md). Until it lands, `spec/` holds only its README.
+- Authentication — the identity host is [T-0010](project-os/product/tickets/T-0010-duende-identity-host.md). Nothing is protected yet.
 
 ### The one rule that shapes everything
 
-**Change the specification, then regenerate — never the other way round.** Generated code under `libs/` is not hand-edited; if the API needs to change, `spec/openapi.yaml` changes first. See [`project-os/standards/ENGINEERING.md`](project-os/standards/ENGINEERING.md).
+**Change the specification, then regenerate — never the other way round.** Generated code under `libs/` is not hand-edited; if the API needs to change, `spec/openapi.yaml` changes first. Operational endpoints are the single exemption ([ADR-0005](project-os/architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)). See [`project-os/standards/ENGINEERING.md`](project-os/standards/ENGINEERING.md).
 
 ## How this project is run
 
