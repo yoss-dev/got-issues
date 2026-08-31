@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using GotIssues.Api.Authentication;
+using GotIssues.Api.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -30,6 +32,12 @@ public sealed class TestAuthHandler(
     public const string SchemeName = "IntegrationTest";
     public const string HeaderName = "X-Test-Subject";
 
+    /// <summary>Sets the caller's <c>role</c> claim. Omit it to test a token with none.</summary>
+    public const string RoleHeaderName = "X-Test-Role";
+
+    /// <summary>Sets the caller's display name. Omit it to test a token without one.</summary>
+    public const string NameHeaderName = "X-Test-Name";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(HeaderName, out var subject) || subject.Count == 0)
@@ -37,8 +45,23 @@ public sealed class TestAuthHandler(
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, subject.ToString())], SchemeName);
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, subject.ToString()) };
+
+        // Deliberately verbatim: the handler does not normalise, default or validate
+        // the role. A test asking for `role: superuser` must produce exactly that, so
+        // the API's own allow-list is what gets exercised rather than the test host's
+        // idea of a sensible value.
+        if (Request.Headers.TryGetValue(RoleHeaderName, out var role) && role.Count > 0)
+        {
+            claims.Add(new Claim("role", role.ToString()));
+        }
+
+        if (Request.Headers.TryGetValue(NameHeaderName, out var name) && name.Count > 0)
+        {
+            claims.Add(new Claim("name", name.ToString()));
+        }
+
+        var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
@@ -53,16 +76,31 @@ public sealed class TestAuthHandler(
 public sealed class GuardedEndpointStartupFilter : IStartupFilter
 {
     public const string Route = "/test-only/guarded";
+    public const string AdminRoute = "/test-only/admin";
+    public const string MemberRoute = "/test-only/member";
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
         app =>
         {
             app.UseRouting();
-            app.UseAuthentication();
-            app.UseAuthorization();
+
+            // The same extension the API uses, deliberately: this host maps its own
+            // endpoints, so without sharing the wiring the projection middleware
+            // would be absent here and its tests would prove nothing about the API.
+            app.UseGotIssuesAuthentication();
             app.UseEndpoints(endpoints =>
+            {
                 endpoints.MapGet(Route, () => Results.Ok("reached"))
-                    .RequireAuthorization());
+                    .RequireAuthorization();
+
+                // One endpoint per policy, so AC1-AC4 exercise the real policies
+                // rather than a test-local approximation of them.
+                endpoints.MapGet(AdminRoute, () => Results.Ok("admin"))
+                    .RequireAuthorization(AuthorizationPolicies.Admin);
+
+                endpoints.MapGet(MemberRoute, () => Results.Ok("member"))
+                    .RequireAuthorization(AuthorizationPolicies.Member);
+            });
             next(app);
         };
 }

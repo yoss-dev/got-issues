@@ -1,8 +1,11 @@
 using System.Net;
 using System.Text.Json;
 using GotIssues.Api.IntegrationTests.Infrastructure;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace GotIssues.Api.IntegrationTests;
 
@@ -79,6 +82,28 @@ public sealed class ResourceServerTests(PostgresContainerFixture postgres) : IAs
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(401, document.RootElement.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public void Inbound_claim_mapping_is_disabled_and_the_role_claim_is_named()
+    {
+        // Pins the actual fix. Without this, deleting `MapInboundClaims = false`
+        // leaves all other tests green — the policies' fallback to ClaimTypes.Role
+        // silently carries them, so the safety net hides the removal of the thing it
+        // is a net for. This asserts the configuration itself, so the removal is loud.
+        //
+        // RoleClaimType is pinned for the same reason: with mapping off it would
+        // otherwise still point at the WS-Federation URI, making User.IsInRole return
+        // false for a genuine admin.
+        using var factory = new AuthenticatedApiFactory(_connectionString);
+
+        var options = factory.Services
+            .GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+            .Get(JwtBearerDefaults.AuthenticationScheme);
+
+        Assert.False(options.MapInboundClaims);
+        Assert.Equal("role", options.TokenValidationParameters.RoleClaimType);
+        Assert.Equal("name", options.TokenValidationParameters.NameClaimType);
     }
 
     [Fact]

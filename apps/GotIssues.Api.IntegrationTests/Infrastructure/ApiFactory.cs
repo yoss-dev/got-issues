@@ -1,3 +1,4 @@
+using GotIssues.Api.Authorization;
 using GotIssues.Api.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -31,7 +32,7 @@ public sealed class ApiFactory(string connectionString, bool withTestAuthenticat
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                     TestAuthHandler.SchemeName, _ => { });
-            services.AddAuthorization();
+            services.AddAuthorization(options => options.AddGotIssuesPolicies());
             services.AddSingleton<IStartupFilter, GuardedEndpointStartupFilter>();
         });
     }

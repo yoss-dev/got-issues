@@ -1,5 +1,7 @@
 using System.Text.Json;
 using GotIssues.Api;
+using GotIssues.Api.Authentication;
+using GotIssues.Api.Authorization;
 using GotIssues.Api.Data;
 using GotIssues.Api.Health;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -33,9 +35,32 @@ if (!string.IsNullOrWhiteSpace(authority))
             options.RequireHttpsMetadata =
                 builder.Configuration.GetValue("Authentication:RequireHttpsMetadata", true);
             options.TokenValidationParameters.ValidIssuer = authority;
+
+            // Keep claims as the token wrote them. By default JwtBearer remaps
+            // well-known short names to long WS-Federation URIs, so the identity
+            // host's `role` claim would arrive as
+            // http://schemas.microsoft.com/ws/2008/06/identity/claims/role and the
+            // policies — which look for `role` — would match nothing and refuse
+            // every caller, including a genuine admin. It fails closed, so no test
+            // of a permitted path would notice unless it used a real token.
+            options.MapInboundClaims = false;
+
+            // With mapping off, the role claim is named `role`, but RoleClaimType
+            // still defaults to the WS-Federation URI — so User.IsInRole("admin")
+            // would return false for a genuine admin. Nothing uses it today, and it
+            // is the idiomatic API the next person will reach for; pointing it at the
+            // real claim removes a silent negative of exactly the family that made
+            // the policies refuse everyone.
+            options.TokenValidationParameters.RoleClaimType = "role";
+
+            // Same reasoning for the name. Claims arrive verbatim, so leaving this at
+            // its default would make User.Identity.Name null for a token that plainly
+            // carries `name` — latent today because client-credentials tokens carry
+            // none, and live the moment T-0010's provisioning produces user tokens.
+            options.TokenValidationParameters.NameClaimType = "name";
         });
 
-    builder.Services.AddAuthorization();
+    builder.Services.AddAuthorization(options => options.AddGotIssuesPolicies());
 }
 
 // Every failure returns application/problem+json, including the ones the framework
@@ -96,8 +121,9 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 
 if (!string.IsNullOrWhiteSpace(authority))
 {
-    app.UseAuthentication();
-    app.UseAuthorization();
+    // One definition of the order, shared with the integration test host so the two
+    // cannot drift — see AuthenticationPipeline.
+    app.UseGotIssuesAuthentication();
 
     // Operational endpoint proving the token round trip end to end. Outside the API
     // contract by ADR-0005 — no product endpoint exists yet, and inventing one to be
