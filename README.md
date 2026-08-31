@@ -72,6 +72,21 @@ dotnet test           # unit + integration; needs Docker running
 
 The integration tier starts a real PostgreSQL container ([Testcontainers](https://dotnet.testcontainers.org)) and drives the API through its real HTTP pipeline — never an in-memory database, which enforces no constraints and translates no real SQL. One container per run, a fresh database per test. With Docker stopped, the integration tier fails fast and names the container runtime rather than timing out against a database.
 
+`dotnet test` runs the fast tiers only, and is meant to stay that way.
+
+### The stack check
+
+```bash
+./tools/smoke.sh              # drives the real compose.yaml; minutes, not seconds
+./tools/smoke.sh --build-only # compile it without starting anything
+```
+
+Some things are only true of the **stack**, not of the application: that a cold start on an empty volume reaches healthy, that restarting against an existing volume keeps your data and applies no migrations, that the API waits for a database instead of crashing, that a token from the real identity host is accepted and expired, wrong-audience or unknown-key tokens are refused. `WebApplicationFactory` starts the API in-process and can drive neither `docker compose` nor a live identity host, so none of that is reachable from `dotnet test` ([T-0015](project-os/product/tickets/T-0015-compose-stack-smoke-test.md)).
+
+It builds images and starts containers, so it takes minutes — which is why it is a separate command and why `apps/GotIssues.SmokeTests` is deliberately absent from `GotIssues.slnx`. **Nothing else compiles that project**, so `--build-only` exists to catch it rotting without paying for a full run.
+
+Every stack it starts uses its own Compose project name and **ephemeral host ports**, so it cannot collide with a stack you already have running — and cannot be answered by one either, which is the point: a `curl` to `localhost:8080` proves nothing about a container that failed to start.
+
 ### The contract, and changing it
 
 [`spec/openapi.yaml`](spec/openapi.yaml) is the API. It is written by hand, first; server contracts and clients are generated from it. **The workflow is one-directional:**
