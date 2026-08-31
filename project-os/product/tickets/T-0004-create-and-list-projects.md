@@ -154,3 +154,100 @@ Perspectives applied: Product Owner, Business Analyst, Software Engineer, Archit
 - **Sizing:** grew by four criteria but they are all one resource's validation rules; still comfortably within the guideline.
 
 **DoR verdict: `ready`.**
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — claimed, with the implementation plan
+
+Claimed at `da138ec`. Dependencies verified `done` in their own files: T-0002, T-0003, T-0009.
+
+**One inconsistency inside the ticket, resolved before starting.** Examples say *"Create two
+projects with the same name: **behaviour undecided**"* while Risks says *"the ticket's default
+is that they may"*. Two readers get different answers. Taking the Risks wording as the
+decision — **duplicate names are allowed** — because the key is the identifier and name
+uniqueness would be a constraint nobody asked for. Recording it rather than silently picking.
+
+#### Approach
+
+Spec first, in the literal sense: write `/projects` in `spec/openapi.yaml`, run
+`./tools/generate.sh`, then implement the generated abstract controller. Anything else would
+invert ADR-0004, and this ticket is the first real test of it.
+
+| Step | What |
+| --- | --- |
+| 1 | `spec/openapi.yaml`: `Projects` tag, `GET`/`POST /projects`, schemas `Project`, `CreateProjectRequest`, `ProjectPage`, new shared responses `Forbidden` (403) and `Conflict` (409) |
+| 2 | **Delete the placeholder** from the spec — In Scope requires it; projects is the real resource it was standing in for |
+| 3 | `./tools/generate.sh`, then delete `PlaceholderController` and `PlaceholderRecord` |
+| 4 | EF: `ProjectRecord`, a unique index on `Key`, migration adding `projects` and dropping `placeholder_records` |
+| 5 | `ProjectsController` implementing the generated contract |
+| 6 | Integration tests; update the existing tests that reference placeholders |
+
+#### The shape of the contract
+
+- **Key:** `^[A-Z][A-Z0-9]{1,9}$` — 2–10 characters, starts with a letter, uppercase
+  alphanumeric. `GOTI` fits; `goti`, `Got Issues!` and a 40-character key do not, which is
+  exactly the Examples list.
+- **Name:** required, 1–200 characters. Duplicates allowed (above).
+- **Paging:** `page`/`pageSize` with the same bounds the placeholder already declares — 1-based,
+  default 20, maximum 100, oversize **rejected with 400**, not capped. Not a fresh choice; it is
+  the precedent T-0002's acceptance settled and [T-0007](T-0007-list-and-filter-issues.md)'s
+  refinement already had to reconcile a criterion against.
+
+#### The decision this ticket has to make, and why it is not a spec change
+
+**Roles cannot be expressed in the OpenAPI document.** They arrive as a `role` *claim*, not as
+OAuth scopes, and the generator emits a bare `[Authorize]` from the security requirement. So the
+policy has to be applied in the concrete controller:
+`[Authorize(Policy = AuthorizationPolicies.Admin)]` on `CreateProject`, `Member` on
+`ListProjects`. Attributes on an override combine with the base's, so both apply.
+
+This is *applying* a policy, not declaring a route, so it does not violate the contract-first
+rule — but the distinction is thin enough to state out loud rather than let a reviewer discover.
+The mitigation is that **the contract still documents the restriction**: each operation's
+description says who may call it, and both declare `403`, so a client generating from this
+document knows the endpoint can refuse an authenticated caller. A restriction enforced in code
+and invisible in the contract would be the actual violation.
+
+#### Test plan, criterion by criterion
+
+| AC | Test |
+| --- | --- |
+| AC1 | admin creates; 201; read back in the list |
+| AC1b | `goti`, `Got Issues!`, 40 chars, empty → 400 naming the key |
+| AC1c | duplicate key → 409, one row; **plus two concurrent creates → exactly one succeeds** |
+| AC1d | assert the generated contract exposes **no** operation that can change a key |
+| AC2 | member creates → 403, nothing written |
+| AC2b | member lists → 200 |
+| AC2c | no token → 401, distinct from AC2's 403 |
+| AC3 | missing/empty name → 400 problem document naming the field |
+| AC4 | more than one page → paged, `totalCount` present, reachable next page |
+| AC5 | `./tools/check-drift.sh` exit 0 |
+| AC6 | the whole suite runs against real PostgreSQL via Testcontainers |
+
+**Mutate first** ([TESTING.md](../../standards/TESTING.md)): AC1c's uniqueness — drop the unique
+index and confirm the concurrent-create test fails. The Risks section already names why: *"the
+constraint is the guarantee, the check is the error message"*, and a read-then-insert check
+passes every sequential test while failing under the only conditions it exists for. Then AC2 —
+remove the policy attribute and confirm the 403 test fails; an authorization test that passes
+because the endpoint happens to reject everything is the failure mode T-0009 shipped once
+already.
+
+#### Risks I am carrying into this
+
+- **AC1d is an absence.** There is no update operation, so "the key does not change" is true by
+  construction, and a test asserting it must assert the *absence* — that the generated contract
+  exposes only create and list. An absence proven by "I didn't write one" is not proven.
+- **This is the first real resource through the pipeline.** If the generated `aspnetcore` output
+  proves unworkable for something a placeholder never exercised — a 409, a pattern constraint,
+  a required field — ADR-0004 requires that be recorded and superseded rather than worked
+  around. This Work Log is where that evidence goes.
+- **Deleting the placeholder touches the smoke tier.** T-0015's schema check compares the live
+  database against a clean migration, so dropping `placeholder_records` changes both sides
+  equally and should stay green — but its own AC2 seeds `users`, and the integration tests
+  reference placeholders in several places. Both need updating with the deletion, not after it.
+
+- **Did:** Claimed; verified dependencies from their own files; resolved the ticket's internal
+  contradiction about duplicate names; planned the contract, the policy question and the tests.
+- **Decided:** duplicate names allowed; key pattern and paging bounds as above; role policies
+  applied via attributes on the concrete controller with `403` declared in the contract.
+- **Remaining:** implementation.
+- **Open questions / blockers:** none.
+- **Test state:** not started.
