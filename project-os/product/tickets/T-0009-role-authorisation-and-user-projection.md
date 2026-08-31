@@ -2,9 +2,9 @@
 id: T-0009
 title: Role-based authorisation and the user projection from token claims
 type: feature
-status: in-acceptance
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0003, T-0010]
