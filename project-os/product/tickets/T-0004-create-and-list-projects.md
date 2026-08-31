@@ -2,7 +2,7 @@
 id: T-0004
 title: Create and list projects
 type: feature
-status: ready
+status: committed
 priority: high
 owner: none
 implemented_by: none
@@ -10,7 +10,7 @@ accepted_by: none
 depends_on: [T-0002, T-0003, T-0009]
 adrs: [ADR-0004, ADR-0003]
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 # T-0004: Create and list projects
