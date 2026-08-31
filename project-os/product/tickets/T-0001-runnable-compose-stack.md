@@ -141,3 +141,39 @@ Perspectives applied: Product Owner, Business Analyst, Software Engineer, Archit
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started. Verification will be manual per Testing Notes.
 - **DoR verdict:** **ready** — all universal items hold, conditionals addressed.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — implementation plan
+
+Claimed via `pick-up-ticket` under `run-sprint`. Dependencies: none (verified — `depends_on: []`). DoR re-checked and still holds; nothing has drifted since refinement earlier today.
+
+**Toolchain probe (before planning, in a scratch directory):** .NET 10 SDK `10.0.300` builds `net10.0`; NuGet is reachable; `Npgsql.EntityFrameworkCore.PostgreSQL` resolves at **10.0.3**. No blockers.
+
+**Conflict found and resolved before coding (WoW §3):** the stock `dotnet new webapi` template adds `Microsoft.AspNetCore.OpenApi` — *code-first* OpenAPI document generation. That is the exact approach [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) rejected ("it inverts the required direction"). It also triggers `NU1903` (a known high-severity advisory in `Microsoft.OpenApi` 2.0.0). **The package will not be included**, and the project is created with `--use-controllers` per [ADR-0003](../../architecture/adr/ADR-0003-initial-technology-stack.md). Recording rather than silently deleting it, because the next person running `dotnet new` will hit the same default.
+
+**Approach**
+
+- `GotIssues.sln` at the repository root; `apps/GotIssues.Api/` — ASP.NET Core 10, controller-based, no code-first OpenAPI package.
+- `Data/GotIssuesDbContext.cs` with a single **placeholder** entity. Scope says the mechanism is the deliverable, not the domain.
+- **Migration step:** the same API image invoked with an explicit `--migrate` argument as its own short-lived Compose service, which applies migrations and exits zero. Normal startup does not migrate, satisfying AC5.
+  - *Alternative considered:* a separate `GotIssues.Migrator` project sharing a `libs/GotIssues.Persistence` library. Rejected for now — it invents a module boundary for a placeholder schema, and `ARCHITECTURE.md` currently reserves `libs/` for generated contracts. **If a second consumer appears (T-0003's harness may want the `DbContext`), extract the library then**, when two real consumers justify it per [ENGINEERING.md](../../standards/ENGINEERING.md).
+- **Health:** a custom check calling `Database.CanConnectAsync()` rather than pulling the EF health-check package — fewer dependencies, and it makes AC3 (unhealthy when the database is down) obviously true. `/health` is implemented directly and **not** specified, per [ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md).
+- **Compose:** `postgres` with a `pg_isready` health check; `migrator` gated on `service_healthy`; `api` gated on `service_healthy` **and** the migrator's `service_completed_successfully`. This is what makes AC7 true by construction rather than by retry loops.
+- `.env.example` with placeholder credentials; `infra/` for any supporting files; README *Getting started* rewritten so AC9 holds.
+
+**Test plan** — the harness does not exist yet (T-0003 depends on this ticket), so every criterion is verified by hand and the evidence recorded here, per the ticket's Testing Notes.
+
+| AC | How verified |
+| --- | --- |
+| AC1 | `docker compose up -d` on a clean clone + empty volume; `docker compose ps` shows all services healthy |
+| AC2 | `curl -i localhost:PORT/health` → 200, body reports the database reachable |
+| AC3 | `docker compose stop postgres`, re-`curl` → non-200 |
+| AC4 | Fresh volume; confirm the migrator applied the schema (`\dt` in psql) and the API is healthy after |
+| AC5 | With the schema dropped, run the `api` service **alone**; confirm no tables appear |
+| AC6 | `docker compose down && up` against the existing volume; migrator exits zero as a no-op, data intact |
+| AC7 | Start with the database deliberately delayed; confirm the API waits rather than exiting |
+| AC8 | `git log -p` / grep for credentials; confirm all come from environment variables |
+| AC9 | Follow the README literally from a clean clone |
+
+**Risks carried into implementation:** AC5 is the one an implementer breaks by habit (`Database.Migrate()` on startup is the convenient path) — the `--migrate` design exists specifically to make that impossible without noticing. AC7's correctness depends on Compose conditions, not on application retry logic.
+
+**Branch / PR:** `t-0001-runnable-compose-stack`, in its own worktree per [GIT.md](../../standards/GIT.md).
