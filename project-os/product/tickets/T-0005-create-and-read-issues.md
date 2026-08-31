@@ -1980,3 +1980,55 @@ happening.
   --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
   `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0 (23 tickets, 10 ADRs).
   Nothing left running or stored.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — my diagnosis was wrong; the fix was right for the wrong reason
+
+Acceptance passed the ticket and answered the question I flagged as beyond me. It is **a leak**,
+and the ceiling was latent *because* of the leak — not the dichotomy I offered.
+
+`claude-qa-8f52` sampled `pg_stat_activity` 100 times during a run. **The count never decreased
+once**: 3 connections at the start, 60 at ten seconds, 104 at the end — 103 of them idle, across
+92 databases, including classes that had finished ten seconds earlier. Every database ever created
+still holds a connection when the suite ends.
+
+**Two things I committed are false, and both are now corrected in place:**
+
+1. *"xUnit runs classes in parallel."* It does not. All nine integration classes share
+   `[Collection(PostgresFixtureDefinition.Name)]`, and a collection is xUnit's unit of
+   parallelisation — so they run **sequentially** and the multiplication I described cannot happen.
+2. *`MaxPoolSize=10` bounds the total.* It binds nothing: actual usage is **1.09 connections per
+   database**, because the growth is one leaked connection each, not pools filling up.
+
+The fix works and the reasoning under it was invented. That is worse than it sounds: a plausible
+wrong mechanism sitting beside a working fix is where the next person debugging this would start,
+and it would send them to look for parallelism that does not exist. Corrected rather than deleted,
+with the measurement that replaces it.
+
+**And the fix postpones rather than solves.** At 1.09 connections per database the same failure
+returns at roughly 455 tests. The acceptor's arithmetic also reproduces mine exactly: at the
+default ceiling of 100 the limit lands at ~89 tests — I had 86 and added 7.
+
+**No mutant would have found this.** The suite is green throughout the leak; it fails only when a
+threshold is crossed. Both of this acceptor's substantive findings across two runs came from
+exploration, which is the second data point for the standard the maintainer narrowed today.
+
+#### The deferral, accepted as PO persona
+
+**F4 — the connection leak — is deferred to [T-0023](T-0023-integration-tests-retain-a-connection-per-test-database.md), and I accept that deferral.**
+Per [DoD](../../governance/DEFINITION_OF_DONE.md) item 4 I read the destination rather than
+trusting the pointer: T-0023 exists, is registered in `BACKLOG.md`, carries the sampled evidence,
+and its **AC2 requires the suite to pass at `max_connections=100`** — which is what makes the
+deferral real rather than nominal, because raising a ceiling again cannot satisfy it. Its AC4
+covers the comment, which I have instead corrected here since it is this ticket's text.
+
+The leak is in [T-0003](T-0003-automated-test-harness.md)'s harness, which is `done`, so a new
+ticket is the correct route (WoW §11) rather than reopening it.
+
+- **Did:** Corrected two false claims I committed about the mechanism; accepted the F4 deferral
+  after reading T-0023's scope.
+- **Decided:** correct the comment rather than delete it — the wrong mechanism is what someone
+  would act on.
+- **Remaining:** `complete-ticket`.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **110/110** · `dotnet format` exit 0 · build 0 warnings.

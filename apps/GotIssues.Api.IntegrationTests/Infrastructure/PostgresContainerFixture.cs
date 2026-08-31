@@ -22,12 +22,18 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container =
         new PostgreSqlBuilder("postgres:18-alpine")
-            // The suite creates a database per test — over a hundred of them — and
-            // PostgreSQL's default limit is 100 clients. Past that it answers
-            // `53300: sorry, too many clients already`, which surfaces as an
-            // unrelated-looking failure in whichever test happens to run at the limit
-            // and moves as tests are added. Raising the ceiling here, and capping each
-            // pool below, bounds it from both ends.
+            // The suite creates a database per test and **never releases the
+            // connection**, so usage grows linearly and is never reclaimed:
+            // `claude-qa-8f52` sampled `pg_stat_activity` 100 times during a run and
+            // the count never decreased once, ending at 104 connections — 103 of them
+            // idle — across 92 databases. Past PostgreSQL's default ceiling of 100 it
+            // answers `53300: sorry, too many clients already`, in whichever test
+            // happens to run at the limit.
+            //
+            // **This raises the ceiling; it does not fix the leak.** At ~1.09
+            // connections per database the same failure returns at roughly 455 tests.
+            // T-0023 owns the leak, and its AC2 requires the suite to pass at
+            // `max_connections=100` so that raising a ceiling again cannot satisfy it.
             .WithCommand("-c", "max_connections=500")
             .Build();
 
@@ -55,18 +61,20 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
         {
             Database = name,
 
-            // Npgsql pools up to 100 connections per connection string by default, and
-            // every test class builds its own ApiFactory against its own database while
-            // xUnit runs classes in parallel. That multiplies out past the container's
-            // max_connections, and PostgreSQL answers `53300: sorry, too many clients
-            // already` — a failure that looks like a defect in whichever test happened
-            // to run at the limit, and moves as tests are added.
+            // A belt-and-braces bound, and an honest note about what it is worth:
+            // **measurement says this binds nothing today.** Actual usage is 1.09
+            // connections per database against this cap of 10, because the growth is
+            // one leaked connection per database rather than a pool filling up.
             //
-            // Found when T-0005 added a seven-case theory: three unrelated classes went
-            // red at once. Capping the pool bounds the total by the number of
-            // databases, which is what the harness actually needs; no test uses more
-            // than a handful of connections at a time, including the thirty-way
-            // concurrency test.
+            // The original comment here claimed pools multiply because "xUnit runs
+            // classes in parallel". That is false — all nine integration classes share
+            // `[Collection(PostgresFixtureDefinition.Name)]`, so xUnit runs them
+            // sequentially, and parallel growth is impossible. Corrected rather than
+            // deleted: a plausible wrong mechanism sitting beside a fix is worse than
+            // no comment, because the next person debugging this would start from it.
+            //
+            // Kept because it costs nothing and bounds the case the leak fix (T-0023)
+            // might not cover: a single test that genuinely opens many connections.
             MaxPoolSize = 10,
         }.ConnectionString;
     }
