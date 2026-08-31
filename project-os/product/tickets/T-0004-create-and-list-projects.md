@@ -1595,3 +1595,292 @@ recorded where they will be read. Nothing outstanding blocks acceptance.
   drift and the validator all exit 0. The recorded test state is accurate. I changed no
   implementation, test or specification code; the one mutant was reverted and verified
   byte-identical, with a clean tree and a clean drift check afterwards.
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-4d18) — re-acceptance of `main` @ `af17722`
+
+Second acceptance pass, same acceptor as the FAIL at `9f89ddd`. Both findings re-verified against
+the running software rather than against the fix's description, and everything the first pass
+established was re-run, because the fix touched `Program.cs` and the contract.
+
+**Verdict: PASS.** All eleven criteria hold. Both findings are genuinely closed, and the boundary
+half is closed more thoroughly than the finding asked for. One new finding of the same family as
+Finding 2 survives and must land before `complete-ticket`; it is one line and blocks nothing else.
+
+#### Gates, on `main` in the primary checkout, each exit code read from its own tool
+
+| Gate | Exit | Result |
+| --- | --- | --- |
+| `dotnet test` | 0 | **87 passed** — 17 unit, 70 integration, 0 skipped |
+| `dotnet build --no-incremental` | 0 | 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | 0 | solution |
+| `dotnet format --verify-no-changes` (SmokeTests csproj) | 0 | the project outside the solution |
+| `./tools/check-drift.sh` | 0 | `git status` empty beforehand, so a real drift pass |
+| `./tools/smoke.sh` | 0 | **13/13**, 4m52s — first attempt, no environment fault this time |
+| `python3 tools/validate-project-os/validate.py` | 0 | 19 tickets, 8 ADRs |
+
+Live probing again against a real Compose stack (`docker compose -p qa4d18b`, API 18504, identity
+18514, env file outside the repository), all three containers confirmed healthy before any response
+was trusted, attribution confirmed afterwards by stopping `qa4d18b-api-1` and observing curl exit 7.
+Torn down with `down -v`; containers, volumes, network and all four images removed.
+
+---
+
+#### Finding 1 — closed, and the boundary half is closed as a class
+
+**The boundary.** Every C0 control character and DEL is now refused at the contract, `400
+application/problem+json` with `errors.Name`. I probed eight separately —
+`\u0000`, `\u0001`, `\u0008`, `\u0009`, `\n`, `\r`, `\u001F`, `\u007F` — not just the one I
+reported. Rejecting only `\u0000` would have left a display name able to carry a newline, and the
+fix correctly took the class. The deliberately-excluded limit is real and documented rather than
+accidental: `\u0085` (NEL), `\u2028` (line separator), `\u0080` (a C1 control) and `\u200B` (zero-width space) are still accepted (201), exactly as the
+schema's own description says. The name boundary is unchanged — 1 and 200 characters accepted, 201
+refused.
+
+Worth recording that the fix went into `spec/openapi.yaml` and reached the model through the
+generator, so a client generating from this contract sees the constraint. A guard clause in the
+controller would have satisfied my finding and violated ADR-0004; it was not the route taken.
+
+**The destination.** Verified in production shape, by stopping PostgreSQL under a live,
+already-authenticating API — the same failure mode as the smoke check but driven by hand:
+
+| Request, database down | Before | Now |
+| --- | --- | --- |
+| `GET /projects` (admin) | 500, zero-length body, no `Content-Type` | **500 `application/problem+json`**, `{"type":"https://httpstatuses.io/500","title":"An unexpected error occurred.","status":500}` |
+| `GET /projects` (member) | — | 500 `application/problem+json` |
+| `POST /projects` (admin) | — | 500 `application/problem+json` |
+| `POST /projects` invalid key | — | still **400**, so validation short-circuits ahead of the database rather than degrading to 500 |
+| `GET /projects` no token | — | still **401** with its problem document |
+| `GET /health` | — | **503**, `database not reachable` |
+
+`500` is now declared for both operations, so this is a response the contract carries rather than
+one it hides. Nothing from the exception reaches the caller — I checked the body for the
+connection string and for `Npgsql`, and it is a fixed three-member document.
+
+#### Finding 2 — closed in both documents
+
+`README.md` (banner, *Not here yet*, and the role paragraph) and `ARCHITECTURE.md`'s state banner
+now describe what exists. I read the replacements against the running system rather than for
+plausibility: projects are real and role-guarded, creation requires `admin`, listing accepts either
+role, and a token carrying neither is refused — all four claims measured true above. The *Not here
+yet* list is now accurate about what genuinely is not here (issues, comments, filtering, user
+tokens).
+
+---
+
+#### The three things I was asked to scrutinise
+
+**1. The comment on `UnhandledFailureTests` — both halves are true. I measured each.**
+
+This mattered more than the usual comment check, because it is guidance the next engineer will act
+on, and because its previous version was measured false. So I did not read it; I tested both claims
+with a temporary probe in the integration tier, deleted afterwards.
+
+*Claim A — "an exception thrown during endpoint execution unwinds into `UseExceptionHandler` there
+exactly as it does in production, and asserting its status, media type and body is entirely
+possible."* I expected this to be false, because the test host's `IStartupFilter` calls
+`UseEndpoints` before `next(app)`, and I thought the endpoint therefore executed above the handler.
+It does not. Dropping the `projects` table and calling `GET /projects` in
+`ApiFactory(withTestAuthentication: true)` returns:
+
+```
+status=500  contentType=application/problem+json  bodyLength=91
+{"type":"https://httpstatuses.io/500","title":"An unexpected error occurred.","status":500}
+```
+
+Status, media type and body are all assertable in the habitual tier. **The correction is
+accurate, and my own hypothesis was the wrong one.**
+
+*Claim B — "what the integration tier cannot reach is a failure raised upstream of the
+application's own pipeline … a database failure there reaches the client as a thrown exception."*
+Dropping the `users` table instead — the table `UserProjectionMiddleware` writes to, which the
+startup filter places above `UseExceptionHandler` — gives the caller:
+
+```
+threw Npgsql.PostgresException: 42P01: relation "users" does not exist
+```
+
+Not a response at all. **Also accurate**, and it is the real justification for the tier choice.
+
+So the comment now says something true, and it says the *useful* true thing: it names the narrow
+limitation instead of the broad false one, and it explicitly warns against the reading that would
+discourage response-shape assertions in the habitual tier. Given that this project's signature
+defect is missing response-shape assertions, a comment implying they were impossible would have
+done real damage. This is the correction I would most want kept.
+
+**2. A fourth thing that failed to reach what it was aimed at — yes, one. See Finding 3 below.**
+
+Before that, I reproduced both recorded mutation claims rather than accepting them. Both are
+accurate and correctly attributed:
+
+| Mutant | Recorded | Measured |
+| --- | --- | --- |
+| `name` pattern removed from the contract model | *kills all five control-character cases, the `\u0000` one on `Actual: InternalServerError`* | **Exact.** `Failed: 5, Passed: 19` — four `Actual: Created` and one `Actual: InternalServerError`. Every one reached its assertion. It also re-proves my original finding: without the pattern, `\u0000` still produces a 500 |
+| `UseExceptionHandler` removed | *kills the smoke check on `Content-Type Actual: null`* | **Exact.** `Expected: "application/problem+json"` / `Actual: null`. The kill is attributable: the status assertion (`500`) passes first, so only the media-type assertion dies — which is precisely the property the handler exists to provide |
+
+I also checked the two places this project has been bitten before and found them clean:
+`ComposeProject.UniqueName` is `gs-{label}-{Guid:N}` with no truncation, and
+`UnhandledFailureTests` joins `SerialExecution` like every other smoke class, so a test that stops
+the database cannot run beside one that needs it.
+
+**3. Both "recorded rather than decided" calls are right, and for different reasons.**
+
+*T-0005's constraint hazard — recording is correct and the record is better than a decision would
+have been.* The hazard is real and the record separates the two concerns that the single pattern
+conflates: `\u0000` is unstorable in **any** text column and generalises; the rest of C0 is about
+single-line-ness and must **not** be applied to a multi-line `description`. Deciding it here would
+mean choosing the field constraints of a schema that does not exist yet. The record also names both
+failure directions — permissive reproduces this ticket's 500, strict rejects a paragraph break —
+and requires the answer to land in the specification per ADR-0004. That is actionable by whoever
+picks T-0005 up, which is the bar. And it clears [DoD](../../governance/DEFINITION_OF_DONE.md)
+item 4's deferral test: T-0005's scope is the fields themselves, so it genuinely accepts it.
+
+*T-0017's `415`/`405` question — recording is correct, and I checked the pointer rather than
+trusting it.* The tension is real: the reason given in the spec for declaring `500` is partly "the
+API can return it", and by that reasoning `415` and `405` have identical standing. But three things
+make recording the right call. Declaring them is a rule about **every operation in the contract,
+present and future**, not about projects — a cross-cutting convention nearer ADR-0008's family than
+to one endpoint's schema. Nothing is broken: I re-measured `405` (`PUT`/`PATCH`/`DELETE
+/projects`), `415` (`text/plain` body) and `404` (`/projects/{id}`), and all three already return
+correct `application/problem+json`, whereas the `500` was declared because it was returning a
+zero-length body. And the destination genuinely takes it on — T-0017's **In Scope** line *"Assert
+the declared status codes: a response the specification does not declare is a failure"* and its
+**AC4** are the exact criterion, cited by name in the record, with the honest warning that the
+temptation on AC4's first run will be to weaken it. That is a forcing function rather than a hope.
+
+The one thing that would change my judgment is T-0017 slipping indefinitely, since the question
+then has nothing forcing it. It is `ready` and named as SPRINT-003 buffer, so that is not today's
+problem — but it is the thing to watch.
+
+---
+
+#### Finding 3 — a status claim falsified by this ticket survives, in the file the fix edited. Non-blocking; fix before `complete-ticket`.
+
+`apps/GotIssues.Api/Program.cs:164`:
+
+> `// Operational endpoint proving the token round trip end to end. Outside the API`
+> `// contract by ADR-0005 — no product endpoint exists yet, and inventing one to be`
+> `// authenticated against would be product surface built only for a test.`
+
+A product endpoint has existed since `98ff9de`, and `af17722` edited this very file — adding
+`UseExceptionHandler` about eighty lines above — without touching it. This is the same class as
+Finding 2, in the one place the sweep did not reach, and it is the class
+`ARCHITECTURE.md`'s own banner warns about: *"It has repeatedly been left stale by the very ticket
+that falsified it."*
+
+It is not merely a stale fact. The sentence is the *justification* for `/health/authenticated`
+existing at all — "no product endpoint exists yet" is the premise, and it has expired. A future
+engineer reading it cannot tell whether that endpoint still earns its place or is a leftover whose
+reason has gone. That is the question a comment is supposed to answer, and this one now answers it
+wrongly.
+
+**Why non-blocking rather than a second FAIL.** The three artefacts
+[DoD](../../governance/DEFINITION_OF_DONE.md) item 6 names — user-facing docs (the specification),
+interface docs, and README/setup — are all correct now, and this is a code comment, which
+[DOCUMENTATION.md](../../standards/DOCUMENTATION.md) covers under *"stale documentation is a
+defect … fix in place when the fix is within your current ticket's scope"* rather than under DoD
+item 6. No behaviour is affected. This is the same disposition `claude-rev-3e77` used for NB1 last
+round — not optional, but not worth another full round — and `complete-ticket` gates on it.
+
+#### Non-blocking notes
+
+- **N1 — the 500 is the one response in the API that cannot be correlated, from either end.** Every
+  other problem document carries `traceId`; I compared them side by side on the same stack. The
+  401: `{"type":…,"title":"Unauthorized","status":401,"traceId":"00-74ad61bc…"}`. The 500:
+  `{"type":…,"title":"An unexpected error occurred.","status":500}` — no `traceId`, because the
+  handler serialises a `ProblemDetails` it constructs itself rather than going through the pipeline
+  that adds one. The server-side log line is `An unhandled exception has occurred while executing
+  the request` and carries no correlation id either. So a caller reporting "I got a 500" can be
+  matched to its stack trace by timestamp and nothing else — on the one response where diagnosis
+  matters most. The stack trace is fully logged, so nothing is lost; only the handle is. Adding
+  `Extensions["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier` is the usual fix.
+- **N2 — the `500` declaration is itself unguarded, which is ADR-0008's named gap with a second
+  instance.** Delete `'500'` from both operations in `spec/openapi.yaml`, regenerate, and every
+  gate stays green: `check-drift.sh` only checks that the spec and the generated code agree, and
+  nothing asserts that a status the API returns is declared. The behaviour would be correct and the
+  contract would be lying again, exactly as it was before this fix. This is not a regression the
+  fix introduced — it is the *declaration-versus-enforcement* gap ADR-0008 wrote down for `403`,
+  now demonstrably applying to `500` too, and it is T-0017's AC4 to close. Worth citing there,
+  because it is a second concrete instance of the gap that ADR names in the abstract.
+- **N3 — the handler's `Content-Type` is `application/problem+json` with no `charset`,** where the
+  framework-produced problem documents send `application/problem+json; charset=utf-8`. The declared
+  media type matches either way and JSON is UTF-8 by definition, so nothing is wrong; noted only so
+  a future assertion on the exact header value is written knowing the two differ.
+
+#### The eleven criteria, re-verified live against the new build
+
+| AC | Verdict | Re-verification |
+| --- | --- | --- |
+| AC1 | **Pass** | 201 with `id`, `key`, `name`, `createdAt` |
+| AC1b | **Pass** | 7 malformed keys → 400 `problem+json` with `errors.Key`; boundaries 2 and 10 accepted, 11 refused |
+| AC1c | **Pass** | Duplicate → 409 `problem+json`. **12 simultaneous creates of one key → 1×201, 11×409**; 15 simultaneous creates of *different* keys → 15×201 |
+| AC1d | **Pass** | `PUT`/`PATCH`/`DELETE /projects` → 405, `/projects/{id}` → 404 |
+| AC2 | **Pass** | member `POST` → 403 `application/problem+json` |
+| AC2b | **Pass** | both roles list → 200 |
+| AC2c | **Pass** | no token, absent token and malformed token → 401 `problem+json` on both operations |
+| AC3 | **Pass** | missing / empty / whitespace-only `name` and missing `key` → 400 `problem+json` naming the field; **plus the whole control-character class**, which is new coverage this criterion did not have |
+| AC4 | **Pass** | walked 5 pages of 7 across 26 rows: 26 ids, 26 distinct, `totalCount` constant at 26 on every page; 9 bound cases behave |
+| AC5 | **Pass** | `check-drift.sh` exit 0, tree clean beforehand |
+| AC6 | **Pass** | the failing input is fixed at the boundary, and the failure mode that produced it now answers with a **declared** response. This is the criterion the FAIL rested on |
+
+#### Definition of Done, at this stage
+
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | Implementation complete, nothing Out of Scope | **Pass** — the fix added no operation, no field beyond a constraint, no endpoint |
+| 2 | All acceptance criteria verified | **Pass** — all eleven, above |
+| 3 | Automated tests exist and pass | **Pass** — 87/87 and 13/13, 0 skipped, both new guards mutation-proved and attributable |
+| 4 | No known unrecorded defects | **Pass** — Finding 3 and N1–N3 are recorded here; the two deferrals are pointed at tickets whose scope genuinely accepts them, checked rather than assumed |
+| 5 | Code quality | **Pass** — 0 warnings, both `format` runs clean, no TODOs or debug scaffolding |
+| 6 | Documentation updated | **Pass** — README, ARCHITECTURE and the specification all describe what exists. Finding 3 is a code comment, not one of the three artefacts this item names |
+| 7 | Work Log complete | **Pass** |
+| 8 | State updated | pending `complete-ticket` |
+| — | ADR recorded | **Pass** — ADR-0008 Accepted, indexed, linked both ways |
+| — | Security | **Pass** — the input that reached the database now cannot; nothing from an exception reaches the caller, asserted in the smoke tier |
+| — | Migrations | **Pass** — unchanged by the fix; the constraint is a contract rule, not a column change, so no migration was needed and none was invented |
+| — | Observability | **Pass with N1** — the failure is fully logged; only the caller-visible correlation handle is missing |
+| — | Deployment | **Pass** — smoke 13/13 |
+
+**Deviations requiring a record: none.** Every item is met on its own terms. Finding 3 is a
+required fix before `complete-ticket`, not an accepted gap.
+
+#### The process note is not mine to settle, and I agree with where it goes
+
+The skill's `owner: none` against the validator's `OWNED_STATUSES` is a one-field contradiction and
+belongs in SPRINT-003's retro via `evolve-governance`, not in a per-incident choice. I followed the
+`a3f27d1` precedent last round and have changed nothing this round; this entry is appended and the
+frontmatter left as `in-acceptance` with `accepted_by: none`, per the `968b509` precedent, because
+`accepted_by` may only be set once the status is `done` (`validate.py:104`).
+
+#### What T-0005 and T-0006 inherit, updated
+
+The list from the FAIL stands, with two additions and one removal:
+
+- **Removed:** *"avoid copying the write path before Finding 1 has a destination."* It has one.
+- **Added:** the write path is now safe to copy, **but the constraint is not** — T-0005's Work Log
+  records why, and getting it wrong in either direction is a defect. Read that entry before
+  choosing `title` and `description` constraints.
+- **Added:** when a fix's justification is a general principle, check what else the principle
+  covers before writing it down. `500` was declared partly because "the API can return it", which
+  is also true of `415` and `405`. Recording the residue on T-0017 was the right call, but the
+  general lesson is that a broad rationale for a narrow change creates a debt that has to be
+  written down in the same breath — which, here, it was.
+
+- **Did:** Re-verified both findings against the running software; re-ran all eleven criteria live
+  on the new build including concurrency and a full page walk; probed the control-character class
+  and the deliberately-accepted characters beyond it; forced a real unhandled failure by stopping
+  PostgreSQL under a live stack and checked every declared response around it; tested both halves
+  of the disputed comment with a temporary probe rather than reading them; reproduced both
+  mutation claims; checked `UniqueName` and the collection assignment against the two rules this
+  project has been bitten by; ran all seven gates reading each exit code from its own tool.
+- **Decided:** **PASS.** Finding 1 and Finding 2 are closed. Finding 3 (a stale status claim in
+  `Program.cs:164`) must be fixed before `complete-ticket`; N1–N3 are non-blocking, with N2 worth
+  citing on T-0017.
+- **Remaining:** Finding 3, then `complete-ticket`. N1 is a two-line change whoever fixes Finding 3
+  may as well take; N2 belongs to T-0017.
+- **Open questions / blockers:** none. ADR-0004 and ADR-0008 both stand.
+- **Branch / PR:** verified on `main`; the fix is `af17722`, re-acceptance run at `6395ae9`.
+- **Test state:** `dotnet test` 87/87 exit 0 · `dotnet build --no-incremental` 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `smoke.sh` 13/13 exit 0 first attempt ·
+  `validate.py` exit 0. I changed no implementation, test or specification code; the temporary
+  probe was deleted and both mutants reverted, all three verified byte-identical against `HEAD`
+  with `git show HEAD:<path> | cmp -`, and `git status` is clean.
