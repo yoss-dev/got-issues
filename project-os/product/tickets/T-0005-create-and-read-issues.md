@@ -2,9 +2,9 @@
 id: T-0005
 title: Create and read issues within a project
 type: feature
-status: in-acceptance
+status: in-progress
 priority: high
-owner: none
+owner: claude-sm-9d4e
 implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0004]
@@ -1248,3 +1248,242 @@ is the same shape as the defect it came from.
   --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
   `check-drift.sh` exit 0 · `smoke.sh` 13/13, 5m43s exit 0 · `validate.py` exit 0 (21 tickets,
   8 ADRs). Tree clean after mutation; full suite re-run green on the restored tree.
+
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-8f52) — acceptance of `aea080c` on `main`: **FAIL**
+
+Independent acceptance of the merged change, run in the primary checkout on `main`. I did not
+implement this ticket and did not touch implementation code, tests, the specification or the
+acceptance criteria. Requirements were read before the Work Log, so the checks below are derived
+from the criteria rather than from the implementer's narrative.
+
+**Verdict: FAIL — one blocking finding.** All nine acceptance criteria hold, verified against the
+running software. The blocker is [DoD](../../governance/DEFINITION_OF_DONE.md) item 6: three
+statements in the repository's own documentation became false when this merged, one of which names
+this ticket as the thing that will bring what it has already brought. This is the same finding, at
+two of the same three locations, that [T-0004](T-0004-create-and-list-projects.md)'s acceptance
+made blocking (`9f89ddd`, Finding 2).
+
+---
+
+#### The gates, each exit code read from the tool itself and not from a pipeline
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **102/102** — 17 unit, 85 integration, 0 skipped — exit **0** |
+| `dotnet build --no-incremental` | **0 warnings, 0 errors** — exit **0** |
+| `dotnet format --verify-no-changes` | exit **0** |
+| `dotnet format apps/GotIssues.SmokeTests/GotIssues.SmokeTests.csproj --verify-no-changes` | exit **0** |
+| `./tools/check-drift.sh` | `OK — generated code matches spec/openapi.yaml` — exit **0** (AC6) |
+| `./tools/smoke.sh` | **13/13**, 6m16s — exit **0** |
+| `python3 tools/validate-project-os/validate.py` | exit **0** |
+
+Working tree clean before and after; `check-drift.sh` ran against a clean `libs/`, so its exit 0 is
+a drift result and not the refuse-to-run guard.
+
+**Attribution, per [TESTING.md](../../standards/TESTING.md).** Everything below was measured against
+my own stack: `docker compose -p qa8f52` on ephemeral ports 18452/18453, its own volumes, started
+after a `down -v` for stale state. Six unrelated Compose stacks were running on this machine
+throughout, which is exactly the condition the rule exists for. Before trusting any response I
+bound the port to my container: `qa8f52-api-1` `running healthy` → `/health` **200**; container
+stopped → `curl` **exit 7**, connection refused; container restarted. Torn down with
+`docker compose -p qa8f52 down -v --remove-orphans`, exit 0; no container, volume or network named
+`qa8f52` survives, and the smoke tier left nothing either.
+
+Tokens were genuine, obtained from the running identity host by client credentials — not synthetic.
+
+---
+
+#### The nine criteria
+
+| AC | Verdict | Evidence (live stack unless stated) |
+| --- | --- | --- |
+| **AC1** | **Pass** | `POST /projects/GOTI/issues` → **201** `application/json`, body `{"key":"GOTI-1","projectKey":"GOTI","number":1,…}`; a multi-line `description` round-tripped intact. Persisted: the row is in `issues` joined to `projects` by `ProjectId` |
+| **AC1b** | **Pass** | First issue in each of `GOTI`, `PROJ`, `RACE`, `LEGA`, `OLD2`, `RAWX`, `ABCDEFGHIJ` was **1**, including four projects that predate the migration (see F-closure 3) |
+| **AC1c** | **Pass** | Three issues in `GOTI`, then the first in `PROJ` → **`PROJ-1`**, not `GOTI-4`. Counters read from the database: `GOTI|3`, `PROJ|2` |
+| **AC1d** | **Pass** | **30 concurrent creates over real HTTP** (`xargs -P 30` against Kestrel, separate connections — a stronger arrangement than the suite's in-process 10): 30×201, numbers exactly `1..30`, 30 distinct, none skipped, none reused; database agrees (`count 30, distinct 30, min 1, max 30`), counter at 31. Separately, the guarantee is real in the schema: `IX_issues_ProjectId_Number` is `CREATE UNIQUE INDEX … ON public.issues USING btree ("ProjectId", "Number")`, read from `pg_indexes` on a migrated database |
+| **AC2** | **Pass** | `GET /issues/GOTI-1` → **200** `application/json`, all fields matching what creation returned |
+| **AC3** | **Pass** | `POST /projects/NOPE/issues` → **404** `application/problem+json`, `type: https://httpstatuses.io/404`. Nothing orphaned: `select count(*) from issues` unchanged, and no project row was created |
+| **AC4** | **Pass** | `GET /issues/GOTI-99` → **404** `application/problem+json` |
+| **AC5** | **Pass** | No token and a garbage token, on both operations → **401** `application/problem+json`; issue count unchanged afterwards |
+| **AC6** | **Pass** | `./tools/check-drift.sh` exit **0** |
+
+**AC1d's second half, verified by a real failure rather than a synthetic one.** With PostgreSQL
+stopped underneath the live API, a create returned 500; after restart the project's counter was
+still 2 and the next create got `GOTI-2`. The number was returned, not burned — which is the
+property the explicit transaction exists for and the reason AC1d can ask for "no number skipped".
+
+---
+
+#### The three things review left for QA, closed by measurement
+
+**1. The malformed-`issueKey` 400 path that `LastIndexOf('-')` depends on — closed.**
+Fifteen shapes, all **400 `application/problem+json`** naming `issueKey`, none a 500:
+`GOTI1`, `goti-1`, `GOTI-0`, `A-1`, `GOTI--1`, `GOTI-01`, `GOTI-1234567890`, `-`, `-1`, `GOTI-`,
+`GOTI-%20`, `GOTI-1a`, `ABCDEFGHIJK-1`, `GOTI-1000000000`, and — the one I added because .NET's
+`$` matches before a trailing newline and could have let one through — `GOTI-1%0A` and `GOTI%0A-1`,
+plus `projectKey` as `GOTI%0A`. All 400. The trailing-newline hole is closed by
+`RegularExpressionAttribute` requiring the match to span the whole value, not by the anchor, which
+is worth knowing because the pattern alone does not carry that guarantee. `GOTI-999999999` (the
+longest expressible number) reaches the handler and returns **404**, so the parse is exercised at
+its bound. Still true that no *test* covers any of this (N6).
+
+**2. Declared responses no test exercises — all produced, all correctly shaped.**
+- `getIssue`'s **403**, which has no test anywhere: seeded a third identity carrying
+  `role: superuser`, confirmed the claim in the token, and called `GET /issues/GOTI-1` →
+  **403 `application/problem+json`**, 162-byte RFC 9457 body. Real, and its body matches `Problem`.
+- **500 on both operations**: with PostgreSQL stopped under a live, already-authenticating API,
+  both `POST /projects/GOTI/issues` and `GET /issues/GOTI-1` returned
+  **500 `application/problem+json`** with a body, and nothing leaked — no `Password`, `Npgsql`,
+  `Host=`, exception text or stack trace.
+
+So every declared response on both new operations is now observed to be produced with its declared
+media type. The gap is coverage, not correctness, and it already has a home on T-0017.
+
+**3. Does anything else in this migration mistreat existing rows? No — and I checked rather than
+reasoned.** I reverted a live stack to the previous schema (`DROP TABLE issues`, `ALTER TABLE
+projects DROP COLUMN "NextIssueNumber"`, deleted the `AddIssues` row from
+`__EFMigrationsHistory`), seeded it the way a real deployment already looks — five projects and a
+`users` row — and ran **the real migrator** (`docker compose run --rm migrator`, exit 0,
+`Applying migration '20260831200135_AddIssues'`). What it did:
+
+| Check | Result |
+| --- | --- |
+| Existing project rows | All five got `NextIssueNumber = 1`. B1's fix confirmed by the method that found it |
+| Column default persists in the database | `NextIssueNumber integer NOT NULL DEFAULT 1`. A **raw SQL** insert bypassing EF also got 1, so the guarantee is the database's, not the CLR initialiser's — recorded as enforcement rather than proved by a mutant, per the amended standard |
+| Other `projects` columns | `Id`, `Key`, `Name`, `CreatedAt` identical in type, nullability and default before and after. Nothing else was touched |
+| `users` rows | Untouched |
+| New constraints | `PK_issues`, `IX_issues_ProjectId_Number` UNIQUE, `FK_issues_projects_ProjectId … ON DELETE RESTRICT` |
+| Behaviour afterwards | Each pre-existing project's first issue was `<KEY>-1` and read back **200**. `GOTI-0` would have been 400 |
+
+Nothing else in the migration mistreats existing rows.
+
+---
+
+#### F1 — Blocking. The repository documents issues as not existing, in the release that adds them (DoD item 6)
+
+Three statements are false on `main` as of `aea080c`:
+
+| Location | Text | Why it is false |
+| --- | --- | --- |
+| `README.md:7` | *"The first product resource — **projects** — is real and role-guarded (T-0004); **issues and comments come next.** See* Not here yet *for what does not exist."* | Issues do not "come next"; they are here, specified and role-guarded, and I created and read them |
+| `README.md:113`, under **### Not here yet** | *"**Issues and comments.** Projects exist (T-0004); **T-0005** and T-0008 bring the rest."* | T-0005 is this ticket. The README lists this ticket's deliverable under a heading that says it does not exist |
+| `project-os/architecture/ARCHITECTURE.md:5` | *"What remains intended rather than built: **issues** (T-0005) and everything that hangs off them."* | Same |
+
+[DoD](../../governance/DEFINITION_OF_DONE.md) item 6 names *"README/setup instructions affected by
+the change"*, and `README.md:113` is affected by name.
+[DOCUMENTATION.md](../../standards/DOCUMENTATION.md) is more specific: *"A ticket that changes any
+of those steps fixes the README in the same change."*
+
+This is not a new judgement call. T-0004's acceptance made exactly this finding blocking at
+`README.md:7`, `README.md:113` and `ARCHITECTURE.md:5` — the same three lines — and scored DoD item
+6 **Fail** for it (`9f89ddd`). Applying it to that ticket and not this one would make the standard
+depend on who is reading. The shape is the one that acceptor named: a reader arriving today is told
+the product has no issues, by the same document that tells them how to run it.
+
+**Not fixed here — acceptance does not edit the change under test.** The remedy is a few sentences.
+
+#### F2 — Non-blocking, and a *specification* inconsistency rather than an implementation defect
+
+`Issue.number` is declared `type: integer, minimum: 1` with **no maximum**. `Issue.key` is declared
+`^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$` — at most **nine** digits. Above 999,999,999 the two
+declarations cannot both hold, and the API follows both faithfully:
+
+```text
+counter 999999999  → 201, key "BIGN-999999999"   → GET 200
+counter 1000000000 → 201, key "BIGN-1000000000"  → GET 400  (violates the declared key pattern)
+counter 2147483647 → 500 application/problem+json, counter unchanged at 2147483647
+```
+
+The middle row is B1's class exactly — a 201 whose body violates the contract that produced it, and
+an issue that exists and cannot be read through the only declared read path. It survives in a second
+instance nobody looked for, because B1 was found and fixed at the *bottom* of the range.
+
+I am classifying this as **requirement ambiguity, not an implementation defect**, per the skill's
+step 5: the code implements both declarations correctly and they disagree only at a bound the ticket
+never stated. It is a Product Owner decision — declare `maximum: 999999999` on `number`, widen the
+key pattern, or refuse allocation past the expressible range and say so. **I have not rewritten
+anything.** Reaching it needs 10^9 issues in one project, so it is not why this fails; the top of the
+range is also handled loudly (500 with a problem document, counter rolled back) rather than
+silently, which is the right failure.
+
+#### F3 — Non-blocking. A record on T-0017 is already stale against the merged tree
+
+The table added by `d1684a8` says `500` on **either** operation is *"No — reached only under
+mutation, and in the smoke tier by stopping the database."* On the merged tree
+`AllocationRollbackTests.A_failed_insert_returns_the_number_instead_of_burning_it` asserts
+`HttpStatusCode.InternalServerError` **and** `application/problem+json` for `createIssue`, in the
+integration tier, with no mutation. The row was written before that test landed in the same change.
+`getIssue`'s 500 and `getIssue`'s 403 remain genuinely unexercised, so the gap is real — it is one
+row of three that is now wrong, and T-0017's refinement will read it.
+
+---
+
+#### Mutation, under the standard as amended today (`2006cf2`)
+
+**I produced no mutants, deliberately, and this is the reasoning rather than an omission.**
+
+- **The allocator (AC1d).** The implementer's mutant — `MAX(number)+1` killing only the concurrent
+  test — is on record against code that has not changed shape since. *"Do not re-mutate an unchanged
+  claim."* I had no reason to challenge it, and I obtained stronger evidence for the property
+  itself: 30-way real-HTTP concurrency, and the counter surviving a genuine dependency failure.
+- **The migration backfill.** The property is enforced by a **database column default**, which I
+  read out of `information_schema` and confirmed applies to a raw insert that never touches EF.
+  The standard says to *record the enforcement* instead, because it is stronger than a test.
+- **The unique index and the transaction.** Both already have honest mutants from re-review, and
+  I saw the index's effect directly: `IX_issues_ProjectId_Number` is `UNIQUE` in the live schema.
+
+#### Definition of Done at this stage
+
+| Item | Verdict |
+| --- | --- |
+| 1 Implementation complete | **Pass** — every In Scope item present. Scope fidelity clean: the spec adds exactly `POST /projects/{projectKey}/issues` and `GET /issues/{issueKey}`; no lifecycle fields (T-0006), no listing or filtering (T-0007), no comments (T-0008), no edit or delete |
+| 2 All acceptance criteria verified | **Pass** — nine of nine, independently, above |
+| 3 Automated tests exist and pass | **Pass** — 102/102, 0 skipped; every AC maps to a named test; smoke 13/13 |
+| 4 No known unrecorded defects | **Pass with F2 recorded** — F2 needs a PO disposition before Done; F3 is a correction to another ticket's record |
+| 5 Code quality | **Pass** — reviewed and approved by `claude-rev-5c14`; build warning-clean; both `format` runs exit 0; no TODO, FIXME, `Console.WriteLine` or debug scaffolding in the new files |
+| 6 Documentation updated | **FAIL — F1** |
+| 7 Work Log complete | **Pass** — a different agent could resume from repository state alone |
+| 8 State updated | Handled by this entry and `complete-ticket` |
+| — ADR recorded | **Pass** — ADR-0004 followed (constraints declared in the spec, not in the controller); ADR-0008's policy attributes present; ADR-0009 accepted separately and consistent with the controller keeping the DbContext |
+| — Security | **Pass** — all new external input validated in the contract; no secrets added. Free text is never logged: I created an issue whose title and description carried marker strings and personal-data-shaped text, then grepped the API and migrator container logs — **0 occurrences of either**, satisfying the ticket's own Example and SECURITY.md. The 500 body leaks nothing |
+| — Migrations | **Pass** — scripted, reversible (`Down` drops the table and the column), applied by the explicit migrator service, and now proved against a **populated** database rather than only an empty one |
+| — Observability | **Pass** — unchanged by this ticket |
+| — Deployment | **Pass** — smoke 13/13 through the real Compose stack |
+
+**Does a deviation need recording? For F1, no — because none is available.** A DoD deviation is a
+recorded PO or human decision to accept a gap; there is no gap worth accepting when the remedy is
+three sentences of documentation inside this ticket's scope. **For F2, yes** — either a fix or a
+PO-accepted deferral to a ticket whose scope actually takes it on must exist before item 4 can pass
+at `complete-ticket`. There is no such destination today: T-0021 is about migrations against
+populated databases and its Out of Scope disowns fixing specific migrations; T-0017 validates
+responses the suite produces and would never produce this one.
+
+---
+
+- **Did:** Independent acceptance of `aea080c` on `main`. Ran all seven gates myself and read each
+  exit code from the tool. Drove a private Compose stack (`-p qa8f52`, ephemeral ports) with real
+  tokens: verified all nine criteria, 30-way HTTP concurrency, fifteen malformed-key shapes, sixteen
+  body-boundary cases, `getIssue`'s untested 403, both operations' 500 with the database removed
+  underneath, log leakage, and the real migrator against a database already holding rows.
+- **Decided:** **FAIL** on F1 (DoD item 6). Status back to `in-progress`, owner restored to the
+  implementer (see the state-model conflict below), sprint and backlog tables updated. F2 recorded as a specification ambiguity for the PO; F3 recorded as a correction
+  another ticket's refinement should see.
+- **Remaining:** fix the three documentation statements; obtain a PO disposition on F2; resubmit.
+  The nine criteria need no rework — none of them failed.
+- **Open questions / blockers:** F2 is a Product Owner decision (WoW §7): cap `number` in the
+  contract, widen the key pattern, or refuse allocation beyond the expressible range.
+
+**State-model conflict, recorded per WoW §3.** `acceptance-test` says a failed acceptance sets
+`owner: none`; `validate.py` rejects `status: in-progress` without an owner. The validator is the
+tool the trunk gate runs, and the repository has already resolved this once — `a3f27d1` restored the
+owner for the same reason, and `9f89ddd` (T-0004's acceptance FAIL) followed it. I have done the
+same: `owner: claude-sm-9d4e`, the implementer, so the ticket is picked back up by the session that
+built it rather than re-claimed. Noting it rather than silently choosing, and noting that the skill
+text and the validator still disagree — a candidate for `evolve-governance`, not for this ticket.
+
+- **Branch / PR:** n/a — accepted against `main` @ `aea080c` in the primary checkout.
+- **Test state, measured by me on `main`:** `dotnet test` **102/102** exit 0 · `dotnet build
+  --no-incremental` **0 warnings** exit 0 · `dotnet format` exit 0 (solution and SmokeTests) ·
+  `check-drift.sh` exit 0 · `smoke.sh` **13/13** exit 0 · `validate.py` exit 0. Nothing left running
+  or stored: `docker compose -p qa8f52 down -v` exit 0, no `qa8f52` container, volume or network.

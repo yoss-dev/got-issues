@@ -30,7 +30,7 @@ one above it, so the order in this table is the order of work, not a ranking.
 | Ticket | Title | Status | Owner | Blocked by |
 | --- | --- | --- | --- | --- |
 | [T-0004](../product/tickets/T-0004-create-and-list-projects.md) | Create and list projects | done | none | — |
-| [T-0005](../product/tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | in-acceptance | none | — (T-0004 done) |
+| [T-0005](../product/tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | in-progress | claude-sm-9d4e | — (T-0004 done) |
 | [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | committed | none | T-0005 (in this sprint) |
 
 ## Blockers & Escalations
