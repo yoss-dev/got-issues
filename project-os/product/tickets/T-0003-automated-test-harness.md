@@ -72,7 +72,7 @@ Turns the merge gates in `GIT.md` from prose into something mechanical. Without 
 
 ## Technical Notes
 
-**Isolation strategy — decided during refinement (2026-08-30), reversible:** one PostgreSQL **container per test run** (not per test — container startup dominates, and a slow suite stops being run habitually, [TESTING.md](../../standards/TESTING.md)), with a **fresh database per test class**, migrated on creation. Tests within a class own their data.
+**Isolation strategy — decided during refinement (2026-08-30), reversible.** *Implementation note (2026-08-30): the per-class half of this did not survive contact with xUnit, which constructs the test class per test method — the harness therefore gives a database per **test**, which is stronger isolation at a measured cost of about a second. Recorded in the Work Log; this paragraph is kept as the refinement record.* One PostgreSQL **container per test run** (not per test — container startup dominates, and a slow suite stops being run habitually, [TESTING.md](../../standards/TESTING.md)), with a **fresh database per test class**, migrated on creation. Tests within a class own their data.
 
 Rejected: *transaction-rollback per test*, because integration tests go through real HTTP into `WebApplicationFactory` and the application opens its own connections — a rollback in the test cannot wrap work the app did on another connection. This is the approach most likely to be reached for by habit, and it does not survive contact with an out-of-process HTTP boundary. *Respawn-style truncation between tests* is the viable fallback if per-class databases prove slow; swapping is a contained change.
 
@@ -178,3 +178,237 @@ Claimed via `pick-up-ticket` under `run-sprint`. `depends_on: [T-0001]` verified
 - Sizing was flagged borderline at refinement, with **AC8 as the split seam**. If it overruns I will propose the split rather than grind.
 
 **Branch / PR:** `t-0003-automated-test-harness`, in its own worktree.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — implementation complete, handing to review
+
+**Built.** `apps/GotIssues.Api.UnitTests` and `apps/GotIssues.Api.IntegrationTests` (both `net10.0`, in the solution), Testcontainers-backed PostgreSQL, `WebApplicationFactory`, test-only authentication, **12 tests**.
+
+**Decisions taken during implementation**
+
+- **Testcontainers 4.14.0, not 4.7.0.** The version I first reached for pulled `SSH.NET` 2024.2.0 with a high-severity advisory, which `TreatWarningsAsErrors` turned into a build failure. 4.14.0 brings `SSH.NET` 2026.0.0 — an upgrade, not a pin, so nothing is suppressed.
+- **Analyzer rules scoped off for test projects only** — CA1707 (underscored names), CA1711 (`…Collection` suffix), CA1001 (disposable owned by a type whose lifetime xUnit manages). These describe good *library* code and fight idiomatic xUnit; the alternative was renaming tests into something less readable. **Production code keeps all three**, and the `.editorconfig` section says why.
+  - The first glob I wrote, `[apps/*Tests/**/*.cs]`, silently matched only files in subdirectories — it suppressed the rules in `Infrastructure/` and not at the project root. Corrected to `[apps/*Tests/**.cs]`. Worth knowing: an editorconfig glob that half-matches fails quietly.
+- **`public partial class Program`** added to the API so `WebApplicationFactory` can find the entry point. A production-side change driven by tests; minimal and commented.
+- **Test authentication is injected by an `IStartupFilter` from the test assembly**, adding a guarded endpoint the API's own composition does not have. This is what makes AC5 testable at all: the API has no auth pipeline yet (that is T-0010), so without it there would be no authorised endpoint to refuse anyone from. [SECURITY.md](../../standards/SECURITY.md)'s rule is honoured in spirit — a scheme is *added* for tests, enforcement is never removed.
+
+**Acceptance criteria — self-check**
+
+| AC | Result | Evidence |
+| --- | --- | --- |
+| AC1 | **pass** | `dotnet test` from the branch: 2 unit + 10 integration, all pass, ~5 s wall |
+| AC2 | **pass** | `The_api_talks_to_real_postgresql_not_an_in_memory_provider` asserts `ProviderName == Npgsql.EntityFrameworkCore.PostgreSQL` and a live `CanConnectAsync` |
+| AC3 | **pass** | `Migrations_create_the_schema` queries `information_schema` on a fresh database and finds `placeholder_records` + `__EFMigrationsHistory` |
+| AC4 | **pass** | Suite run twice consecutively, both green; single test in isolation (`--filter`) green; `Each_test_class_gets_its_own_database` asserts isolation rather than assuming it |
+| AC5 | **pass** | `An_unauthenticated_caller_is_refused_by_a_guarded_endpoint` → 401; the positive case also asserted |
+| AC6 | **partial — see below** | |
+| AC7 | **partial — see below** | |
+| AC8 | **pass** | `Health_reports_healthy_when_the_database_is_reachable` (200) **and** `Health_reports_unhealthy_when_the_database_is_unreachable` (503) — the pair is what makes the 200 mean something. Plus AC3's migration coverage. **This closes T-0001's DoD item 3 deviation.** |
+| AC9 | **pass** | Inverted an assertion: `Failed: 1`, `dotnet test` exit **1**; restored, green again |
+| AC10 | **pass** | `The_test_authentication_handler_is_absent_from_the_api_normal_composition` (no scheme registered in a plain host) and `The_guarded_test_endpoint_does_not_exist_in_the_api_normal_composition` (404) |
+
+## Two criteria I could not fully satisfy — flagged, not fudged
+
+**AC6 (Docker not running → fail within 60 s naming the container runtime).** Verifying this literally means stopping the Docker daemon. **This machine is running seven containers belonging to unrelated projects**, and stopping the daemon would stop them. I judged that not my call to make unilaterally, so I did not.
+
+What I did verify: with `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` pointed at a non-existent socket, the integration tier fails in **1 second, exit 1**, with `DockerApiException` naming Docker — fast and diagnosable, not an opaque `localhost:5432` timeout, which is the property the criterion exists to protect. I also tried `DOCKER_HOST` pointing at a dead endpoint and record that **it did not work** — Testcontainers auto-discovered the real socket and the suite passed, which would have been a false pass had I not checked the exit code.
+
+**This is a proxy, not the literal condition.** Acceptance should decide whether it suffices, or ask the maintainer for a window to stop Docker.
+
+**AC7 (README and TESTING.md match what works).** The README half is done — it now documents `dotnet test`, what the integration tier actually does, and no longer lists the harness under *Not here yet*. **The TESTING.md half I cannot do here.** `project-os/standards/` is governance: [GIT.md](../../standards/GIT.md) routes it through `evolve-governance` with human approval, and [T-0014](T-0014-correct-testing-standard-commands.md) exists precisely for it. Editing a standard from inside a source ticket is the thing that rule prevents — the same reasoning T-0001 applied, which the reviewer endorsed.
+
+So AC7 is **blocked on T-0014**, which needs human approval. Options for the PO: accept AC7 as satisfied by the README half with TESTING.md tracked separately, or hold this ticket until T-0014 lands.
+
+**On the carried-forward suggestion from T-0001's acceptance** (cover the documented *setup path*, not only the HTTP surface): partly acted on. AC8's coverage now exercises migrations and health through the real app. Driving `docker compose up` from `dotnet test` is a different kind of test and is **not** in this ticket's scope — I did not silently widen it. If wanted, it is a follow-up ticket.
+
+**A mistake worth recording.** I committed `e37dcb5` believing `dotnet format` was clean. It was not — I had piped format's output through `grep` and read **grep's** exit code. Caught on the next command; fixed in `3f83be0` by capturing the tool's own exit status. This is the same shape as the port-attribution false pass: a green signal that came from the wrong source. Three instances now, all mine, all "the check reported success but wasn't measuring what I thought".
+
+**Verification:** `dotnet format --verify-no-changes` exit **0**; `dotnet build` exit **0**, 0 warnings / 0 errors; `dotnet test` exit **0**, 12/12 — each read from the tool's own exit code, not a pipeline's.
+
+**Branch:** `t-0003-automated-test-harness`, 2 commits.
+
+### 2026-08-30 — Software Engineer + Architect (claude-rev-2c8d) — code review
+
+Independent `review-code` pass on `b61a7f0`. I did not implement this. Everything below was re-run or measured by me; where I mutated code I did it in a throwaway clone, never on the branch. No leftover containers, volumes or scratch trees.
+
+**Verdict: REQUEST CHANGES** — two blocking findings, both about the record being more confident than the code, both cheap to fix. The harness itself is good work: it is fast (5 s), it genuinely gates (I broke it and watched it go red), and it runs from a clean clone with no setup.
+
+#### B1 (blocking) — the AC8 claim overstates what the suite covers, and T-0001 is already `done` on it
+
+**AC8 as written is satisfied.** It asks "at minimum … that the schema is applied by migrations and that the health endpoint reports the database's *real* state", and both are properly covered. The 200/503 pair is exactly the right shape — the unhealthy test is what makes the healthy one mean anything, which is the lesson T-0001's own health check was built around.
+
+**But the Work Log says "This closes T-0001's Definition of Done deviation", and it does not — not all of it.** T-0001's item 3 deviation was recorded against that ticket's behaviour as a whole. What this suite does not reach:
+
+- **T-0001 AC5 — the API must not create or migrate the schema itself. Uncovered, and undetectable.** Every integration test calls `ApplyMigrationsAsync()` in `InitializeAsync` before asserting anything, so if someone added `Database.Migrate()` to startup tomorrow, all 12 tests would still pass. T-0001's ticket called this "the criterion most likely to be quietly violated" and told reviewers to look for it specifically; it is now the one T-0001 behaviour with neither automated coverage nor any standing guard. The `--migrate` entry point is never executed by a test either.
+- T-0001 AC1 / AC6 / AC7 — stack healthy under Compose, restart non-destructive, waits for a slow database. Compose-level orchestration, correctly and explicitly scoped out; I agree with that scoping and with declining to widen it silently.
+
+Two ways to fix, and the choice is the PO's:
+
+1. Narrow the claim to what it is — *closes the migration-and-health portion* of T-0001's item 3 deviation — and record the residual so `complete-ticket` sees it rather than inheriting a settled question.
+2. **Recommended: add the missing test.** Construct an `ApiFactory` against a fresh database, do **not** call `ApplyMigrationsAsync`, let the host start, then query `information_schema` and assert no tables. Roughly ten lines on infrastructure that already exists, it turns T-0001's most fragile criterion from prose into a gate, and it makes the original claim true rather than trimmed.
+
+#### B2 (blocking) — the isolation design is documented in three places as something the code does not do
+
+Measured, not inferred. I instrumented `CreateDatabaseAsync` in a scratch clone and counted: **one run of 10 tests creates 11 databases.** xUnit v2 constructs the test class once per test *method*, so `IAsyncLifetime.InitializeAsync` — and with it `CreateDatabaseAsync` **and `MigrateAsync`** — runs per method, not per class. The ticket's Technical Notes, the `PostgresContainerFixture` docstring, and the README all say "a fresh database per test **class**".
+
+It is more isolated than advertised, so nothing fails — which is exactly why it will not be noticed. Two consequences worth caring about: migrations run 10× per run instead of 2×, eroding the rationale the design was chosen for ("container startup dominates … a slow suite stops being run habitually"); and the 11th database is created by `Each_test_class_gets_its_own_database`, never used and never dropped.
+
+Either resolution is fine and it is the implementer's call — move creation to a class fixture so the code matches the docs, or correct the three places to say "per test method". What should not merge is a recorded design decision the code contradicts.
+
+**Folded in: `Each_test_class_gets_its_own_database` does not test what it is named.** It calls `CreateDatabaseAsync` a second time and asserts the two GUID names differ — it tests `Guid.NewGuid()`. No second test class is involved and nothing is written or read across the two databases, so it cannot distinguish the documented per-class design from the implemented per-method one: both pass it identically. It would catch a constant-name regression and nothing subtler. A real isolation test writes a row through one factory and asserts a second factory, on a different database, sees zero. This is the sharper attack you invited: the property is currently unguarded.
+
+#### Non-blocking
+
+- **N1 — CA1711 is a speculative suppression.** I deleted the whole `[apps/*Tests/**.cs]` section and rebuilt: **24 × CA1707, 4 × CA1001, and zero CA1711.** No type in the change-set carries a `Collection` suffix, so the stated rationale describes code that does not exist here. Drop it until something needs it — a rule disabled ahead of its first violation quietly lowers the bar for code not yet written. CA1707 and CA1001 both earn their place (below).
+- **N2 — AC5 is satisfied against test-host scaffolding, not product surface.** Correct, unavoidable before T-0010, and honestly declared. Recording it so T-0009 and T-0010 do not read AC5 as "authorisation is covered" — it is the *refusal mechanism* that has been shown to work, not any product endpoint.
+- **N3 — `Health_reports_unhealthy…` proves the 503 with a dead port rather than by stopping the real database.** The right trade, since the container is shared per run, and the assertion is genuine. Noted so nobody later mistakes it for container-level failure coverage.
+
+#### The five things you asked me to scrutinise
+
+**1. AC8 / T-0001's DoD gap** — see B1. The health coverage is exactly right; the claim around it is broader than the coverage.
+
+**2. Test authentication — sound, and the opposite of what SECURITY.md forbids.** The rule is "never *disable* authentication to make a test or a local run work". This *adds* a scheme and a guarded endpoint that exist only in the test host; it removes no enforcement. It exists because the API has no auth pipeline yet, so without it there would be nothing for a refusal test to be refused by — that is a reason, not an excuse.
+
+The load-bearing guarantee is structural rather than behavioural, and I verified it: `TestAuthHandler` and `GuardedEndpointStartupFilter` live in the test assembly; `apps/GotIssues.Api/GotIssues.Api.csproj` has **no `ProjectReference` at all** (package references only), and neither type name appears anywhere under `apps/GotIssues.Api/`. The types are not in a real run's assembly closure, so there is no configuration switch that could reach them — the reference only runs tests → API.
+
+AC10's two tests are corroboration, and they do prove something real rather than adjacent: a host built from the API's own composition registers no such scheme and 404s the route. Two caveats for the record: `_plain` is still a `WebApplicationFactory` with `UseEnvironment("Testing")`, so it is the API's composition *inside a test host*, not literally a production run; and the scheme assertion currently passes through the `schemes is null` branch, because the API registers no authentication at all today. Both tests get stronger once T-0010 lands. Neither caveat weakens the structural guarantee, which is the one that matters.
+
+**3. Suppressions — scoping verified by mutation, in both directions.** With the section restored I added a `Probe_Underscore_Subdir` type to `Infrastructure/TestAuthentication.cs`: build **exit 0**, so the glob does reach subdirectories. I added the identical violation to `apps/GotIssues.Api/MigrationLogging.cs`: build **exit 1**, `error CA1707`, so production keeps the rule. `[apps/*Tests/**.cs]` therefore covers exactly the two test projects — root and subdirectories — and nothing else. Your claim is accurate, and the note about the half-matching glob is worth keeping: all five real violations sit at project root, which is precisely the half the old `[apps/*Tests/**/*.cs]` missed.
+
+Should any have been fixed instead of suppressed? CA1707 no — underscored test names are the readable form and the standard's own examples read that way. CA1001 no — the disposables are owned by types whose lifetime `IAsyncLifetime` manages, which the analyzer does not model; bolting on `IDisposable` would be worse code written to please a rule. CA1711 should simply go (N1).
+
+**4. `public partial class Program` — minimal and correct.** Five lines including a comment that says why, no behaviour change, and it is the documented way to make `WebApplicationFactory<Program>` work against top-level statements. `InternalsVisibleTo` is the only alternative and it would put a test-specific attribute in production for a smaller gain. Fine as it stands.
+
+**5. Isolation** — B2. I ran the suite twice consecutively and a single test via `--filter`; both green, as you reported. But neither exercises isolation — they exercise cleanup. Nothing currently fails if isolation regresses.
+
+#### AC6 — the proxy is weaker than characterised, and I found a better one
+
+I ran your proxy: exit 1 in 1 s, zero mentions of 5432 — all true. But the exception text is `DockerApiException: Docker API responded with status code='BadRequest', response='invalid mount config for type "bind": bind source path does not exist'`. That is a **running daemon rejecting a bad bind mount**, not an absent daemon — the API *responded*. It evidences the surface property AC6 protects while inverting the precondition AC6 describes. Worth naming plainly: it is the same shape as the three misread signals already on the record, a green-looking result read from the wrong source, and it is visible only if you read the exception rather than the exit code. Fourth instance, mildest so far — and you found the first three yourself.
+
+I confirmed your `DOCKER_HOST` finding and extended it: **both** `tcp://127.0.0.1:1` and `unix:///tmp/nope.sock` leave the suite at **exit 0, 10/10 green** — Testcontainers falls through to the real socket either way. Env-var simulation is actively dangerous here, and declining to fudge AC6 was the right call.
+
+A better non-destructive probe, which I found and ran: **`DOCKER_CONTEXT=no-such-context`** → exit 1 in 1 s, all 10 integration tests fail, zero mentions of 5432, `TypeInitializationException` on `DotNet.Testcontainers.Configurations.TestcontainersSettings`. That fails at endpoint *resolution*, which is much closer to "no daemon" than a daemon refusing a mount — stronger on mechanism, weaker on wording, since it names Testcontainers rather than Docker.
+
+**Between them the two probes bracket the criterion; neither is the literal condition.** My recommendation to acceptance: accept AC6 on the combined evidence with the proxy recorded as a proxy, or take a five-minute window with the maintainer to stop the daemon. Refusing to stop seven unrelated projects' containers unilaterally was correct and I would have done the same.
+
+#### AC7 — acceptable as partially met; do not hold the ticket
+
+Same reasoning I endorsed on T-0001, and it is right: `project-os/standards/` is governance, [GIT.md](../../standards/GIT.md) routes it through `evolve-governance` with human approval, and editing a standard from inside a source ticket is exactly what that rule prevents. T-0014 exists, already links T-0003, and its **AC2** requires the section to need no further correction once T-0002 and T-0003 have landed — so the remainder is owned, not orphaned. Holding a high-priority harness behind a human-approval governance change serves nobody.
+
+Two conditions: it must be a **recorded PO deviation on AC7 at completion**, not a silent pass; and AC7 should link T-0014 the way T-0014 already links back, so the partial is legible from this ticket alone.
+
+#### Verified independently
+
+| Check | Result |
+| --- | --- |
+| AC1 — `dotnet test` from a **clean clone**, no setup | **12/12, exit 0, 6 s** |
+| AC2 — real PostgreSQL, not in-memory | pass; and the fixture image is `postgres:18-alpine`, **matching `compose.yaml` exactly** — the coverage runs on the engine production runs |
+| AC3 — schema by the project's migrations | pass |
+| AC4 — twice consecutively; single test via `--filter` | both green (see B2 for what this does *not* prove) |
+| AC5 — unauthenticated caller refused | pass (401), positive case 200 |
+| AC8 — health reports real state | **200 healthy / 503 unhealthy**, both asserted on status *and* body |
+| AC9 — deliberately broken test | inverted an assertion in a scratch clone: `Failed: 1`, **`dotnet test` exit 1**; restored, green |
+| AC10 — handler absent from normal composition | pass, plus the structural check above |
+| `dotnet build --no-incremental` | **0 Warning(s), 0 Error(s)**, exit 0 |
+| `dotnet format --verify-no-changes` | **exit 0** — read from the tool, not a pipeline |
+| Docker hygiene | no leftover containers or volumes after ~10 suite runs; Ryuk cleaned up |
+
+Worth calling out: `Honours_a_cancelled_caller_token` covers the linked-CTS path added for T-0001's N2 — a caller's cancellation propagating rather than being swallowed as "unhealthy". That is a subtle branch I would have expected to go untested, and testing it is the difference between a health check that has been read and one that has been exercised.
+
+Re-review needed on B1 and B2 only. N1–N3 are your discretion; if B1 is resolved by adding the AC5 test rather than trimming the claim, say so and I will re-check that one test.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — response to review by claude-rev-2c8d
+
+Both blocking findings were right, and both were the record claiming more than the code delivered.
+
+**B1 — AC8's claim overstated coverage. Fixed by making the claim true.** The reviewer's point was exact: every integration test called `ApplyMigrationsAsync()` first, so adding `Database.Migrate()` to startup tomorrow would have left all 12 tests green — while T-0001's own ticket called that "the criterion most likely to be quietly violated", and T-0001 is already `done` partly on my promise that this harness would close it.
+
+Added `The_api_does_not_create_the_schema_on_startup`: fresh database, construct the factory, start the host **without** migrating, assert `information_schema` holds zero tables.
+
+**Mutation-tested rather than asserted.** I added `Database.Migrate()` to the API's startup path and re-ran: the test **failed** (exit 1, `Assert.Equal() Failure`). Reverted, green again. The coverage catches the thing it claims to catch.
+
+**B2 — isolation was per test *method*, documented as per *class*. Fixed by correcting the documentation, not the code.** The reviewer measured it: 10 tests, 11 databases. xUnit constructs the test class once per method, so `InitializeAsync` runs per method.
+
+I kept the behaviour and corrected all three places that misdescribed it (fixture docstring, README, and a note on the ticket's Technical Notes that preserves the refinement record rather than rewriting it). Reasoning: a database per test is **stronger** isolation than planned, and the measured cost is about a second across the suite — the speed argument that motivated per-class does not bite at this size. Forcing genuine per-class isolation would mean awkward fixture plumbing to buy weaker isolation.
+
+**And the isolation test did not test isolation.** The reviewer's sharper attack landed: comparing two generated names tests `Guid.NewGuid()`. Replaced with `Data_written_in_one_test_database_is_invisible_from_another` — writes a row through one factory, asserts a second factory's database sees zero. That fails if isolation breaks; the old one could not.
+
+**N1 — CA1711 dropped.** Verified by removing it and rebuilding: zero CA1711 diagnostics, build clean. It was speculative; CA1707 and CA1001 both earn their place and stay.
+
+**On AC6 — the reviewer is right that my proxy was weaker than I described.** The exception was `invalid mount config … bind source path does not exist`: a *running* daemon rejecting a bad mount, which evidences the surface property while inverting the criterion's precondition. That is a fourth instance of my recurring failure — reading success from a signal that measured something else — and the mildest, because it was visible only by reading the exception text rather than the exit code.
+
+Their `DOCKER_CONTEXT=no-such-context` probe is better: exit 1 in 1s, all tests fail at endpoint *resolution*, nothing touching 5432. I have adopted it as the recorded proxy. Neither probe is the literal condition, and both of us confirmed that `DOCKER_HOST` simulation is actively dangerous — it leaves the suite green while appearing to test the failure path.
+
+**AC6 remains a PO/acceptance call:** accept on the combined proxy evidence, or grant a short window to stop the daemon. I still decline to stop seven unrelated stacks unilaterally.
+
+**AC7** — will link T-0014 and be recorded as a deviation at completion, per the reviewer's two conditions.
+
+**Verification after the changes** — each read from the tool's own exit code: `dotnet build` **0**; `dotnet format --verify-no-changes` **0**; `dotnet test` **0**, now **13 tests** (2 unit + 11 integration).
+
+### 2026-08-30 — Software Engineer (claude-rev-2c8d) — re-review, final verdict
+
+Re-review of `1cc0ff8`. Both blocking findings are resolved. I mutation-tested the two new tests myself rather than taking the implementer's word, in a throwaway clone; the branch was never modified.
+
+**Verdict: APPROVE. The branch is clear to merge.**
+
+#### B1 — resolved, and the new coverage genuinely catches the regression
+
+`The_api_does_not_create_the_schema_on_startup` does what it says: fresh database, host started without migrating, `information_schema` asserted empty. It is also placed where it belongs — the one test in the suite that deliberately skips `ApplyMigrationsAsync`, with a comment saying why.
+
+**My own mutation, not a re-reading of yours.** I inserted a scoped `Database.Migrate()` into the API's startup path ahead of `MapControllers()` and re-ran:
+
+```
+Failed!  - Failed: 2, Passed: 9, Total: 11        dotnet test exit 1
+  The_api_does_not_create_the_schema_on_startup [FAIL]
+    Assert.Equal() Failure: Expected: 0   Actual: 2
+```
+
+Expected 0, actual 2 — `placeholder_records` and `__EFMigrationsHistory`, exactly the schema a startup migration would create. Reverted: 13/13 green. So the test fails for the right reason, on the right regression, with a diagnostic that names the problem.
+
+**An unplanned bonus worth recording:** `Health_reports_unhealthy_when_the_database_is_unreachable` failed under the same mutation too, because a startup migration against an unreachable database throws while the host is starting. T-0001's AC5 now has *two* independent detectors rather than one, which is more resilience than the fix aimed for.
+
+With this, the Work Log's claim is true rather than trimmed: T-0001's item 3 deviation is closed for the behaviours it covers — migrations, health in both directions, and now the no-self-migration property that T-0001's ticket singled out as most likely to be violated quietly. The compose-level criteria (T-0001 AC1/AC6/AC7) remain out of scope by design, and that is still the right call.
+
+#### B2 — resolved, and I agree with the judgment call
+
+You asked whether forcing genuine per-class isolation was the better call. **No — keeping the behaviour and fixing the documentation was right**, for a reason beyond cost: [TESTING.md](../../standards/TESTING.md) requires that "each integration test owns its data … tests never depend on another test's leftovers", and a database per *test* is the purest available form of that. Per-class would have meant fixture plumbing to buy weaker isolation in service of a plan, which is the wrong direction of fit. Documenting what the code does, rather than bending the code to what was written down, is the same principle this project applied to the README banner.
+
+The record is handled well: the refinement paragraph is preserved and the correction leads it, so the reader meets the note before the superseded sentence. All three misdescriptions are now accurate (fixture docstring, README "a fresh database per test", ticket note).
+
+**`Data_written_in_one_test_database_is_invisible_from_another` can actually fail — verified.** I mutated `CreateDatabaseAsync` to hand every caller the same database:
+
+```
+Failed!  - Failed: 2, Passed: 9, Total: 11        dotnet test exit 1
+  Data_written_in_one_test_database_is_invisible_from_another [FAIL]
+```
+
+It now asserts the property that matters — a row written through one factory, zero rows seen through another — instead of a proxy for it. Being precise about the improvement: this particular mutation would also have tripped the old name-comparison, so the gain is not that it catches *this* break. The gain is that it can no longer pass vacuously on `Guid.NewGuid()`, and it will catch any future mechanism where names differ but data does not — a reused schema, a rewritten connection string, a shared `search_path`. That is a real strengthening, and I am not claiming more than I demonstrated.
+
+#### N1 — CA1711 gone, confirmed
+
+Zero occurrences in `.editorconfig`; build clean at 0 warnings / 0 errors. CA1707 and CA1001 remain, and both earn their place.
+
+#### AC6 and AC7 — unchanged from my last entry, both for acceptance rather than merge
+
+- **AC6:** adopting the `DOCKER_CONTEXT=no-such-context` probe as the recorded one is the right move — it fails at endpoint resolution and never touches 5432. It is still a proxy. The PO's choice remains: accept on the combined evidence with the proxy labelled as a proxy, or grant a short window to stop the daemon. Continuing to decline to stop seven unrelated projects' containers is correct.
+- **AC7:** partially met, with T-0014 owning the `TESTING.md` half. Both conditions I asked for are accepted — a recorded PO deviation at completion, and a link to T-0014 from AC7. Neither is a merge gate.
+
+#### One forward-looking note, no action now
+
+A database per test means migrations run once per test. At 11 integration tests that costs about a second and nothing needs doing. It scales linearly, so re-measure when the suite reaches the low hundreds; the Technical Notes already record Respawn-style truncation as the fallback, so the escape hatch is documented rather than needing to be rediscovered.
+
+#### Verified independently
+
+| Check | Result |
+| --- | --- |
+| `dotnet test` on the branch | **13/13, exit 0, 5 s** (2 unit + 11 integration) |
+| `dotnet test` from a **clean clone** | **13/13, exit 0, 6 s**, no setup |
+| Mutation A — startup migration added | **fails, exit 1**, `Expected: 0 Actual: 2`; two tests detect it |
+| Mutation B — isolation broken | **fails, exit 1**, on the isolation test |
+| Both mutations reverted | green again, 13/13 |
+| `dotnet build --no-incremental` | 0 Warning(s), 0 Error(s), exit 0 |
+| `dotnet format --verify-no-changes` | exit 0 |
+| Docker hygiene | no leftover containers or volumes after ~15 suite runs |
+
+**Clear to merge.** Squash-merge titled `T-0003: <summary>` per [GIT.md](../../standards/GIT.md), then the `os:` status commit on the trunk, then remove the worktree and delete the branch. Acceptance still owns AC6's proxy decision and AC7's deviation.
+
+Both blocking findings on this ticket were the same shape as the two on T-0001: not broken code, but a record asserting more than the code delivered. Worth noticing that the pattern is consistent enough to be worth checking for deliberately — on this ticket the tell was that every claim of coverage could be checked by mutation, and the two that could not survive mutation were exactly the two that were overstated.

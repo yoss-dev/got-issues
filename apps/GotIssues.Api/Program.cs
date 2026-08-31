@@ -62,3 +62,8 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 app.MapControllers();
 
 await app.RunAsync().ConfigureAwait(false);
+
+// Exposed so WebApplicationFactory<Program> can locate the entry point. The API
+// uses top-level statements, whose generated Program class is internal; this makes
+// it public without changing behaviour. Driven by T-0003's integration tier.
+public partial class Program;

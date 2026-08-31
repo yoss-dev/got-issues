@@ -63,17 +63,19 @@ dotnet restore     # required on a fresh clone: the EF tooling builds the projec
 dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations
 ```
 
-### Build
+### Build and test
 
 ```bash
 dotnet build          # warning-clean: the projects build with warnings as errors
+dotnet test           # unit + integration; needs Docker running
 ```
+
+The integration tier starts a real PostgreSQL container ([Testcontainers](https://dotnet.testcontainers.org)) and drives the API through its real HTTP pipeline — never an in-memory database, which enforces no constraints and translates no real SQL. One container per run, a fresh database per test. With Docker stopped, the integration tier fails fast and names the container runtime rather than timing out against a database.
 
 ### Not here yet
 
 These are documented in the standards but their tooling arrives with the tickets that build it — do not expect them to run today:
 
-- `dotnet test` — the test harness is [T-0003](project-os/product/tickets/T-0003-automated-test-harness.md).
 - `./tools/generate.sh` and the OpenAPI specification — the contract-first pipeline is [T-0002](project-os/product/tickets/T-0002-contract-first-codegen-pipeline.md). Until it lands, `spec/` holds only its README.
 - Authentication — the identity host is [T-0010](project-os/product/tickets/T-0010-duende-identity-host.md). Nothing is protected yet.
 

@@ -32,3 +32,13 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 # formatting checks.
 [**/Data/Migrations/*.cs]
 generated_code = true
+
+# Test projects. These analyzer rules describe good *library* code and fight
+# idiomatic xUnit; the alternative is renaming tests into something less readable
+# or bolting IDisposable onto classes whose lifetime xUnit already manages.
+# Deliberately scoped to test projects only — production code keeps all three.
+[apps/*Tests/**.cs]
+# Test names read as sentences: Health_reports_unhealthy_when_... is the point.
+dotnet_diagnostic.CA1707.severity = none
+# Disposal is handled by xUnit's IAsyncLifetime, which the analyzer does not model.
+dotnet_diagnostic.CA1001.severity = none

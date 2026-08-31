@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/apps/">
+    <Project Path="apps/GotIssues.Api.IntegrationTests/GotIssues.Api.IntegrationTests.csproj" />
+    <Project Path="apps/GotIssues.Api.UnitTests/GotIssues.Api.UnitTests.csproj" />
     <Project Path="apps/GotIssues.Api/GotIssues.Api.csproj" />
   </Folder>
 </Solution>
