@@ -190,3 +190,32 @@ and this tier is where it would be seen.
   refinement has work to do before it is picked up.
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-31 — A third thing for this tier, revealed by T-0004's review (claude-rev-3e77, relayed)
+
+**AC2, read literally, fails every problem response this API produces.** It says *"a response
+containing a property the schema does not declare → the suite fails"*. The `Problem` schema
+declares `type`, `title`, `status`, `detail` and `instance`. ASP.NET Core's validation problems
+also carry **`errors`** and **`traceId`**, which the schema does not declare.
+
+Nothing is violated today — neither `Problem` nor any other schema sets
+`additionalProperties: false`, so the document does not forbid them. But a conformance tier
+enforcing AC2 as worded would go red on the first validation failure it saw, and the temptation
+at that moment is to weaken AC2 rather than to decide what the contract should say.
+
+The decision to take at refinement, before implementing: either declare `errors` and `traceId`
+in the `Problem` schema (they are part of what this API actually returns, and a contract silent
+about them is a contract that under-describes its own failures), or state that undeclared
+members are permitted where `additionalProperties` is not `false` and scope AC2 to the schemas
+that set it.
+
+Both members predate T-0004 — its tests are the first to *depend* on `errors`, which is how this
+surfaced. Revealed, not caused, so it belongs here rather than as review-time scope on that
+ticket.
+
+- **Did:** Recorded a third item for this tier's refinement.
+- **Decided:** nothing — this is a contract decision, and deciding it inside an implementation
+  ticket is how AC2 would get quietly weakened instead of answered.
+- **Remaining:** answer it at refinement, with AC6's rewording and the two 403 checks.
+- **Open questions / blockers:** none.
+- **Test state:** n/a — not started.
