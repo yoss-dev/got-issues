@@ -56,7 +56,7 @@ Hard constraints that override ticket-level convenience:
 
 - **Everything must run under Docker Compose** — API, PostgreSQL, and the identity provider; no component may require host-installed infrastructure to run `[confirmed]`
 - **Contract-driven development is mandatory**: the OpenAPI specification is authored first; controllers and clients are generated from it by a source generator, automated as far as the toolchain allows. Hand-writing anything the generator owns is a defect `[confirmed]` — see [ADR-0004](architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)
-- **Solo delivery**: one maintainer, therefore one agent at a time on the repository (solo mode, §6) `[confirmed]`
+- **Solo delivery**: one maintainer, therefore one agent at a time on the repository (§6) `[confirmed]` — unchanged by the remote added 2026-08-31, since nothing uses push conflicts to detect claim collisions
 - **Duende IdentityServer licensing**: the maintainer knows the terms and has decided **Got Issues runs Duende unlicensed for the duration of the proof of concept** — an informed, deliberate choice, not an oversight `[confirmed]`. Expect licence warnings at startup; they are expected behaviour, not defects. Licensing becomes a live question again only if the PoC turns into something the company actually runs, which is a separate decision
 - No deadline, budget ceiling, or regulatory compliance regime stated `[assumption]` (absence of a stated constraint, not a confirmed absence)
 
@@ -75,7 +75,7 @@ Hard constraints that override ticket-level convenience:
 | Authorization model | **Global roles `admin` and `member`**, carried as a claim in the Duende token — the API reads the claim per request and never stores roles. `admin` additionally performs administrative acts: creating and archiving projects, deleting issues and comments. Role *assignment* happens in Duende, not through this API. Scope-based access for machine clients | `[confirmed]` |
 | Package / build tooling | .NET SDK (`dotnet build/test`), NuGet with a lock file; OpenAPI Generator runs from a **pinned container image**, so no host JDK is required — only Docker (T-0002, 2026-08-31; previously this row named a JDK prerequisite) | `[confirmed]` |
 | Testing frameworks | xUnit; `WebApplicationFactory` for API-level tests; Testcontainers for PostgreSQL | `[default]` |
-| CI/CD system | None yet — no remote (solo mode). The validator and test suite are run locally before every merge | `[open]` (Q6) |
+| CI/CD system | **None.** A remote exists as of 2026-08-31 but carries no pipeline; the validator, build, tests and drift check are run locally before every merge. Q6's first half is answered — there is a remote — and its second half, whether to add a pipeline, is still open | `[open]` (Q6, narrowed) |
 | Hosting / cloud provider | None — local Docker Compose only for now | `[confirmed]` |
 | Infrastructure approach | Docker Compose as the single orchestration surface; `compose.yaml` at the repository root, supporting files in `infra/` | `[confirmed]` (compose) / `[default]` (file layout) |
 | Observability | Built-in `ILogger` structured logging plus OpenTelemetry traces/metrics exported to the console in local runs | `[default]` |
@@ -89,9 +89,9 @@ Significant technology choices made after bootstrap require an [ADR](architectur
 | Practice | Decision | Status |
 | --- | --- | --- |
 | Source repository layout | Monorepo per [ADR-0002](architecture/adr/ADR-0002-monorepo-with-self-contained-project-os.md). All four scaffold directories retained: `apps/` (the API service and the identity host), `libs/` (generated contracts and client), `tools/` (validator, codegen scripts), `infra/` (compose support files, DB init) | `[confirmed]` |
-| **Remote mode** | **Solo mode — no git remote configured.** Per [GIT.md](standards/GIT.md) *Remotes and solo mode*: both commit lanes and all conventions still apply, push-based collision detection is void, and the repository is safe for **one agent at a time**. A second concurrent agent requires setting up a remote first | `[confirmed]` |
+| **Remote mode** | **Remote configured 2026-08-31: `https://github.com/yoss-dev/got-issues.git`. Workflow unchanged** by the maintainer's decision the same day — the remote is a backup and publication point, not a change to how work is reviewed or merged. Pull requests are deliberately not used; review stays an independent session against the branch diff, merges stay local. **Still one agent at a time**: push-based collision detection is a workflow nothing here performs, so the constraint holds until a decision changes it | `[confirmed]` |
 | Branching strategy | Trunk-based (`main`), ticket branches in per-ticket worktrees, two commit lanes — see [standards/GIT.md](standards/GIT.md) | `[default]` |
-| Code review | Every merge to `main` reviewed. With no PR platform, an independent session runs `review-code` against the branch diff and records the verdict in the Work Log before the local merge | `[confirmed]` (follows from solo mode) |
+| Code review | Every merge to `main` reviewed. Pull requests are available but deliberately unused: an independent session runs `review-code` against the branch diff and records the verdict in the Work Log before the local merge | `[confirmed]` (maintainer's decision, 2026-08-31) |
 | Test expectations | See [standards/TESTING.md](standards/TESTING.md) | `[default]` |
 | Deployment strategy | None — `docker compose up` is the only "deployment" until a hosting target exists | `[confirmed]` |
 | Security requirements | See [standards/SECURITY.md](standards/SECURITY.md); no compliance regime stated | `[default]` |

@@ -9,7 +9,7 @@ This directory structure originates from the team's **foundation repository** (`
 | Copied from | `prj-foundation` (team foundation repository; no URL recorded at adoption — `[open]`) |
 | Foundation version | 1.8.0 (adopted at 1.5.0; upgraded 2026-08-30) |
 | Copied on | 2026-08-30 |
-| Local divergences | **Solo mode.** `standards/GIT.md` records no remote, no PR platform, and no CODEOWNERS-based governance-path protection — the foundation assumes a shared remote. Lane rules, review independence, and the pre-merge gates are unchanged; only the platform enforcement is absent, replaced by locally-run gates. Revisit if a remote is added (`PROJECT.md` Q6). Bootstrap also populated the project-specific sections of all four standards and the glossary — expected instance state, not divergence. |
+| Local divergences | **A remote without the workflow around it.** As of 2026-08-31 `standards/GIT.md` records a configured remote (`https://github.com/yoss-dev/got-issues.git`) but **no pull requests, no branch protection and no CODEOWNERS** — the foundation assumes a shared remote *and* the platform workflow that usually comes with it. Here the remote is a backup and publication point by explicit maintainer decision; review independence and the pre-merge gates are unchanged, and the repository remains one-agent-at-a-time because nothing uses push conflicts for claim collision. Lane rules, review independence, and the pre-merge gates are unchanged; only the platform enforcement is absent, replaced by locally-run gates. Revisit if a remote is added (`PROJECT.md` Q6). Bootstrap also populated the project-specific sections of all four standards and the glossary — expected instance state, not divergence. |
 
 ## Contributing back
 

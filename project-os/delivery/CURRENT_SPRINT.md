@@ -84,6 +84,30 @@ Nine other tickets are `ready` and none is committed: T-0008, T-0012, T-0013, T-
 T-0017, T-0018, T-0019 and T-0007. That is a healthy buffer, and the reason none of them is
 here is that they do not serve this goal.
 
+### Remote configured — and what it deliberately does not change (2026-08-31)
+
+**Approved by the maintainer**, who supplied the remote and chose "remote as backup; workflow
+unchanged" over PR-based review and over full multi-agent mode. Applied via `evolve-governance`;
+to be folded into RETRO-SPRINT-003.
+
+`https://github.com/yoss-dev/got-issues.git` is configured and `main` tracks `origin/main`; 117
+commits pushed. Eight `[confirmed]` statements across [GIT.md](../standards/GIT.md),
+[PROJECT.md](../PROJECT.md) §5–6 and [FOUNDATION.md](../FOUNDATION.md) asserted that no remote
+existed and are corrected.
+
+**The distinction worth keeping**, because getting it backwards is the dangerous direction:
+**a remote alone does not end solo mode.** Push-based collision detection is a *workflow* — the
+claim commit is pushed and a rejected push means the claim was lost — and no skill here performs
+it. So the repository is still safe for **one agent at a time**, and GIT.md now says that in the
+general section rather than leaving it to be inferred from "no remote".
+
+Pull requests are available and deliberately unused: review stays an independent session against
+the branch diff, merges stay local. `PROJECT.md` Q6 is narrowed rather than answered — a remote
+exists; whether to add a pipeline is still open.
+
+*Noticed independently by `claude-qa-8f52` during T-0005's acceptance, which flagged the `origin`
+URL against `PROJECT.md`'s claim and declined to edit the trunk mid-run — the right call.*
+
 ### Sequencing decision — T-0006 before the layering refactor (2026-08-31)
 
 The maintainer adopted Clean Architecture layering mid-sprint
