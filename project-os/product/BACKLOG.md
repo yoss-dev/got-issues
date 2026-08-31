@@ -7,7 +7,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - Order within the Active table **is** priority: top row = most important next. Only the Product Owner persona reorders; material reorders get a changelog entry below.
 - Every row links to its ticket file: `tickets/T-NNNN-short-slug.md`, created from [`templates/TICKET_TEMPLATE.md`](../templates/TICKET_TEMPLATE.md).
 - The ticket file's `status` field is authoritative; this index mirrors it. When they disagree, trust the ticket file and fix the index.
-- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0024**.
+- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0025**.
 - When a ticket reaches `done` or `dropped`, move its row to the Completed table (append; do not reorder history).
 
 ## Active
@@ -42,6 +42,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | [T-0015](tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | technical | done | 2026-08-31 |
 | [T-0004](tickets/T-0004-create-and-list-projects.md) | Create and list projects | feature | done | 2026-08-31 |
 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | done | 2026-08-31 |
+| 15 | [T-0024](tickets/T-0024-spurious-validation-error-on-every-body-taking-endpoint.md) | A spurious "field is required" accompanies every body validation failure | bug | backlog | — |
 
 ## Changelog
 
