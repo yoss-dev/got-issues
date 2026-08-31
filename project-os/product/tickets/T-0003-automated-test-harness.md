@@ -412,3 +412,127 @@ A database per test means migrations run once per test. At 11 integration tests 
 **Clear to merge.** Squash-merge titled `T-0003: <summary>` per [GIT.md](../../standards/GIT.md), then the `os:` status commit on the trunk, then remove the worktree and delete the branch. Acceptance still owns AC6's proxy decision and AC7's deviation.
 
 Both blocking findings on this ticket were the same shape as the two on T-0001: not broken code, but a record asserting more than the code delivered. Worth noticing that the pattern is consistent enough to be worth checking for deliberately — on this ticket the tell was that every claim of coverage could be checked by mutation, and the two that could not survive mutation were exactly the two that were overstated.
+
+### 2026-08-30 — QA / Test Engineer (claude-qa-3f7c) — independent acceptance
+
+Independent `acceptance-test` pass on `fb9c4af`. I did not implement this ticket and did not review it (`implemented_by: claude-sm-9d4e`, reviewer `claude-rev-2c8d`). I derived my checks from the requirements sections before reading the Work Log, and **verified coverage by mutation rather than by reading tests** — five mutations, three of them my own, none taken from either prior session.
+
+**Method.** Fresh `git clone` of `main` into a scratch directory, plus a separate throwaway copy for mutations so no branch or checkout was ever modified. Docker state recorded before and after. Both scratch trees deleted; the primary checkout is clean.
+
+**Verdict: PASS**, with **AC6 and AC7 partially met** and requiring recorded PO deviations at completion — the same route T-0001's item 3 took, not a silent tick. Eight of ten criteria are fully verified. Details, including two findings that are new to this ticket, below.
+
+#### Acceptance criteria — verified by me
+
+| AC | Verdict | Evidence that settled it |
+| --- | --- | --- |
+| **AC1** `dotnet test` from a clean clone, no setup | **pass** | Cold clone, no `obj/`, no manual step: **13/13 passed, exit 0, 6 s wall** (2 unit + 11 integration). Restore, build and container startup all happened inside that one command |
+| **AC2** real PostgreSQL via `WebApplicationFactory`, not in-memory | **pass** | Not taken from the test's own assertion — I watched the run: a **`postgres:18-alpine`** container appeared mid-suite alongside `testcontainers/ryuk:0.14.0`. That image string is **identical to `compose.yaml:11`**, so the tests run on the engine production runs. `grep` for any EF in-memory provider across all csproj/cs files: **no reference anywhere** |
+| **AC3** schema applied by the project's migrations | **pass** | `Migrations_create_the_schema` queries `information_schema` and finds both tables. **Mutation D (mine):** I made `ApplyMigrationsAsync` a no-op → **3 tests failed, exit 1**. So the schema demonstrably comes from that migration call, not from ambient state |
+| **AC4** twice in succession, and in any order | **pass** | Second run immediately after the first, no cleanup: **13/13, exit 0**. Then the strongest available form — **each of the 11 integration tests run alone, in reverse alphabetical order, as its own `dotnet test --filter` process: all 11 passed individually.** No order dependency and no reliance on another test having run |
+| **AC5** unauthenticated caller refused, negative case proven | **pass** | `An_unauthenticated_caller_is_refused_by_a_guarded_endpoint` → 401, positive case → 200. **Mutation E (mine):** removed `.RequireAuthorization()` from the guarded endpoint → the refusal test **failed, exit 1**. The assertion is load-bearing, not decorative |
+| **AC6** Docker not running → fail <60 s naming the runtime | **partial — see below** | Observable properties verified via proxy; the literal precondition is not reachable on this machine |
+| **AC7** README and `TESTING.md` match reality | **partial — see below** | README half verified working; `TESTING.md` half genuinely still stale, owned by T-0014 |
+| **AC8** covers T-0001's stack behaviour | **pass** — judged in detail below | `Migrations_create_the_schema`, the **200/503 health pair**, and `The_api_does_not_create_the_schema_on_startup`. **Mutation A:** added `Database.Migrate()` to the API's startup path → **exit 1**, `Expected: 0 / Actual: 2` (the two tables a startup migration creates), with `Health_reports_unhealthy` failing as a second detector. **Mutation C (mine):** made the health check always return `Healthy` → **both tiers went red** (unit *and* integration). The health pair genuinely reports the database's real state |
+| **AC9** a deliberately failing test fails the run | **pass** | Inverted `Assert.Equal(HealthStatus.Unhealthy, …)` → `Failed: 1`, **`dotnet test` exit 1**; restored → exit 0. Read from the tool's own exit code, not from a pipeline |
+| **AC10** test auth handler absent from a normal run | **pass** — structurally, not just behaviourally | `apps/GotIssues.Api/GotIssues.Api.csproj` has **zero `ProjectReference`s**; the reference runs tests → API only. `TestAuthHandler` / `GuardedEndpointStartupFilter` appear **nowhere** under `apps/GotIssues.Api/`. Decisive check: I **published the API alone** — the output contains six assemblies, **no test assembly**, and `strings GotIssues.Api.dll` finds **0 occurrences** of the `IntegrationTest` scheme name. The types are not in a real run's assembly closure, so no configuration switch can reach them |
+
+#### AC8 — does it discharge the promise I conditionally accepted on T-0001?
+
+I accepted T-0001's DoD item 3 deviation conditionally, partly on this harness closing the gap. Asked to judge that plainly now that T-0001 is `done`:
+
+**Mostly yes, and the most important part emphatically yes.** Mapping T-0003's coverage onto T-0001's own criteria:
+
+| T-0001 criterion | Covered here? |
+| --- | --- |
+| AC2 `/health` 200, database reachable | **yes** — `Health_reports_healthy…` |
+| AC3 non-200 when the database is down | **yes** — `Health_reports_unhealthy…` (503, asserted on status *and* body) |
+| AC4 migration step applies the schema | **yes** — `Migrations_create_the_schema`, mutation-proven |
+| **AC5 the API must not migrate itself** | **yes** — `The_api_does_not_create_the_schema_on_startup`, which I mutation-tested from both sides |
+| AC1 / AC6 / AC7 (Compose: stack healthy, restart non-destructive, waits for a slow database) | **no** — Compose-level orchestration |
+| AC8 / AC9 (no credentials; README works) | **no** — not runtime behaviours a test host can reach |
+
+**AC8 as written is satisfied and then some.** Its bar is "at minimum … the schema is applied by migrations and … the health endpoint reports the database's real state". Both are met, and the ticket went beyond the minimum by adding the T-0001 AC5 test after review — which matters, because T-0001's own ticket called AC5 "the criterion most likely to be quietly violated" and it was the one T-0001 behaviour left with no standing guard. **I verified that guard myself rather than trusting either prior session:** with `Database.Migrate()` inserted into startup, the suite goes red with a diagnostic that names the exact problem. That is the single most valuable test in this change-set.
+
+**The honest residual:** T-0001's item 3 deviation was recorded against that ticket's behaviour *as a whole*, and three of its criteria — the Compose-level ones — remain without automated coverage. That is not a defect in T-0003: no `dotnet test` harness reaches `docker compose up`, the exclusion was declared rather than smuggled, and widening scope silently would have been worse. But it means the deviation is closed **for the behaviours a test harness can reach**, not in full.
+
+**Recommendation, and it is the same lesson this project already learned once:** that residual currently exists only as prose in two Work Logs. On T-0001, the reviewer caught exactly this pattern and DoD item 4 forced three deferrals into tickets (T-0012/13/14). The Compose-level coverage gap deserves the same treatment — **a follow-up ticket for a Compose-level smoke test**, rather than being left as a settled-looking question in a ticket that is already `done`. I am not raising it as a defect against T-0003; I am saying it should not evaporate.
+
+#### AC6 — partial, and I found new evidence that makes the literal check *more* necessary, not less
+
+I could not verify the literal condition: stopping the Docker daemon would stop **seven containers belonging to six unrelated projects** on this machine. Declining to do that unilaterally was right, and I made the same call.
+
+**What I verified of the recorded proxy (`DOCKER_CONTEXT=no-such-context`):** exit **1**, **under 1 second** (the criterion allows 60), **all 11 integration tests fail**, and **zero occurrences of `5432`** anywhere in the output — so it is emphatically not the connection-timeout failure mode AC6 was written to exclude.
+
+**A correction in the implementation's favour.** The review characterised this probe as naming "Testcontainers rather than Docker". The actual inner exception is:
+
+```
+DotNet.Testcontainers.Builders.DockerConfigurationException :
+    The Docker context 'no-such-context' does not exist.
+```
+
+That **names Docker explicitly**, and points at `~/.docker/contexts`. On AC6's wording — "a message naming the container runtime as the cause" — the probe is *stronger* than the review credited it for.
+
+**What is new, and it is the finding that matters.** I tried to build a better probe than either prior session by creating a **valid** Docker context pointing at a dead endpoint — which is much closer to a stopped daemon than a missing context, because resolution succeeds and only the connection fails. Both attempts:
+
+| Simulation | Result |
+| --- | --- |
+| `DOCKER_HOST=tcp://127.0.0.1:1` | **exit 0 — suite GREEN, 11/11** |
+| `DOCKER_HOST=unix:///tmp/nope.sock` | **exit 0 — suite GREEN, 11/11** |
+| **valid context → `tcp://127.0.0.1:1`** (mine, untried before) | **exit 0 — suite GREEN, 11/11** |
+| **valid context → dead unix socket** (mine, untried before) | **exit 0 — suite GREEN, 11/11** |
+| `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/tmp/nope.sock` | exit 1 in 1 s — but a *running* daemon rejecting a bind mount |
+| `DOCKER_CONTEXT=no-such-context` | exit 1 in <1 s, fails at endpoint resolution |
+
+**Four of six simulations silently fall through to the real socket and report success.** Testcontainers walks a chain of endpoint providers and moves on when one is unreachable — which is correct behaviour for a library, and fatal for simulation. The conclusion is stronger than "env-var simulation is dangerous": **no environment-variable simulation can verify AC6 on a machine with a working daemon**, because falling back to that daemon is exactly what the library is designed to do. Only removing the daemon removes the fallback.
+
+**My recommendation to the PO: take the five-minute window and stop the daemon.** Not because the proxy is worthless — it establishes the fast-failure and no-`5432` properties convincingly — but because two things now depend on a condition nobody has ever observed. First, AC6 is the only criterion here whose precondition has never been created. Second, and more concretely, **`README.md:73` now tells users "With Docker stopped, the integration tier fails fast and names the container runtime rather than timing out against a database"** — a claim about a state that has never been produced. On a project whose recurring failure mode is a claim outrunning its evidence, that sentence should be backed by one observation. Until then, **AC6 is met on its observable properties and unverified on its precondition**, and should be recorded as a deviation rather than a clean pass.
+
+#### AC7 — partial, and one of the review's two conditions is not yet satisfied
+
+**README half: verified.** `dotnet test` is documented (`README.md:70`), the harness is gone from *Not here yet*, and the description matches the code — including "a fresh database per test", which is the corrected per-*test* wording from review finding B2, not the superseded per-class plan. I confirmed the fixture docstring says the same.
+
+**`TESTING.md` half: genuinely still stale**, exactly as declared. Its *How to run the suite* block still lists `./tools/generate.sh` (`tools/` contains only `README.md` and `validate-project-os` — **no `generate.sh`**), and still carries the parenthetical *"Exact script paths are established by the first implementation ticket… correct this section in that ticket"*. Worth stating precisely, because it is narrower than it looks: of the three commands, **`dotnet build` and `dotnet test` now match reality exactly** — I ran both. The stale items are the codegen drift check (T-0002's to deliver) and the parenthetical (T-0014's to remove).
+
+**I endorse not fixing it here.** `project-os/standards/` is governance; [GIT.md](../../standards/GIT.md) routes it through `evolve-governance` with human approval. Editing a standard from inside a source ticket is precisely what that rule prevents — the same reasoning T-0001 applied and its reviewer endorsed.
+
+**The review set two conditions. One is pending correctly; the other is unmet:**
+
+1. *Recorded PO deviation on AC7 at completion* — pending, and properly `complete-ticket`'s to make.
+2. *AC7 should link T-0014, so the partial is legible from this ticket alone* — **not done.** AC7's text (line 61) is unchanged and contains no reference to T-0014. The link exists in the Work Log and T-0014 links back, so the *purpose* is served and a reader will not be misled; the stated condition simply is not met. I am flagging rather than fixing it: **acceptance must not edit acceptance criteria**, and I will not start. One for `complete-ticket` to settle — and if the answer is that AC text should not be edited post-hoc either, then the condition should be recorded as satisfied by the Work Log linkage instead of quietly dropped.
+
+#### Adversarial checks and code quality
+
+- **Analyzer suppressions do not leak to production — verified by mutation in both directions.** Added an underscored type to `apps/GotIssues.Api/MigrationLogging.cs` → build **exit 1, `error CA1707: Remove the underscores from type name GotIssues.Api.Probe_Underscore_Prod`**. Added the identical violation to a test project **root** *and* a test **subdirectory** → build **exit 0, zero CA1707**. So `[apps/*Tests/**.cs]` covers exactly the two test projects at both depths, and production keeps the rule. `CA1711` is **gone** from `.editorconfig` (0 occurrences), as the review asked.
+- **A near-miss of my own, recorded because this project keeps hitting this class.** My first attempt at the above appended a second file-scoped namespace, so **both** builds failed with `CS8954` — a syntax error, not the analyzer. Read carelessly, exit code 1 on the production build would have "confirmed" enforcement while proving nothing, and exit 1 on the test build would have looked like the suppression failing. I caught it by reading the error text rather than the exit code, and redid the probe. That is the fifth instance of *green/red from the wrong source* on this project and the first in my own work here; the defence is the same one already on the record — **read what the tool said, not just what it returned**.
+- **Scope fidelity (diff-checked).** The change-set touches two new test projects, `.editorconfig`, `GotIssues.slnx`, `README.md`, and **five lines of `Program.cs`** — `public partial class Program;` with a comment saying why. Nothing from T-0002 (`spec/`, `libs/`, `tools/generate.sh`), nothing from T-0010, no product endpoint, no `compose.yaml` change. The one production edit is the documented way to make `WebApplicationFactory<Program>` work against top-level statements and changes no behaviour.
+- **Quality gates, each read from the tool's own exit code:** `dotnet build --no-incremental` → **exit 0, 0 Warning(s), 0 Error(s)**; `dotnet format --verify-no-changes` → **exit 0**; `python3 tools/validate-project-os/validate.py` → **OK**.
+- **Docker hygiene across ~25 suite runs.** Recorded before and after: **33 containers / 28 volumes / 6 running → 33 / 28 / 6.** The one Ryuk container observed mid-work self-terminated. No leaked test containers, no orphaned volumes. The two Docker contexts I created for AC6 probing were removed, and `desktop-linux` remained the active context throughout — the unrelated stacks were never touched.
+
+#### Definition of Done assessment
+
+| # | Item | Assessment |
+| --- | --- | --- |
+| 1 | Implementation complete | **met** — every In Scope bullet delivered, including "at least one real test of each tier, not empty scaffolding"; nothing Out of Scope smuggled in |
+| 2 | Acceptance criteria verified | **8 of 10 fully**; AC6 and AC7 partial, both declared in advance rather than discovered |
+| 3 | **Automated tests exist and pass** | **genuinely met** — and this is the item worth pausing on. Unlike T-0001, this ticket *is* the tests: 13 of them, passing from a cold clone in 6 s, and — the part that matters — **shown to fail when the code is wrong**, under five independent mutations. A suite only ever seen green would not have satisfied me |
+| 4 | No known unrecorded defects | **conditionally met** — nothing hidden, but three things must be settled at completion: the **AC6 deviation**, the **AC7 deviation**, and the **Compose-level residual** of T-0001's coverage, which I recommend capturing as a ticket rather than leaving as Work Log prose |
+| 5 | Code quality | **met** — build and format clean, suppressions mutation-verified as correctly scoped, CA1711 dropped, no dead code or debug leftovers found |
+| 6 | Documentation updated | **met with one caveat** — README is accurate except `README.md:73`, which asserts behaviour under a condition never observed (see AC6) |
+| 7 | Work Log complete | **met** — decisions, rejected alternatives, and both blocking findings recorded precisely enough to resume from |
+| 8 | State updated | `complete-ticket`'s responsibility |
+
+#### Could not verify
+
+- **AC6's literal precondition** — Docker genuinely not running. Blocked by seven unrelated containers, and now shown to be **unreachable by any environment-variable simulation**. Needs a maintainer window; I recommend taking it.
+- **Behaviour on any machine but this one** — macOS / Apple Silicon, Docker 29.2.1, .NET SDK 10.0.300. `PROJECT.md` §5 scopes support to exactly this.
+- **Whether the suite stays fast as it grows** — 11 integration tests cost ~1 s today because a database is created and migrated per test. It scales linearly; the fallback (truncation between tests) is already recorded in Technical Notes.
+
+#### Verdict
+
+**PASS.** The harness does what the ticket says: it runs from a cold clone with no setup, exercises the real API through a real HTTP pipeline against a real PostgreSQL container matching production's image, isolates every test, and — the property that separates a test suite from decoration — **it goes red when the code goes wrong**, which I established with five mutations rather than by reading assertions.
+
+Proceed to `complete-ticket`, which owes three recorded decisions before `done`: the **AC6 deviation** (with my recommendation to spend five minutes verifying it literally instead), the **AC7 deviation** with T-0014 owning the remainder, and a **disposition for the Compose-level residual** of T-0001's automated coverage.
+
+On the question I was asked to answer directly: **T-0001's DoD item 3 deviation is now closed for every behaviour a test harness can reach, including the one it most needed** — the API not migrating itself, which I proved by breaking it. The part left open is Compose orchestration, which was correctly out of scope here and should now be ticketed rather than considered settled.
+
+Status left at `in-acceptance`; `accepted_by` deliberately not set.
