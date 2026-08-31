@@ -523,3 +523,116 @@ DoD **item 3** (automated tests) remains unmet and unmeetable by this ticket —
 **Approve — clear to merge.** Squash-merge titled `T-0001: <summary>` per [GIT.md](../../standards/GIT.md), then the `os:` status commit on the trunk, then remove the worktree and delete the branch.
 
 Three rounds, and the change got materially better in each: a lock file that actually fails on drift, a non-root runtime, a bounded health probe, a formatting config that does not fight its own generator, and four review findings that became tracked work instead of forgotten prose. The two blocking findings I raised were both real, and the one I got partly wrong — `TESTING.md`, which I implied should have been fixed here — was corrected by the implementer citing the standard that governs it. That is the process working in both directions.
+
+### 2026-08-30 — QA / Test Engineer (claude-qa-3f7c) — independent acceptance
+
+Independent `acceptance-test` pass. I did not implement this ticket and did not review it (`implemented_by: claude-sm-9d4e`, reviewer `claude-rev-2c8d`). Nothing below is taken from either of their Work Log entries: every criterion was re-derived from the requirements sections first, then exercised by me against a running system.
+
+**Method.** Fresh `git clone` of `main` (`7335c6f`) into a scratch directory, no `.env`, empty volume, run under my own Compose project name `claudeqa3f7c` on the README's own port 8080. All artifacts removed afterwards (`down -v`, images untagged, scratch tree deleted) — verified zero residue: 0 containers, 0 volumes, 0 networks, 0 images, port 8080 free.
+
+**Verdict: PASS.** All nine acceptance criteria verified. One minor documentation defect (D1) recorded below; it violates no acceptance criterion and is a one-line fix, so it is routed through DoD item 4 rather than back to `in-progress`. DoD item 3 remains unmet by design — see the DoD assessment.
+
+#### Defending against the false pass this ticket has already produced twice
+
+Both earlier sessions recorded a `curl localhost:8080` → 200 that came from a *different* stack while the container under test had failed to bind. This machine runs six other Docker stacks concurrently (verified: `docker-notification-orchestrator`, `docker-slotkit`, `docker-integration-gateway`, `docker-visit-workspace`, `docker-resource-catalog`, `docker-identity` — all on 543x, none on 8080). My defence, in order:
+
+1. **Baseline before starting:** `lsof -nP -iTCP:8080 -sTCP:LISTEN` → nothing listening; `curl localhost:8080/health` → **exit 7**, connection refused. Port 8080 was provably free.
+2. **Own project namespace:** everything under `-p claudeqa3f7c`, so no container could be shared with another stack.
+3. **Container-level assertion before trusting any HTTP:** `docker inspect` on the id from `compose ps -q api` → `running=true health=healthy restarts=0 user=1654 ports={"8080/tcp":[{HostIp:"0.0.0.0",HostPort:"8080"}...]}`.
+4. **The check that actually settles attribution:** I stopped *that specific container id* (`e9599d56845f`) and re-curled the host endpoint → **curl exit 7**, `http_code=000`, and `lsof` confirmed nothing else listening on 8080. Started it again → **200**. The 200 is therefore attributable to the process under test and to nothing else.
+5. **Corroboration from inside:** `docker exec <id> curl http://localhost:8080/health` returned the same body as the host curl.
+
+#### On the AC1 amendment — asked to judge it, and it is legitimate
+
+I verified the premise myself rather than accepting it. On the clean clone with **no `.env`**, `docker compose up -d postgres` produced `POSTGRES_USER/PASSWORD/DB variable is not set. Defaulting to a blank string` and postgres logged *"Error: Database is uninitialized and superuser password is not specified."* The original AC1 ("no further manual steps") genuinely could not hold.
+
+The amendment is not goalpost-moving, and I would say so if it were:
+
+- The **In Scope** section already mandated `.env.example`, which is meaningless unless something copies it. The original AC1 contradicted its own ticket; the amendment repairs an internal inconsistency rather than lowering a bar.
+- The amendment **removes nothing that was being tested**: still a clean clone, still an empty volume, still `docker compose ps` healthy, still no manual steps beyond the documented ones. I verified all of that below.
+- The **alternatives each cost a real property.** A default password in `compose.yaml` breaches [SECURITY.md](../../standards/SECURITY.md)'s unconditional rule; `POSTGRES_HOST_AUTH_METHOD=trust` trades a security posture for a sentence. The implementer named the cheapest cheat and explicitly declined to take it — not the behaviour of someone moving a goalpost.
+- The decision was **the PO's, transcribed verbatim before being acted on**, with the escalation text it answers sitting directly above it. Auditable, not asserted.
+
+#### Acceptance criteria — verified by me
+
+| AC | Verdict | Evidence that settled it |
+| --- | --- | --- |
+| **AC1** healthy from clean clone via documented setup | **pass** | `cp .env.example .env`, set a local password, `docker compose up --build -d`. Within 5 s: `api:running:healthy postgres:running:healthy`; `ps -a` → `api Up (healthy)`, `postgres Up (healthy)`, `migrator Exited (0)`. Compose ordering observed in the up log: `postgres Waiting → Healthy → migrator Started → Exited → api Started`. Attribution proven per the section above |
+| **AC2** `/health` 200, database reachable | **pass** | `HTTP/1.1 200 OK`, `{"status":"Healthy","checks":{"database":{"status":"Healthy","description":"database reachable"}}}` — identical from the host **and** from inside the container |
+| **AC3** non-200 when the database is down | **pass** | `stop postgres` → **503** in **5.9 ms**, `{"status":"Unhealthy","checks":{"database":{"status":"Unhealthy","description":"database not reachable"}}}`. The API container stayed `running=true restarts=0`; `start postgres` → back to 200 unaided. The probe genuinely reaches the database rather than reporting success blindly |
+| **AC4** migration step applies the schema | **pass** | Migrator log: `Applying migration '20260831001215_InitialSchema'` → `Migrations applied`, `exit=0`. `\dt` → `__EFMigrationsHistory` + `placeholder_records`; `select * from "__EFMigrationsHistory"` → `20260831001215_InitialSchema / 10.0.4`. API healthy afterwards |
+| **AC5** API alone does **not** create or migrate the schema | **pass** — see the dedicated section below | Empty volume, postgres alone (`Did not find any tables`), then `up -d --no-deps api` with **zero migrator containers in existence**. API healthy, 5×200 on `/health`. Afterwards: `\dt` → **`Did not find any tables`**; `public` schema → **0 relations**; the only non-system relations were 78 `pg_toast` internals. API logs show **`SELECT 1` and nothing else** — no DDL at all |
+| **AC6** restart is non-destructive | **pass** | Applied schema, seeded 1 row → `down` (volume retained, confirmed `claudeqa3f7c_postgres-data` still present) → `up`. Migrator: **`No migrations were applied. The database is already up to date.`**, `exit=0`. `select count(*) from placeholder_records` → **1**. Stack healthy, `/health` 200 |
+| **AC7** waits for a slow/absent database, no crash-loop | **pass** | Hardest form: API started with **no database container at all**. Sampled every 5 s for 30 s → `running=true health=starting restarts=0 exitcode=0` throughout; `/health` returned a well-formed **503**, not a crash. Started postgres → `health=healthy` and **200 within 5 s, restarts still 0**, unaided. Structurally, `depends_on: service_healthy` + `service_completed_successfully` makes the stack-start case true by construction, as observed in AC1's up log |
+| **AC8** no credentials in repository or history | **pass** | `git grep` over tracked files for password/secret/token/key shapes → only `${VAR}` interpolations in `compose.yaml`, the `.env.example` placeholder `replace-with-a-local-value`, prose comments, and `CancellationToken` false positives. `.env` **never** appears in history (`git log --all --diff-filter=A -- .env` empty). `git log --all -p` search for assigned secret literals → nothing. All four variables `compose.yaml` interpolates (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `API_PORT`) are each documented in `.env.example` with a placeholder — checked programmatically, none missing |
+| **AC9** README commands work literally from a clean clone | **pass** | Every command in *Getting started* run verbatim in the fresh clone: `cp .env.example .env` + `docker compose up --build` → stack healthy; `curl -s localhost:8080/health` → **byte-identical to the body the README documents**; `docker compose run --rm migrator` → applied migration, exit 0; `dotnet build` → **0 Warning(s), 0 Error(s)**; `dotnet dotnet-ef migrations add <Name> --project apps/GotIssues.Api --output-dir Data/Migrations` → **exit 0** (see the note below — I checked *why* it worked) |
+
+**AC9 note — I tested a suspicion and it did not hold.** The README documents `dotnet dotnet-ef …` without a preceding `dotnet tool restore`, and `dotnet-tools.json` sits at the repository root rather than `.config/`. I expected that to fail on a clean clone. It does not: the SDK auto-restores the local tool on invocation. I then confirmed it worked for the *right* reason rather than by accident of this machine — `dotnet tool list` resolves the manifest to the **clone's own root `dotnet-tools.json` at version 10.0.11**, not the globally installed `dotnet-ef 10.0.0` present on this machine, and the same command **fails outside the repository**. So the root-level manifest location is honoured and AC9 holds genuinely. Recording it because the global tool made a false pass plausible here.
+
+#### AC5 in detail — the criterion flagged as most likely to be violated
+
+Proved both empirically and statically, in the strongest form the criterion admits (a genuinely empty database, not merely dropped tables):
+
+- **Empirical.** `down -v` → new volume → postgres alone → `\dt` = `Did not find any tables`. Then `up -d --no-deps api`; `compose ps -aq migrator` returned **0** — the migration step did not merely skip, it never existed in that run. The API came up `healthy`, served `/health` 200 five times, returned 404 on `/`. After that: `public` schema contained **zero relations**, and the API's complete database log was `SELECT 1` repeated — the connectivity probe, no DDL.
+- **Static.** `grep -rE 'EnsureCreated|Database\.Migrate|MigrateAsync|EnsureDeleted' apps/` returns exactly **one** hit: `Program.cs:34`, inside the `if (args.Contains("--migrate", StringComparer.Ordinal))` branch, which `return`s before any endpoint is mapped. The forbidden counter-example appears nowhere.
+
+I agree with the reviewer's characterisation that this is a genuine explicit migration step and not the API migrating itself in disguise: it has its own service, lifecycle, log stream and exit code, and gates the API via `service_completed_successfully`. The caveat that it rests on an argument branch rather than an enforced privilege boundary is real, and correctly ticketed as [T-0013](T-0013-enforce-migration-boundary-with-db-privileges.md).
+
+#### Adversarial exploration
+
+- **Route surface (ADR-0004/ADR-0005).** Probed `/`, `/swagger`, `/openapi/v1.json`, `/projects`, `/issues`, `/api`, `/metrics`, `/ready` → all **404**; only `/health` returns 200. No product surface was smuggled in ahead of the specification, and no code-first OpenAPI document is served.
+- **Health with a correct-but-empty schema.** `/health` reports **Healthy against a database with zero tables** (observed during AC5). This matches AC2 as written — the criterion asks for database *reachability* — but it means health cannot detect a missing migration. Not a defect against any criterion; worth knowing before health is trusted as a deployment gate.
+- **Secret leakage through the endpoint.** `/health` bodies expose only status and a short description; no connection string, host, or credential appears even in the failure paths (`database not reachable`, `database probe timed out after 3s`).
+- **Database exposure.** `postgres` publishes no host port (`5432/tcp`, unmapped) — reachable only on the Compose network.
+- **Non-root runtime.** `.Config.User = 1654`; the container health probe still functions as the unprivileged user.
+- **Quality gates, run by me:** `dotnet format --verify-no-changes` → **exit 0**, clean tree (B3's fix holds on a fresh clone); `dotnet build --no-incremental` → **0 Warning(s), 0 Error(s)**; `dotnet list package --vulnerable --include-transitive` → no vulnerable packages; `python3 tools/validate-project-os/validate.py` → **OK (14 tickets, 6 ADRs)**.
+- **Scope fidelity (diff-checked).** `git show --stat dc4deeb` → 21 files, every one this ticket's own work. Nothing from T-0002 (`spec/openapi.yaml`, `tools/generate.sh`), T-0003 (test projects), or T-0010 (identity/auth). `spec/`, `libs/` and `infra/` still contain only their READMEs. Every In Scope bullet is present; `infra/` holds no supporting files because none were needed, which the In Scope wording permits.
+
+#### Defect found
+
+**D1 (minor, documentation) — the README's status banner now states the opposite of the truth.** `README.md:7` still reads:
+
+> **Status: bootstrapped, not yet built.** … no application code exists yet. The commands below describe the intended shape and become real with the first implementation ticket.
+
+This ticket *is* that first implementation ticket, and the code now exists. The change-set rewrote *Getting started* (the diff starts at line 27) but left the banner above it untouched, so a new contributor is told the working commands do not work yet. [DOCUMENTATION.md](../../standards/DOCUMENTATION.md) is explicit — *"Stale documentation is a defect: … fix in place when the fix is within your current ticket's scope"* — and the fix is one sentence inside a file this ticket already edits.
+
+Neither the implementer nor the reviewer caught this; both verified the commands and not the prose around them.
+
+**Why this is not a FAIL.** It violates no acceptance criterion: AC9 scopes to the *Getting started* commands, and every one of those works. It is a DoD item 6 gap. Sending the ticket back to `in-progress` for one stale sentence would be disproportionate, so per DoD item 4 it must be **either fixed before `done` or captured as a linked ticket with the PO accepting the deferral** — `complete-ticket`'s call, not mine. Related and much weaker: the layout table still describes `apps/` as holding "the Duende IdentityServer host" and `infra/` as holding "Compose support files, database initialisation"; both are forward-looking statements that predate this ticket, and I do not consider them in scope for it.
+
+#### Definition of Done assessment
+
+| # | Item | Assessment |
+| --- | --- | --- |
+| 1 | Implementation complete | **met** — every In Scope bullet delivered; diff-checked, nothing Out of Scope smuggled in |
+| 2 | All acceptance criteria verified independently | **met** — all nine, by me, against the running system |
+| 3 | Automated tests exist and pass | **NOT met, knowingly** — see below |
+| 4 | No known unrecorded defects | **conditionally met** — the three review deferrals carry tickets ([T-0012](T-0012-pin-container-base-images.md), [T-0013](T-0013-enforce-migration-boundary-with-db-privileges.md), [T-0014](T-0014-correct-testing-standard-commands.md)); **D1 above must be fixed or ticketed before `done`** |
+| 5 | Code quality | **met** — three review rounds; build warning-clean with `TreatWarningsAsErrors` + `latest-recommended`; `dotnet format` clean; no vulnerable packages; no dead code, debug scaffolding, or untracked TODOs found |
+| 6 | Documentation updated | **met with the D1 exception** — *Getting started* is accurate and verified literally; the status banner is stale |
+| 7 | Work Log complete | **met** — decisions, alternatives, and evidence recorded; a stranger could resume from this file alone |
+| 8 | State updated | `complete-ticket`'s responsibility |
+
+**On DoD item 3, stated plainly as asked.** No automated tests exist. `dotnet test` does not run, because the harness is [T-0003](T-0003-automated-test-harness.md), which `depends_on` this ticket. This is not a hidden defect: it was identified during refinement, written into Testing Notes with two named routes, carried through implementation and both reviews, and T-0003 holds a criterion (its AC8) covering this stack's behaviour so the gap closes rather than lingering.
+
+**Do I consider the ticket acceptable on that basis? Yes**, for three reasons, and with one condition.
+
+1. **The dependency is real and correctly directed.** A test harness cannot be built against a stack that does not exist. Demanding item 3 here would demand the ticket build T-0003 inside itself, which is precisely the sequencing the sprint plan exists to avoid.
+2. **The substitute was applied properly.** [TESTING.md](../../standards/TESTING.md) permits exactly this — *"where automation is not available the ticket says how verification happened instead"* — and the ticket does so in advance, not retroactively. Manual verification has now been performed three times by three independent sessions, and I re-ran all nine criteria myself rather than inheriting anyone's evidence.
+3. **The gap is bounded and tracked**, not open-ended: one named successor ticket with a criterion that closes it.
+
+**The condition:** this is a **PO deviation, and it must be recorded as one at completion** — not silently ticked. Per the DoD's own preamble, modifying the DoD to let a ticket pass is the canonical governance violation; recording an explicit, reasoned deviation against a stated item is the legitimate route, and it is the route Testing Notes reserved. If the PO instead chooses route one (land T-0003 first in this sprint), item 3 is met properly and no deviation is needed. Either is defensible; **what is not defensible is reaching `done` with item 3 unmarked.**
+
+#### Could not verify
+
+- **Behaviour on any machine other than this one.** Everything was exercised on macOS / Apple Silicon, Docker 29.2.1, Compose v5.1.0, .NET SDK 10.0.300. `PROJECT.md` §5 scopes support to exactly this, so it is a note rather than a finding.
+- **Migration behaviour beyond the initial migration.** With one migration in existence, "no-op on restart" is verified but "applies a *second* migration correctly" is not — it is unexercisable until T-0004 adds one.
+- **Any authenticated or product behaviour** — none exists yet by design (T-0010, T-0002).
+
+#### Verdict
+
+**PASS — all nine acceptance criteria verified independently against the running software.** The stack does what the ticket says it does, the AC5 guarantee holds under the strongest test I could construct, the AC1 amendment was a legitimate PO correction of an internally inconsistent criterion, and the port-attribution trap that produced two earlier false passes was actively defended against rather than assumed away.
+
+Proceed to `complete-ticket`, which must settle two things before `done`: **the DoD item 3 deviation (or T-0003 landing first)**, and **D1 (fix in place or capture as a ticket)**.
+
+Status left at `in-acceptance` for `complete-ticket`; `accepted_by` deliberately not set, as the validator reserves that field for the transition to `done`.
