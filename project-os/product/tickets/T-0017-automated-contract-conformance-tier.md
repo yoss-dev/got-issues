@@ -144,3 +144,49 @@ Applied all perspectives; replaced 'refinement should check the candidate' with 
 - **DoR verdict:** **ready.**
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
+
+### 2026-08-31 — Impact from T-0004, and a second thing this tier should catch (claude-sm-9d4e)
+
+**AC6 names a reproduction that no longer exists.**
+[T-0004](T-0004-create-and-list-projects.md) deleted the disposable placeholder resource — its
+own scope required it — and with it went `label`, the nullable property that made T-0002's
+**defect 4** reproducible: *"the document declares a non-nullable `label` while the API returns
+null."* `Project` has no nullable property, so that defect cannot be re-created as AC6 words it.
+
+The defect **class** survives and is what AC6 is really about: *the document promising something
+the API does not do.* Reproducing it against projects is straightforward — declare `name` as
+`[string, 'null']` while the API never returns null, or the reverse — but the criterion has to
+say so, because "reintroduce defect 4" now points at an artefact that is gone.
+
+This is recorded rather than fixed: changing an acceptance criterion is a refinement decision,
+not an implementer's. Whoever picks this ticket up re-expresses AC6 against the current resource
+first. Four references need it — **AC6**, two **Examples** (the `label` line and the
+`/placeholders` 418 line), and the **Risks** line about a validator that would have passed
+defect 4.
+
+Naming the reason plainly: a criterion that references a deleted artefact is a false pointer of
+the same family [DoD](../../governance/DEFINITION_OF_DONE.md) item 4 exists to prevent. It reads
+as covered.
+
+**A second thing this tier is now the natural home for.**
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md)
+decides that a role restriction is enforced by a policy attribute and declared in the contract as
+a description plus a `403`. It also names the gap it leaves: **nothing checks that the two agree.**
+An endpoint can gain a policy and never declare 403, or declare 403 and enforce nothing, and every
+test still passes — because the tests exercise the policy, not the document.
+
+Related, found by `claude-rev-3e77` during T-0004's review and worth folding in: **the 403's
+`application/problem+json` body has no guard in any tier.** A media-type assertion on the 403 path
+fails today with `Actual: null`, because the integration host's startup filter refuses in front of
+the application's own `UseStatusCodePages` — so the tests prove the *policy* refuses, not that the
+*response* is what the contract declares. That is T-0002's defect 5 in a place nothing is watching,
+and this tier is where it would be seen.
+
+- **Did:** Recorded T-0004's impact on AC6, and two additional checks this tier should carry.
+- **Decided:** nothing — AC6's rewording is refinement's call, not an implementer's.
+- **Remaining:** re-express AC6 and its Examples/Risks references at the next refinement; consider
+  the 403 declaration-versus-enforcement check and the 403 media-type guard as scope.
+- **Open questions / blockers:** none. This ticket is `ready`, and this entry means its next
+  refinement has work to do before it is picked up.
+- **Branch / PR:** n/a
+- **Test state:** n/a — not started.

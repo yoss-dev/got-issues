@@ -11,7 +11,7 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 ## Conventions
 
 - Created via the [`create-adr`](../../skills/create-adr/SKILL.md) skill, from [`templates/ADR_TEMPLATE.md`](../../templates/ADR_TEMPLATE.md).
-- Files: `ADR-NNNN-short-slug.md` in this directory. IDs sequential, never reused. Next ID: **ADR-0008**.
+- Files: `ADR-NNNN-short-slug.md` in this directory. IDs sequential, never reused. Next ID: **ADR-0009**.
 - Statuses: `Proposed` → `Accepted` | `Rejected`; `Accepted` → `Superseded by ADR-XXXX` | `Deprecated`.
 - **ADRs are immutable once Accepted** except for status changes and links. Changing a decision means a *new* ADR that supersedes the old one — never editing history.
 - Acceptance authority: the Software Architect persona accepts ADRs whose options do not differ materially in business consequence; otherwise a human decides ([WoW §13](../../governance/WAY_OF_WORKING.md)).
@@ -28,3 +28,4 @@ Do **not** write ADRs for routine implementation details (naming, local structur
 | [ADR-0005](ADR-0005-operational-endpoints-outside-the-api-contract.md) | Operational endpoints are outside the API contract | Accepted | 2026-08-30 |
 | [ADR-0006](ADR-0006-nswag-for-server-contracts.md) | Generate server contracts with NSwag, keeping OpenAPI Generator for clients | Rejected | 2026-08-30 |
 | [ADR-0007](ADR-0007-test-only-extension-grant-for-user-tokens.md) | Issue user-subject tokens through a test-only extension grant, deferring a real login model | Accepted | 2026-08-31 |
+| [ADR-0008](ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md) | Role restrictions are enforced by policy attributes and declared in the contract as a description and a 403 | Accepted | 2026-08-31 |
