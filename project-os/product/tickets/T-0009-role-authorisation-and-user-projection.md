@@ -533,3 +533,199 @@ Recorded honestly: this trade came from the reviewer's own suggestion last pass,
 The project's standard already requires mutation-verifying that a *test* guards a *behaviour*. It does not say the same of a *fix*. Both confirmations this pass were that shape and both were cheap — worth raising at the retrospective rather than deciding here.
 
 **Verification:** `dotnet build` **0 warnings / 0 errors**, `dotnet format --verify-no-changes` **0**, `dotnet test` **0** (**55 tests**).
+
+### 2026-08-31 — QA / Test Engineer + Product Owner (claude-qa-5a71) — acceptance
+
+Independent `acceptance-test` pass on `main` @ `c92bc24`. I did not implement this (`claude-sm-9d4e`) and did not review it (`claude-rev-8b4f`). I derived my checks from the requirements before reading the Work Log. Docker ran under `-p gotissues-qa5a71t9` on ports 18190/18191 (Postgres exposed on 15432 for the probe), torn down with `down -v --rmi local`; the six unrelated stacks were verified intact afterwards.
+
+**Verdict: PASS.** All eight criteria verified — AC1–AC4 and AC6 against the running system rather than the test host. Two defects recorded which must be fixed or ticketed before `done` (Q1, Q2), and six observations.
+
+#### How I verified AC1–AC4 — real tokens, the API's own `Program.cs`, no test handler
+
+The history here is that the suite agreed with the test host. So I did not build a replica of the API's authentication configuration either — a hand-copied replica can diverge the same way. I booted **`WebApplicationFactory<Program>`**, which runs the API's real `Program.cs` and therefore its real `AddJwtBearer` configuration and real `AddGotIssuesPolicies()`, pointed it at the running identity host and the running PostgreSQL, and drove it with tokens that identity host actually issued. The only thing I added was the guarded endpoints themselves, which is what the ticket's Technical Notes sanction. `TestAuthHandler` was not involved.
+
+Then I widened what "a real token" means. The seeded identities give only `admin` and `member`, so I seeded five more clients through the identity host's own `Seed__Clients__*` configuration, carrying exactly the role values AC4 must refuse. **These are genuine signed tokens from Duende, not manufactured principals** — decoded to confirm the payload before use:
+
+```
+gotissues-admin-client   role=admin          gotissues-member-client  role=member
+qa-superuser-client      role=superuser      qa-casing-client         role=Admin
+qa-whitespace-client     role=' admin'       qa-norole-client         role=''
+qa-multi-client          role='member,admin'
+```
+
+Attribution asserted first per `TESTING.md`: all services healthy before any response was trusted, and with the `api` container stopped both `/health` and `/health/authenticated` returned `000`; restarted, they answered again.
+
+**The matrix, every cell from a real token:**
+
+```
+identity              /admin  /member   RequireRole("member")
+admin                    200      200                     403
+member                   403      200                     200
+superuser                403      403                     403
+Admin  (capitalised)     403      403                     403
+' admin' (leading space) 403      403                     403
+''     (empty)           403      403                     403
+'member,admin'           403      403                     403
+no token         -> 401        bad token -> 401
+```
+
+- **AC1 — PASS.** A real admin token reaches the admin-policy endpoint: **200**.
+- **AC2 — PASS.** A real member token on the admin endpoint: **403**, and the 401 cases are genuinely distinct — no credentials and an invalid token both return **401** on the same endpoint. The distinction AC2 exists for is real in the running system, not just asserted in a test.
+- **AC3 — PASS.** Both real roles reach the member endpoint: 200 and 200. The floor semantics hold.
+- **AC4 — PASS**, and this is the criterion I attacked hardest, because it is the one that fails open if it fails.
+
+#### AC4 — I hunted the allow-list for a promotion hole and did not find one
+
+Five of the shapes above are real tokens the identity host signed, which is a stronger test than either prior pass ran — the reviewer had real `admin` and `member` tokens and synthesised the rest. Every one is refused by **both** policies.
+
+I then ran fifteen further shapes directly against the real policies through `IAuthorizationService`, including several nobody had tried:
+
+```
+roles (plural) = admin            refused      role = "admin" (quoted)        refused
+role = 'admin ' (trailing space)  refused      role = admin\0 (null byte)     refused
+role = аdmin (Cyrillic а)         refused      role = ADMIN                   refused
+role = ["admin"] (JSON array)     refused      role = admin;member            refused
+http://schemas.microsoft.com/identity/claims/role = admin        refused
+role=junk AND role=admin          admin granted   (correct: a genuine admin among junk)
+role=member AND role=superuser    member only     (correct)
+no claims at all                  refused      role=admin, unauthenticated    refused
+```
+
+Two things worth recording rather than re-finding: the claim **type** is matched case-insensitively, so `ROLE` and `RoLe` are found (observation N2), and the defensive fallback is narrow — only `ClaimTypes.Role` is accepted, not any role-shaped URI, so `.../identity/claims/role` is refused.
+
+**Mutation.** I replaced the member policy with the plausible fallback the ticket warned about — *anyone authenticated who is not an admin is a member* — and the suite went red: **7 unit tests and 4 integration tests failed**. Restored, all green. The allow-list is load-bearing and its guards are real.
+
+#### AC5 — PASS for every caller the system can currently produce; see defect Q1
+
+First request creates the record; a return visit updates it rather than duplicating; the name follows the token. Verified, and **mutation-proven**: replacing the existing-record lookup with `null` (always insert) fails `Returning_updates_the_record_rather_than_duplicating_it`.
+
+Adjacent behaviour I checked that no test covers, all correct: `FirstSeenAt` does not move on a return visit; two subjects sharing a display name produce two records (the ticket's Examples); a name disappearing from the token clears the stored one; a whitespace-only subject is skipped without failing the request; and a caller **refused** by the policy still gets a projection, because the middleware runs between authentication and authorisation — which is the documented ordering and the right one, since identity is established before permission.
+
+The concurrency guard is not vacuous: removing the `catch (DbUpdateException)` fails `Concurrent_first_requests_from_one_subject_do_not_fail` on **3 of 3** runs.
+
+#### AC6 — PASS, verified against the deployed schema rather than the model
+
+The existing test asserts the EF model. I checked the database the stack actually created:
+
+```
+Table "public.users"
+ Subject      character varying(200)    not null   (PK)
+ DisplayName  character varying(400)
+ FirstSeenAt  timestamp with time zone  not null
+ LastSeenAt   timestamp with time zone  not null
+```
+
+And swept the whole API schema for any column named like a role or a credential — `information_schema.columns` matching `%role%`, `%secret%`, `%password%`, `%credential%`, `%token%` across `public`: **no rows**. The migration is reversible (`Down` drops the table).
+
+#### AC7 — PASS, and the guard is genuinely closed at every level
+
+This one was fixed twice, so I tested the fix rather than the feature. Injecting a display-name leak into the projection path:
+
+```
+baseline, no leak                              Passed
+inject LogInformation leak of the display name Failed
+inject LogDebug        leak of the display name Failed
+inject LogTrace        leak of the display name Failed
+```
+
+**And the counterfactual, which is what attributes the fix:** reverting `AddFilter((_, _) => true)` to `SetMinimumLevel(LogLevel.Trace)` and injecting the same `LogDebug` leak → **Passed** — blind again. So the one-line remedy is precisely what closes the guard, and the earlier inert mechanism is confirmed inert by my own run rather than by the record.
+
+One thing I did not expect and is worth recording: the project's analyzers (`CA1848`, `CA1873`) make an ad-hoc `logger.LogDebug(...)` a **build error**, so a leak would have to be written deliberately as a source-generated `LoggerMessage`. That is a second, unclaimed barrier in front of AC7 (observation N4).
+
+#### AC8 — PASS in the test host; see observation N5
+
+A token carrying a subject and no display-name claim returns 200, creates the projection, and leaves `DisplayName` null. Provable only in the test host today, for the reason in N5.
+
+#### Q1 — Defect: the `DbUpdateException` catch swallows every write failure, not only the race it was added for
+
+The catch was added for a specific, well-understood collision — two first requests from one subject, one losing on the primary key — and its comment reasons correctly *about that case*: "the other request created the projection, which is the outcome we wanted". But it catches `DbUpdateException` **unconditionally**, and that reasoning is false for any other cause.
+
+**Reproduction.** A subject of 230 characters — legal under OIDC, which caps `sub` at 255, and longer than the column's 200:
+
+```
+230-char subject   -> HTTP 200, rows stored = 0, nothing logged
+200-char subject   -> HTTP 200, rows stored = 1      (the boundary)
+450-char display name -> HTTP 200, rows stored = 0, nothing logged
+```
+
+**Attribution, by removing the catch:** the same request then raises `Microsoft.EntityFrameworkCore.DbUpdateException` ← `Npgsql.PostgresException 22001: value too long for type character varying(200)`. So the catch is what converts a genuine failed write into a silent success.
+
+AC5 says a record *is created*. For these inputs none is, the caller is told 200, nothing is logged, and the caller is then silently unusable as an assignee (T-0006) or comment author (T-0008) — the entire purpose of the projection. The guard test passes either way, because it only exercises the duplicate-key path.
+
+- **Severity: low today, and I did not fail the ticket on it.** No token this system can issue carries a subject at all (N5), so there is no caller for whom this is currently reachable; AC5 holds for every caller that can presently exist. That is why the verdict is PASS.
+- **But it is the ticket's own failure family** — something that fails silently and reports success — and it becomes reachable the moment T-0010's provisioning produces real subjects, which is the same moment AC5 and AC8 first get real evidence.
+- **Fix shape, not mine to write** (`acceptance-test` MUST NOT modify implementation code): narrow the catch to the unique-violation case (`PostgresException.SqlState == "23505"`), or re-read after the failure and treat it as a race only when the record now exists. Anything else should surface.
+
+#### Q2 — Defect: the documentation this change falsifies was not updated
+
+The change-set touches **no documentation at all** — `git show --name-only` lists only source, tests, the migration and this ticket.
+
+- **`README.md:97`** still lists, under *"Not here yet"*: *"Role-based authorisation. Tokens carry a `role` claim, but **nothing reads it yet** — that is T-0009."* T-0009 has shipped. The same README already says at line 110 that the token *"carries a `role` claim which the API reads per request and never stores"* — so the document now contradicts itself in two places about the same fact.
+- **`ARCHITECTURE.md:5`** state banner still reads *"no roles or user projection (T-0009)"*. (It also still says "no API specification or generated contracts (T-0002)" and "no identity host (T-0010)", both of which shipped earlier — inherited staleness those tickets missed, but the T-0009 clause is this ticket's.)
+
+`DOCUMENTATION.md` is explicit — *"Stale documentation is a defect"*, and *"A ticket that changes any of those steps fixes the README in the same change"* — and DoD item 6 requires README and setup documentation affected by the change to be updated. **This is the fourth instance of this exact pattern**: T-0002's Work Log records correcting the stale README banner and calls it "third instance". It is two lines to fix and it is the one DoD item this change-set plainly does not meet.
+
+#### Observations — non-blocking, recorded so they are not re-found
+
+- **N1 — a latent fail-open in a fail-closed design.** `HasRole` gates on `user.Identity?.IsAuthenticated`, which is the **primary** identity, while `FindAll` searches **all** identities. So a principal whose primary identity is authenticated but role-less, carrying a second *unauthenticated* identity holding `role: admin`, **is granted admin** — I confirmed it. The reverse (unauthenticated primary, authenticated admin second) is correctly refused. Not reachable today: one scheme is registered, one identity is produced, and nothing appends. It becomes reachable if a second authentication scheme is ever added. Worth a line, because everything else here fails closed and this is the one place that does not; the fix is to read claims only from authenticated identities.
+- **N2 — claim *type* matching is case-insensitive** (`ROLE`, `RoLe` are found). That is `ClaimsIdentity` semantics rather than a project choice, and the issuer emits lowercase, so it is not a hole. Recorded so the next reader does not re-derive it.
+- **N3 — AC7's email assertion is vacuous.** Nothing in this system reads or stores an email; the test asserts `DoesNotContain("logged-1@")`, a string that was never in the token or the code. The display-name half is genuine and mutation-proven; the email half cannot fail. AC7 is satisfied in substance — there is no email to leak — but the guard for that half proves nothing, and will still prove nothing when an email claim does arrive.
+- **N4 — analyzers block ad-hoc logging**, as above: a real leak must be written as a source-generated `LoggerMessage`. A second barrier in front of AC7 that nobody claimed.
+- **N5 — AC5 and AC8 are provable only in the test host, and I confirmed the blind spot from both ends.** Every token the identity host issues carries `client_id` and **no `sub`** — decoded, seven of them — and after driving all seven real tokens through the real API the `users` table held **0 rows**, checked directly in PostgreSQL. **My judgement, since it was asked for: the blind spot is acceptable and is correctly recorded, but its record needs a destination.** It is acceptable because the middleware's behaviour is right (a machine client is not a user), the gap is downstream of T-0010's unresolved provisioning question rather than a defect here, and the test-host coverage is genuine for the logic it exercises. It needs a destination because it is not merely a note: it is the condition under which Q1 becomes reachable, the condition under which AC5 and AC8 first get real evidence, and the condition under which `PROJECT.md` Q8 stops being theoretical — three live consequences currently recorded only in a closed ticket's Work Log. [T-0015](T-0015-compose-stack-smoke-test.md) exists for behaviour whose verification needs the real stack and would be a natural home, but I checked and its scope does not name this. Per DoD item 4 that is either a scope line added to a ticket that accepts it, or a recorded deviation.
+- **N6 — the `RequireRole` divergence, reproduced live.** Admin → member endpoint is **200** by policy and **403** by `RequireRole("member")`, with real tokens. `IsInRole` answers correctly (`admin: true`, `member: false`, `superuser: false`), and `User.Identity.Name` is null only because client-credentials tokens carry no `name`.
+
+#### The policy/`RequireRole` divergence — is a comment enough?
+
+**My judgement: yes, proportionately — and I would add one cheap thing to T-0004 rather than hold this ticket.**
+
+For it: the comment is on the policy constants, which is where someone choosing a mechanism actually looks — `Program.cs` is not read before writing an endpoint. The divergence **fails closed**: it denies access it should grant and never the reverse, so the worst outcome is an admin being turned away, which is loud to that admin and harmless to security. And the policy semantics themselves *are* pinned by a test — `Either_role_reaches_a_member_endpoint` fails if an admin ever stops satisfying the member policy.
+
+Against it: nothing mechanically prevents someone typing `[Authorize(Roles = "member")]`, and T-0004 meets this immediately. A comment is a request to remember; this project's own record is that remembering is the weak link.
+
+So: not a defect and not a reason to fail acceptance, but the durable version is cheap — a test or analyzer rule failing the build if `[Authorize(Roles = ` or `RequireRole(` appears in `apps/`. That belongs in T-0004, the first ticket that will meet the choice, and I have recorded it here rather than opening a ticket for a one-line guard.
+
+#### Gates, each read from the tool's own exit status
+
+`python3 tools/validate-project-os/validate.py` → **OK** (17 tickets, 6 ADRs) · `dotnet build --no-incremental` → **0 warnings / 0 errors** · `dotnet format --verify-no-changes` → **0** · `dotnet test` → **55/55** (15 unit, 40 integration), **0 skipped** · `dotnet list package --vulnerable --include-transitive` → **no vulnerable packages in any of the six projects** · working tree clean.
+
+#### Definition of Done — assessment at this stage
+
+1. **Implementation complete** — met. Policies, projection, migration, middleware and the AC4 decision are all present. Out of Scope is untouched: no role-management endpoint, no users API, no membership or per-project permission surface anywhere in `apps/`.
+2. **All acceptance criteria verified** — met, independently; AC1–AC4 and AC6 against the running system.
+3. **Automated tests exist and pass** — met. 55/55, 0 skipped, run by me from a clean build.
+4. **No known unrecorded defects** — **not yet met**: Q1 and Q2 are open, and N5 needs a destination or a deviation.
+5. **Code quality** — met. Three review rounds; build and formatter clean; no `TODO`, `FIXME`, `Console.WriteLine` or debug scaffolding in the change-set; no secrets.
+6. **Documentation updated** — **not met**, see Q2. This is the one universal item the change-set plainly does not satisfy.
+7. **Work Log complete** — met, and the record of the claim-mapping bug is the most valuable thing in it.
+8. **State updated** — for `complete-ticket`.
+
+Conditional items: **Security** — dependency scan clean and recorded here as `SECURITY.md` requires; negative cases are the bulk of the suite; authentication was never disabled to make a test pass (the test scheme adds a handler rather than removing enforcement, and AC1–AC4 are now additionally proven with no test handler at all); no secrets in the change-set. **Migrations** — scripted, reversible, and applied by the explicit migrator step. **Regression test** — the claim-mapping bug has `AuthorizationPolicyTests` plus the pinning test, and I confirmed the pin fails on removal of **each** of its three settings (below). **ADR** — none required; `PROJECT.md` §5 and ADR-0003 already fix the model, and nothing here changes it.
+
+**Does anything need a recorded deviation?** Only if the team chooses to defer rather than fix. Q1 and Q2 are both small and belong to this ticket; N5 needs a destination ticket whose scope accepts it. If any of the three is instead deferred without a home, that is where a PO-approved deviation is required — none is needed if they are simply resolved.
+
+#### Mutations run, and what each proved
+
+| Mutation | Result |
+| --- | --- |
+| Delete `MapInboundClaims = false` | pinning test **fails** |
+| Delete `RoleClaimType = "role"` | pinning test **fails** |
+| Delete `NameClaimType = "name"` | pinning test **fails** |
+| Member policy → "authenticated ⇒ member" fallback | **7 unit + 4 integration** tests fail |
+| Remove the existing-record lookup | return-visit test **fails** |
+| Remove the `DbUpdateException` catch | race test **fails 3/3** |
+| Inject a display-name leak at `Information` / `Debug` / `Trace` | AC7 guard **fails** at all three |
+| Revert the guard to `SetMinimumLevel(Trace)` + `LogDebug` leak | AC7 guard **passes** — the inert mechanism, confirmed inert |
+
+#### What I could not verify
+
+- **AC5 and AC8 against a real token** — impossible today; no token this system can issue carries a subject (N5).
+- **AC1–AC4 through a shipped endpoint** — none exists; no product endpoint consumes the policies yet, which is by design (T-0004 is the first consumer). I got as close as the system allows: the API's own `Program.cs` and policies, real tokens, with only the endpoint supplied.
+- **The concurrency race under real load** — reproduced deterministically enough that removing the catch fails it 3/3, but not under production concurrency.
+
+- **Did:** Derived checks from the requirements before the Work Log. Seeded five extra identity-host clients so AC4 could be attacked with **real signed tokens** carrying `superuser`, `Admin`, `' admin'`, `''` and `'member,admin'`. Booted the API's own `Program.cs` against the live identity host and PostgreSQL and ran the full role matrix with no test authentication handler. Ran fifteen further claim shapes against the real policies, including plural `roles`, a Cyrillic homoglyph, a null byte, a JSON-array value, mixed-case claim types and multi-identity principals. Executed eight mutations, each seen failing and restored. Verified AC6 against the deployed schema and swept every column in the API's schema. Probed the projection's edges and traced the silent drop to its cause by removing the catch. Ran every gate.
+- **Decided:** PASS. Q1 is a genuine silent-failure defect that is unreachable today, so it does not send the ticket back; Q2 is a DoD item 6 miss for `complete-ticket`. Neither violates a criterion for any caller the system can currently produce.
+- **Remaining:** `complete-ticket` — resolve Q1 and Q2, and give N5 a destination or a recorded deviation. N1 is worth a line of code whenever someone is next in that file; the `[Authorize(Roles = …)]` ban-test belongs to T-0004.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged; verified on `main` @ `c92bc24`.
+- **Test state:** 55/55 green, 0 skipped; eight mutations each seen failing.
+- **Acceptance verdict:** **PASS** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
