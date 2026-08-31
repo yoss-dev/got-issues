@@ -139,3 +139,42 @@ Perspectives applied: Product Owner, Business Analyst, Software Engineer, Archit
 - **Branch / PR:** n/a
 - **Test state:** n/a — not started.
 - **DoR verdict:** **ready**.
+
+### 2026-08-30 — Software Engineer (claude-sm-9d4e) — implementation plan
+
+Claimed via `pick-up-ticket` under `run-sprint`. `depends_on: [T-0001]` verified **done** (not assumed — checked the ticket frontmatter and the Completed table). DoR re-checked: still holds, nothing drifted.
+
+**Approach**
+
+- Two projects beside the code under test, per [TESTING.md](../../standards/TESTING.md)'s tier table: `apps/GotIssues.Api.UnitTests` and `apps/GotIssues.Api.IntegrationTests`, both `net10.0`, added to `GotIssues.slnx`.
+  - *Tension noted:* `apps/` is described as deployable applications, and test projects are not deployable. TESTING.md says "beside the project under test", which is the more specific instruction, so I follow it. If a reviewer prefers a `tests/` root, that is a cheap move and a legitimate call.
+- xUnit as framework and runner. Integration tier uses `WebApplicationFactory<Program>` — which needs `Program` reachable, so an `InternalsVisibleTo`/partial-class shim in the API is likely required. That is an unavoidable production-side change; it will be minimal and called out in review.
+- **Testcontainers** for PostgreSQL, with the isolation strategy settled at refinement: **one container per test run, a fresh database per test class**, migrations applied on creation. Transaction-rollback per test was rejected with reasons already in Technical Notes.
+- **Test authentication**: a handler registered only by the test host, never by the API's own composition (AC10). Nothing is protected yet — T-0010 brings auth — so this is scaffolding that T-0009's policy tests will use.
+- The API's build settings (`TreatWarningsAsErrors`, `latest-recommended`) apply to test projects too; expect analyzer friction and fix it rather than suppressing.
+
+**Test plan — each AC to its verification**
+
+| AC | How |
+| --- | --- |
+| AC1 | `dotnet test` from a clean clone with Docker running; both tiers execute and pass |
+| AC2 | Assert the integration tier talks to a real PostgreSQL container, not an in-memory provider — inspect the connection/provider in a test |
+| AC3 | Fresh container; assert the schema exists because the project's migrations applied |
+| AC4 | Run the suite twice consecutively; run a single test in isolation; both green |
+| AC5 | A test asserting an unauthenticated caller is refused — pending T-0010 there is nothing protected, so this is scoped to the test host's own guarded endpoint |
+| AC6 | Stop Docker, run `dotnet test`, assert failure within 60s naming the container runtime |
+| AC7 | Reconcile README and TESTING.md against what actually runs |
+| **AC8** | Cover T-0001's stack behaviour: migrations applied by the project's own migrations, and `/health` reporting the database's *real* state (healthy when up, unhealthy when unreachable) |
+| AC9 | Deliberately break a test, confirm non-zero exit, restore it |
+| AC10 | Assert the test auth handler is absent from the API's normal composition |
+
+**Carried in from T-0001's acceptance** (`claude-qa-3f7c`): a documented command was broken across three manual passes because verification exercised the HTTP surface rather than the documented *setup path*. The suggestion is that this harness cover that path too. **My reading: partly in scope.** AC8 covers the stack's runtime behaviour, and I will include the migration/health path. Driving `docker compose up` from `dotnet test` is a different kind of test (a smoke test over the compose stack) and is **not** in this ticket's scope — I will not silently widen it. If the PO wants it, it is a follow-up ticket, and I will say so at handover rather than quietly doing or quietly dropping it.
+
+**Risks I expect to hit**
+
+- `WebApplicationFactory` needs `Program` visible; the API is top-level statements, so a shim is required. Production-side change driven by tests — declare it, keep it minimal.
+- AC6's 60-second bound depends on Testcontainers' own failure behaviour, which I have not measured. If it exceeds 60s by default, the fix is an explicit timeout, not a relaxed criterion.
+- AC4's isolation is where a harness silently rots; the second consecutive run is the real test.
+- Sizing was flagged borderline at refinement, with **AC8 as the split seam**. If it overruns I will propose the split rather than grind.
+
+**Branch / PR:** `t-0003-automated-test-harness`, in its own worktree.
