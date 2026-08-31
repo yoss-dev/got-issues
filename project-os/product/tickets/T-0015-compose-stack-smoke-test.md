@@ -2,7 +2,7 @@
 id: T-0015
 title: Automated coverage for behaviour that needs the real Compose stack
 type: technical
-status: ready
+status: committed
 priority: normal
 owner: none
 implemented_by: none

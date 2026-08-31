@@ -2,7 +2,7 @@
 id: T-0002
 title: Contract-first pipeline — OpenAPI spec, code generation, and drift check
 type: technical
-status: ready
+status: committed
 priority: high
 owner: none
 implemented_by: none
