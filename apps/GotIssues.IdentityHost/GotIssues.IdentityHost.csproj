@@ -6,18 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
-    <!-- PROJECT.md §5: NuGet with a lock file. Without this the container's
-         restore can resolve different transitive versions than the dev build. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
-  <!--
-    Deliberately NO Microsoft.AspNetCore.OpenApi: it generates an OpenAPI document
-    FROM the code, which is the code-first direction ADR-0004 rejects. The contract
-    is hand-authored in spec/openapi.yaml and code is generated from it (T-0002).
-  -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Duende.IdentityServer" Version="8.0.6" />
+    <PackageReference Include="Duende.IdentityServer.EntityFramework" Version="8.0.6" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

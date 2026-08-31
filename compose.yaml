@@ -39,6 +39,54 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # The identity host's explicit migration and seeding step — the same shape the API
+  # uses. Runs once, exits 0, and gates the identity service.
+  identity-migrator:
+    build:
+      context: .
+      dockerfile: apps/GotIssues.IdentityHost/Dockerfile
+    command: ["--migrate"]
+    environment:
+      ConnectionStrings__Identity: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Seed__Clients__0__ClientId: "${ADMIN_CLIENT_ID}"
+      Seed__Clients__0__Secret: "${ADMIN_CLIENT_SECRET}"
+      Seed__Clients__0__Role: "admin"
+      Seed__Clients__1__ClientId: "${MEMBER_CLIENT_ID}"
+      Seed__Clients__1__Secret: "${MEMBER_CLIENT_SECRET}"
+      Seed__Clients__1__Role: "member"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Duende IdentityServer. Runs unlicensed for the proof of concept, a deliberate
+  # maintainer decision (PROJECT.md §4) — licence warnings at startup are expected
+  # behaviour, not defects.
+  identity:
+    build:
+      context: .
+      dockerfile: apps/GotIssues.IdentityHost/Dockerfile
+    environment:
+      ConnectionStrings__Identity: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      ASPNETCORE_URLS: "http://+:8080"
+      Identity__IssuerUri: "${IDENTITY_ISSUER_URI:-http://localhost:8081}"
+      Identity__SigningKeyPath: "/app/keys/tempkey.jwk"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-migrator:
+        condition: service_completed_successfully
+    ports:
+      - "${IDENTITY_PORT:-8081}:8080"
+    volumes:
+      - identity-keys:/app/keys
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   api:
     build:
       context: .
@@ -46,6 +94,12 @@ services:
     environment:
       ASPNETCORE_URLS: "http://+:8080"
       ConnectionStrings__GotIssues: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      # Metadata is fetched inside the Compose network; tokens carry the identity
+      # host's fixed public issuer. The two addresses differ by design.
+      Authentication__Authority: "${IDENTITY_ISSUER_URI:-http://localhost:8081}"
+      Authentication__MetadataAddress: "http://identity:8080/.well-known/openid-configuration"
+      Authentication__Audience: "gotissues-api"
+      Authentication__RequireHttpsMetadata: "false"
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -53,6 +107,8 @@ services:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
+      identity:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
       interval: 5s
@@ -62,3 +118,4 @@ services:
 
 volumes:
   postgres-data:
+  identity-keys:

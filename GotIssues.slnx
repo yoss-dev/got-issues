@@ -3,5 +3,6 @@
     <Project Path="apps/GotIssues.Api.IntegrationTests/GotIssues.Api.IntegrationTests.csproj" />
     <Project Path="apps/GotIssues.Api.UnitTests/GotIssues.Api.UnitTests.csproj" />
     <Project Path="apps/GotIssues.Api/GotIssues.Api.csproj" />
+    <Project Path="apps/GotIssues.IdentityHost/GotIssues.IdentityHost.csproj" />
   </Folder>
 </Solution>

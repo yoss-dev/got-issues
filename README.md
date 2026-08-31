@@ -77,7 +77,26 @@ The integration tier starts a real PostgreSQL container ([Testcontainers](https:
 These are documented in the standards but their tooling arrives with the tickets that build it — do not expect them to run today:
 
 - `./tools/generate.sh` and the OpenAPI specification — the contract-first pipeline is [T-0002](project-os/product/tickets/T-0002-contract-first-codegen-pipeline.md). Until it lands, `spec/` holds only its README.
-- Authentication — the identity host is [T-0010](project-os/product/tickets/T-0010-duende-identity-host.md). Nothing is protected yet.
+*(Everything else the standards mention now exists.)*
+
+### Getting a token
+
+The stack includes a self-hosted [Duende IdentityServer](https://duendesoftware.com). Two development identities are seeded from `.env` — one `admin`, one `member` — as OAuth clients using the client-credentials flow:
+
+```bash
+curl -s -X POST localhost:8081/connect/token \
+  -d "grant_type=client_credentials&client_id=$ADMIN_CLIENT_ID&client_secret=$ADMIN_CLIENT_SECRET&scope=gotissues.api"
+```
+
+The token carries a `role` claim (`admin` or `member`) which the API reads per request and never stores. To prove the round trip:
+
+```bash
+curl -i -H "Authorization: Bearer <token>" localhost:8080/health/authenticated
+```
+
+Seeded identities are inserted **only if absent**, so changing `ADMIN_CLIENT_SECRET` in `.env` after the first run has no effect — the stored secret wins. To rotate one, change it in the database or start from a clean volume (`docker compose down -v`).
+
+Duende runs **unlicensed** for this proof of concept, a deliberate decision recorded in [`PROJECT.md`](project-os/PROJECT.md) §4 — licence warnings at startup are expected, not defects.
 
 ### The one rule that shapes everything
 

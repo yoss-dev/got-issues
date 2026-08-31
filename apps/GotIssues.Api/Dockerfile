@@ -7,6 +7,10 @@ WORKDIR /src
 COPY apps/GotIssues.Api/GotIssues.Api.csproj apps/GotIssues.Api/packages.lock.json apps/GotIssues.Api/
 RUN dotnet restore apps/GotIssues.Api/GotIssues.Api.csproj --locked-mode
 
+# The root .editorconfig carries the generated-code exclusions for EF migrations.
+# Without it the container build applies analyzers to generated files and fails
+# where the host build succeeds — a difference that only shows up in Docker.
+COPY .editorconfig ./
 COPY apps/GotIssues.Api/ apps/GotIssues.Api/
 RUN dotnet publish apps/GotIssues.Api/GotIssues.Api.csproj -c Release -o /app/publish
 
