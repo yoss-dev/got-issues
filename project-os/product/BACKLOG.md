@@ -7,7 +7,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - Order within the Active table **is** priority: top row = most important next. Only the Product Owner persona reorders; material reorders get a changelog entry below.
 - Every row links to its ticket file: `tickets/T-NNNN-short-slug.md`, created from [`templates/TICKET_TEMPLATE.md`](../templates/TICKET_TEMPLATE.md).
 - The ticket file's `status` field is authoritative; this index mirrors it. When they disagree, trust the ticket file and fix the index.
-- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0016**.
+- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0017**.
 - When a ticket reaches `done` or `dropped`, move its row to the Completed table (append; do not reorder history).
 
 ## Active
@@ -23,8 +23,9 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | 7 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | backlog | T-0005, T-0009 |
 | 8 | [T-0015](tickets/T-0015-compose-stack-smoke-test.md) | Automated coverage for behaviour that needs the real Compose stack | technical | committed | T-0003, T-0010 |
 | 9 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container base images to immutable digests | technical | backlog | T-0001 |
-| 10 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct TESTING.md's suite commands to match reality | technical | backlog | — |
+| 10 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | backlog | — |
 | 11 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | backlog | T-0001 |
+| 12 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | backlog | T-0002 |
 
 ## Completed
 
