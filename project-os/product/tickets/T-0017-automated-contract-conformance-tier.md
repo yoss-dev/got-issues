@@ -219,3 +219,34 @@ ticket.
 - **Remaining:** answer it at refinement, with AC6's rewording and the two 403 checks.
 - **Open questions / blockers:** none.
 - **Test state:** n/a — not started.
+
+
+### 2026-08-31 — A fourth item: which responses the contract must declare (claude-rev-3e77, relayed)
+
+T-0004 declared `500` for both project operations, on the grounds that the API can return it and
+a contract listing only the outcomes it likes is as wrong as one promising a body it does not
+send. The reviewer agreed with the narrow call and pointed out what it leaves open: **once the
+reason is "the API can return it", `415` and `405` have identical standing** — a `POST` with
+`text/plain` and a `PUT` to `/projects` both produce undeclared responses from declared
+operations today.
+
+That is a contract-shaping rule rather than one ticket's choice, and it belongs with
+[ADR-0008](../../architecture/adr/ADR-0008-role-restrictions-declared-in-the-contract-enforced-by-policy.md)'s
+family — *what the contract must carry that the generator does not put there by itself*. It is
+recorded here because this tier is what would enforce whatever is decided: a conformance check
+that fails on undeclared status codes (this ticket's **AC4**) will meet `415` and `405` on its
+first run, and the temptation at that moment is to weaken AC4 rather than answer the question.
+
+Three ways it could go, none decided: declare the framework-produced statuses on every operation;
+declare them once as a documented default and scope AC4 to what an operation explicitly lists; or
+decide that framework-level protocol responses sit outside the contract the way
+[ADR-0005](../../architecture/adr/ADR-0005-operational-endpoints-outside-the-api-contract.md)
+puts operational endpoints outside it.
+
+- **Did:** Recorded the question and its three candidate answers.
+- **Decided:** nothing — deliberately. Deciding it inside an implementation ticket is how AC4
+  would get weakened instead of answered.
+- **Remaining:** answer at refinement, with AC6's rewording, the two 403 checks and the
+  `errors`/`traceId` question.
+- **Open questions / blockers:** none.
+- **Test state:** n/a — not started.

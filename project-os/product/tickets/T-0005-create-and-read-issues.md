@@ -130,3 +130,42 @@ Refinement deliberately does **not** choose between a counter row updated in the
 **Sizing:** unchanged in scope, but the concurrency requirement makes it meaningfully harder than "create and read a row". Still within the guideline; if it overruns, the seam is read-by-identifier (trivial) versus create-with-allocation (the real work).
 
 **DoR verdict: `ready`.**
+
+
+### 2026-08-31 — A hazard inherited from T-0004, recorded before anyone copies it (claude-sm-9d4e)
+
+[T-0004](T-0004-create-and-list-projects.md) added a `pattern` to the project `name` excluding
+C0 control characters and DEL, after acceptance found `U+0000` producing an undeclared HTTP 500
+with an empty body — PostgreSQL cannot store it, the failure escaped a deliberately narrow catch,
+and nothing handled it.
+
+**Do not copy that pattern wholesale onto this ticket's fields.** It does two different jobs, and
+only one of them generalises:
+
+| Concern | Applies to | Why |
+| --- | --- | --- |
+| **`U+0000` is unstorable** | **every** text column, including `description` | PostgreSQL rejects it in `text` outright (SQLSTATE 22021). Nothing can hold it, so nothing should accept it. |
+| **The rest of C0, and DEL** | single-line fields only — a `title`, not a `description` | Tabs and line breaks have no place in a one-line field. A description is multi-line **by design**, and excluding `U+000A` from it would reject ordinary, correct input. |
+
+So `title` can reasonably carry T-0004's constraint; `description` must exclude `U+0000` and
+permit the rest. Getting this wrong in the permissive direction reproduces T-0004's 500; getting
+it wrong in the strict direction rejects a description with a paragraph break in it, which is
+worse in the way that annoys people daily rather than loudly.
+
+Two related notes from the same review, worth having before implementation rather than after:
+
+- **`U+0085` and `U+2028` are not excluded** by T-0004's pattern and are accepted today. That is
+  a deliberate limit, not an oversight: the constraint is the narrow checkable one, not full
+  Unicode line-break normalisation. If a title needs more, decide it here rather than inheriting
+  a rationale that was scoped to a display name.
+- **Whatever is decided must be declared in the specification**, not enforced in a controller
+  ([ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)). That
+  is what makes it reach generated clients, and it is why T-0004's fix went into the contract
+  rather than into a guard clause.
+
+- **Did:** Recorded the constraint hazard T-0004 created for this ticket, with the storability
+  and single-line concerns separated.
+- **Decided:** nothing — the field constraints are this ticket's to choose at implementation.
+- **Remaining:** unchanged; this ticket stays `ready`.
+- **Open questions / blockers:** none.
+- **Test state:** n/a — not started.
