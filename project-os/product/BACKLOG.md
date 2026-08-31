@@ -7,26 +7,27 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - Order within the Active table **is** priority: top row = most important next. Only the Product Owner persona reorders; material reorders get a changelog entry below.
 - Every row links to its ticket file: `tickets/T-NNNN-short-slug.md`, created from [`templates/TICKET_TEMPLATE.md`](../templates/TICKET_TEMPLATE.md).
 - The ticket file's `status` field is authoritative; this index mirrors it. When they disagree, trust the ticket file and fix the index.
-- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0022**.
+- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0023**.
 - When a ticket reaches `done` or `dropped`, move its row to the Completed table (append; do not reorder history).
 
 ## Active
 
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | in-acceptance | T-0004 |
-| 2 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | committed | T-0005, T-0009 |
-| 3 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
-| 4 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
-| 5 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | ready | T-0010 |
-| 6 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container images to immutable digests | technical | ready | T-0001 |
-| 7 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | ready | — |
-| 8 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | ready | T-0001 |
-| 9 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | ready | T-0002 |
-| 10 | [T-0017](tickets/T-0017-automated-contract-conformance-tier.md) | Automate the contract-conformance test tier TESTING.md already defines | technical | ready | T-0002 |
-| 11 | [T-0019](tickets/T-0019-token-clock-skew.md) | Decide the resource server's clock-skew allowance instead of inheriting five minutes | technical | ready | T-0009 |
-| 12 | [T-0020](tickets/T-0020-correlate-a-500-with-its-cause.md) | Make a 500 correlatable with the log line that explains it | technical | backlog | T-0004 |
-| 13 | [T-0021](tickets/T-0021-prove-migrations-against-populated-databases.md) | Prove what migrations do to databases that already hold rows | technical | backlog | T-0005 |
+| 1 | [T-0022](tickets/T-0022-adopt-clean-architecture-layering.md) | Adopt Clean Architecture layering, and make the result the paradigm | technical | backlog | T-0004, T-0005 |
+| 2 | [T-0005](tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | feature | in-acceptance | T-0004 |
+| 3 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | committed | T-0005, T-0009 |
+| 4 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
+| 5 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
+| 6 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | ready | T-0010 |
+| 7 | [T-0012](tickets/T-0012-pin-container-base-images.md) | Pin container images to immutable digests | technical | ready | T-0001 |
+| 8 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | ready | — |
+| 9 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | ready | T-0001 |
+| 10 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | ready | T-0002 |
+| 11 | [T-0017](tickets/T-0017-automated-contract-conformance-tier.md) | Automate the contract-conformance test tier TESTING.md already defines | technical | ready | T-0002 |
+| 12 | [T-0019](tickets/T-0019-token-clock-skew.md) | Decide the resource server's clock-skew allowance instead of inheriting five minutes | technical | ready | T-0009 |
+| 13 | [T-0020](tickets/T-0020-correlate-a-500-with-its-cause.md) | Make a 500 correlatable with the log line that explains it | technical | backlog | T-0004 |
+| 14 | [T-0021](tickets/T-0021-prove-migrations-against-populated-databases.md) | Prove what migrations do to databases that already hold rows | technical | backlog | T-0005 |
 
 ## Completed
 
@@ -55,6 +56,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - 2026-08-30 — `refinement-session` (order chosen by the maintainer: T-0001, T-0003, T-0002, T-0009). **T-0001 refined → `ready`**, and **split**: the Duende identity host became **T-0010**, inserted at position 4 ahead of T-0009, which now depends on it rather than on T-0001. T-0001's refinement also produced **ADR-0005** (operational endpoints are outside the API contract), which resolved a circular conflict between the contract-first rule and T-0001's health endpoint. Positions 4–10 shifted down by one; relative priority is otherwise unchanged.
 - 2026-08-31 — **T-0004 done — the first product capability.** Projects can be created by an admin and listed by either role, through endpoints designed in the specification and generated from it. ADR-0004's premise held on its first real resource. **[T-0005](tickets/T-0005-create-and-read-issues.md) is now unblocked** and is the sprint's next ticket.
 - 2026-08-31 — **T-0021 created from T-0005's review.** Blocking finding B1 — the `AddIssues` migration backfilled the issue counter with 0, so the first issue in any pre-existing project came out as `GOTI-0`, violating the `key` pattern and `minimum: 1` the contract itself declares — was fixed on T-0005, and its instance is closed by a new `UpgradePathTests`. T-0021 carries the **class**: every test in the repository migrates an empty schema, and nothing compares the schema the migrations produce to the model that describes it (EF's own check compares the model to the migration *snapshot*; `check-drift.sh` compares the *spec* to generated code). The defect sat in the gap between those two gates, and one test at one hardcoded boundary does not close it. Placed below T-0020: nothing is urgent, but every ticket from T-0006 on adds migrations to a schema that by then holds data.
+- 2026-08-31 — **T-0022 created; [ADR-0010](../architecture/adr/ADR-0010-clean-architecture-layering.md) supersedes ADR-0009.** The maintainer's judgement is that the current implementation is an anti-pattern: adopt repositories, ports and Clean Architecture layering, and make the first implementation the paradigm later tickets copy. Placed at position 1 — it is not the most valuable ticket, it is the one whose absence makes every later ticket build in a shape that would then need migrating. **One open question for the maintainer:** whether it runs before T-0006, the MVP's last committed ticket.
 - 2026-08-31 — **T-0020 created from T-0004's acceptance**: the 500 is the only response in the API that cannot be correlated from either end — every other problem document carries `traceId`, that one carries nothing, and the log line has no identifier either. Created before `complete-ticket` rather than after, because [DoD](../governance/DEFINITION_OF_DONE.md) item 4 counts a deferral only once its destination exists and accepts it.
 - 2026-08-31 — **SPRINT-003 planned.** Committed T-0004, T-0005, T-0006 — goal: *a person can create a project, file issues, and move them through their lifecycle, all through the API*. The MVP the Product Owner asked for. First sprint whose committed work is a strict dependency chain rather than independent tickets, so capacity is set at 3 rather than the trailing 3–4. T-0007 left out to keep the chain three deep; T-0018 left out although it is what makes `assignee` name a person rather than a client id. Order unchanged.
 - 2026-08-31 — **Both blocking questions answered by the maintainer; all 10 now `ready`.** The issue enumerations are the minimal set (`bug`/`task`, `open`/`in_progress`/`done`, `low`/`normal`/`high`), closing T-0006's only DoR failure. The grant type is a **test-only extension grant, gated off by default** — recorded as [ADR-0007](../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md) (Accepted), which closes T-0018's architectural conditional and unblocks T-0008.

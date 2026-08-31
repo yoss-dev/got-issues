@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted
+Superseded by ADR-0010
 
-**Accepted by the maintainer on 2026-08-31.** Raised by them the same day, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository had ever decided either way — which is why this ADR exists, and why "leave it as it is" was the one option ruled out even though the outcome resembles it.
+**Superseded by [ADR-0010](ADR-0010-clean-architecture-layering.md) on 2026-08-31**, the same day it was accepted: the maintainer's judgement is that this implementation is an anti-pattern and that the fuller Clean Architecture pattern should be adopted. The body below is left exactly as accepted — the argument it makes, and the cost it names, are what ADR-0010 overrides rather than refutes.
+
+**Originally accepted by the maintainer on 2026-08-31.** Raised by them the same day, asking why `IssuesController` takes a `GotIssuesDbContext` directly rather than a service, and whether that is consistent with Clean Architecture and best practice. The answer was that nothing in this repository had ever decided either way — which is why this ADR exists, and why "leave it as it is" was the one option ruled out even though the outcome resembles it.
 
 One supporting argument was corrected before acceptance: the first draft claimed the project "has decided it does not rely on" mocks, which is false — see the second bullet of Context. The conclusion did not depend on it.
 

@@ -8,7 +8,7 @@ owner: none
 implemented_by: none
 accepted_by: none
 depends_on: [T-0005, T-0009]
-adrs: [ADR-0004, ADR-0009]
+adrs: [ADR-0004, ADR-0010]
 created: 2026-08-30
 updated: 2026-08-31
 ---
@@ -105,7 +105,7 @@ Assignment tests seed `users` directly (see Technical Notes). A test that assign
 
 ## Relevant ADRs & Documentation
 
-- [ADR-0009](../../architecture/adr/ADR-0009-controllers-talk-to-the-dbcontext-and-invariants-are-extracted.md) — **this ticket performs its rule 3**: the issue-number allocator moves out of `IssuesController` into a named type, carrying its raw SQL and its unchecked column name with it
+- [ADR-0010](../../architecture/adr/ADR-0010-clean-architecture-layering.md) — **supersedes ADR-0009 and takes the extraction with it.** This ticket no longer moves the allocator; [T-0022](T-0022-adopt-clean-architecture-layering.md) does, as part of the layering. What this ticket inherits instead is the *shape* — if T-0022 lands first, lifecycle changes are written as a use case behind a port, not as controller code
 - [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md), [ENGINEERING.md](../../standards/ENGINEERING.md), [TESTING.md](../../standards/TESTING.md)
 - [PROJECT.md](../../PROJECT.md) §3 — workflows as a later goal
 - [IDEA-002](../IDEAS.md) — the originating idea
@@ -262,4 +262,35 @@ it appears.
 - **Decided:** nothing new — this transcribes an accepted decision.
 - **Remaining:** unchanged; this ticket is `committed` and not started.
 - **Open questions / blockers:** none.
+- **Test state:** n/a — not started.
+
+### 2026-08-31 — ADR-0009 superseded; the extraction moves to T-0022 (claude-sm-9d4e)
+
+The entry above assigned this ticket ADR-0009's rule 3 — moving the issue-number allocator out of
+`IssuesController`. **That obligation has moved.**
+[ADR-0010](../../architecture/adr/ADR-0010-clean-architecture-layering.md) supersedes ADR-0009 the
+same day, on the maintainer's judgement that the current implementation is an anti-pattern, and
+[T-0022](T-0022-adopt-clean-architecture-layering.md) now performs the extraction as part of
+adopting layering across the service.
+
+Correcting it here rather than leaving it: a ticket carrying an obligation that has moved is a
+false pointer of exactly the kind [DoD](../../governance/DEFINITION_OF_DONE.md) item 4 exists to
+prevent, and this one would have been read by whoever picks this ticket up next.
+
+**What this ticket inherits instead is a sequencing question, and it is the maintainer's.** This
+is the MVP's last committed ticket in SPRINT-003; T-0022 refactors the code it builds on.
+
+- **Build T-0006 first:** the MVP finishes sooner, and its lifecycle code is then migrated by
+  T-0022 — written once in the old shape, moved once. The migration is mechanical, and T-0022's
+  AC4 (no test may be modified) applies to whatever T-0006 leaves behind.
+- **Build T-0022 first:** T-0006 is written directly in the target shape and never migrated, but
+  the MVP waits for a refactor whose size is not yet estimated, and whose own ticket says sizing
+  is the DoR item most likely to fail.
+
+I have not assumed either. Recorded in T-0022's Work Log as its one open question.
+
+- **Did:** Corrected the superseded ADR reference and the obligation that moved with it.
+- **Decided:** nothing — this transcribes a decision and removes a claim that is no longer true.
+- **Remaining:** unchanged; `committed`, not started, pending the sequencing answer.
+- **Open questions / blockers:** the sequencing question above.
 - **Test state:** n/a — not started.
