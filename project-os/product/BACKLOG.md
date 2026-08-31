@@ -7,7 +7,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 - Order within the Active table **is** priority: top row = most important next. Only the Product Owner persona reorders; material reorders get a changelog entry below.
 - Every row links to its ticket file: `tickets/T-NNNN-short-slug.md`, created from [`templates/TICKET_TEMPLATE.md`](../templates/TICKET_TEMPLATE.md).
 - The ticket file's `status` field is authoritative; this index mirrors it. When they disagree, trust the ticket file and fix the index.
-- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0017**.
+- IDs are `T-NNNN`, assigned sequentially, never reused. Next ID: **T-0018**.
 - When a ticket reaches `done` or `dropped`, move its row to the Completed table (append; do not reorder history).
 
 ## Active
@@ -26,6 +26,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | 10 | [T-0014](tickets/T-0014-correct-testing-standard-commands.md) | Correct the stale commands and prerequisites across the standards | technical | backlog | — |
 | 11 | [T-0013](tickets/T-0013-enforce-migration-boundary-with-db-privileges.md) | Enforce the migration boundary with database privileges, not convention | technical | backlog | T-0001 |
 | 12 | [T-0016](tickets/T-0016-generation-output-ownership.md) | Make the drift check see everything under libs/, including untracked files | technical | backlog | T-0002 |
+| 13 | [T-0017](tickets/T-0017-automated-contract-conformance-tier.md) | Automate the contract-conformance test tier TESTING.md already defines | technical | backlog | T-0002 |
 
 ## Completed
 
