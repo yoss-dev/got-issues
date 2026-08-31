@@ -38,6 +38,21 @@ public sealed class TestAuthHandler(
     /// <summary>Sets the caller's display name. Omit it to test a token without one.</summary>
     public const string NameHeaderName = "X-Test-Name";
 
+    /// <summary>
+    /// Which claim type carries the subject. Defaults to <c>sub</c>, because that is
+    /// the only shape production can produce: <c>Program.cs</c> sets
+    /// <c>MapInboundClaims = false</c>, so the handler never rewrites it to the
+    /// WS-Federation URI. Emitting the URI here by default made the middleware's
+    /// production branch unreachable from every test — the whole suite stayed green
+    /// with it deleted. The URI is still readable through this header so the
+    /// middleware's fallback is exercised deliberately rather than by accident.
+    ///
+    /// The default is safe because the premise is pinned: <c>ResourceServerTests</c>
+    /// asserts <c>MapInboundClaims</c> is false, so the option cannot flip silently
+    /// and leave this host agreeing with nothing.
+    /// </summary>
+    public const string SubjectClaimTypeHeaderName = "X-Test-Subject-Claim-Type";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(HeaderName, out var subject) || subject.Count == 0)
@@ -45,7 +60,13 @@ public sealed class TestAuthHandler(
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, subject.ToString()) };
+        var subjectClaimType =
+            Request.Headers.TryGetValue(SubjectClaimTypeHeaderName, out var claimType)
+            && claimType.Count > 0
+                ? claimType.ToString()
+                : "sub";
+
+        var claims = new List<Claim> { new(subjectClaimType, subject.ToString()) };
 
         // Deliberately verbatim: the handler does not normalise, default or validate
         // the role. A test asking for `role: superuser` must produce exactly that, so

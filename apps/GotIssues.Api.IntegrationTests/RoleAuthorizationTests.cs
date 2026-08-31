@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using GotIssues.Api.Data;
 using GotIssues.Api.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -188,6 +189,11 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
 
         Assert.DoesNotContain("Priya Confidential", log, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("xxxxxxxxxx", log, StringComparison.OrdinalIgnoreCase);
+        // Tripwire, not a guard: nothing in this system reads an email claim, so this
+        // assertion cannot currently fail. It is here to catch the day one is added.
+        // Faking an email to make it fail would be worse — it would test the fake.
+        // Named explicitly because this ticket already spent a round on an assertion
+        // above that could not fail and was read as coverage.
         Assert.DoesNotContain("logged-1@", log, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -262,6 +268,28 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
             .GetMaxLength()!.Value;
 
     [Fact]
+    public async Task A_subject_under_the_legacy_claim_type_still_projects()
+    {
+        // The middleware reads ClaimTypes.NameIdentifier before "sub". Production
+        // cannot produce the former (MapInboundClaims = false), so this is the branch
+        // no real caller reaches — and until acceptance found it, the test host emitted
+        // *only* that shape, which left the branch production actually uses unreachable
+        // from every test. Both are now covered, each on purpose.
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.HeaderName, "legacy-claim-1");
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeaderName, "member");
+        client.DefaultRequestHeaders.Add(
+            TestAuthHandler.SubjectClaimTypeHeaderName, ClaimTypes.NameIdentifier);
+
+        var response = await client.GetAsync(Member);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GotIssuesDbContext>();
+        Assert.Equal(1, await db.Users.CountAsync(u => u.Subject == "legacy-claim-1"));
+    }
+
+    [Fact]
     public async Task A_display_name_trimmed_through_a_surrogate_pair_still_persists()
     {
         // Cutting at a raw UTF-16 index can split a surrogate pair and leave a lone
@@ -317,12 +345,13 @@ public sealed class RoleAuthorizationTests(PostgresContainerFixture postgres) : 
         // Q1, found in acceptance. The race catch was DbUpdateException wholesale, so
         // a subject longer than the column returned 200 with no row written and
         // nothing logged — a caller told they succeeded, then permanently unusable as
-        // an assignee. OIDC permits 255 characters; the column holds 200.
+        // an assignee.
         //
         // The requirement is that it must NOT silently succeed. A 500 is the correct
         // loud failure here: it is a real write failure, not a race someone else won.
-        // Beyond 255 is outside the specification, so a loud failure is correct —
-        // what must never happen is a 200 with nothing written.
+        // OIDC permits 255 characters and the column matches it, so beyond 255 is
+        // outside the specification and a loud failure is right — what must never
+        // happen is a 200 with nothing written.
         using var client = ClientAs(new string('x', 300), "member");
 
         var thrown = await Record.ExceptionAsync(() => client.GetAsync(Member));

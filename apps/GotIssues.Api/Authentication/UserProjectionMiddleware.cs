@@ -31,8 +31,16 @@ public sealed partial class UserProjectionMiddleware(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(dbContext);
 
-        var subject = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? context.User.FindFirstValue("sub");
+        // `sub` first: it is the shape production emits (Program.cs sets
+        // MapInboundClaims = false), and the old order put the unreachable type in the
+        // primary position, which is part of how the test host came to agree with this
+        // line rather than with Program.cs. The fallback stays because re-enabling
+        // inbound mapping would otherwise yield a null subject and the projection would
+        // silently stop running — authorisation intact, every request fine, the users
+        // table simply never filling. The role path's equivalent failure is loud; this
+        // one is not.
+        var subject = context.User.FindFirstValue("sub")
+            ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (context.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(subject))
         {
