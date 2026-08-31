@@ -528,3 +528,148 @@ For the record, the three things this ticket proved that no ADR could: the contr
 - **Branch / PR:** `t-0002-contract-first-pipeline` @ `a9c5545` — **approved for merge**.
 - **Test state:** all gates green as listed above.
 - **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-8b4f`).
+
+### 2026-08-31 — QA / Test Engineer + Product Owner (claude-qa-5a71) — acceptance
+
+Independent `acceptance-test` pass on `main` @ `b0db08e`. I did not implement this (`claude-sm-9d4e`) and did not review it (`claude-rev-8b4f`). I derived my checks from the requirements sections before reading the Work Log, and I re-executed every claim rather than inheriting it — including the ones both prior passes already proved, and with different mutations wherever a mutation was the evidence. Docker work ran under `-p gotissues-qa5a71` on ports 18090/18091 and was torn down with `down -v --rmi local`; the six unrelated stacks on this host were untouched and verified intact afterwards.
+
+**Verdict: PASS.** All nine acceptance criteria verified against running software or executed mutations. One defect found — a sixth contract defect, of the same class as the five fixed during review — which violates no acceptance criterion but must be fixed or ticketed before `done` (D1 below).
+
+*(Note for the record: the ticket has AC1–AC6 and AC8–AC10. There is no AC7; the implementer's self-check table listed one as "n/a — folded into AC6". Nine criteria, not ten.)*
+
+#### AC1 — generation needs no host JDK — **PASS**
+
+The reviewer closed the implementer's structural argument by stubbing `java`/`javac`. I went further and removed the ambient environment as well.
+
+Nine binaries — `java`, `javac`, `jar`, `jshell`, `jlink`, `jpackage`, `jarsigner`, `keytool`, `javadoc` — replaced by stubs printing `QA5A71: host <x> was invoked — AC1 violated` and exiting **127**. Stubs confirmed live first (`java -version` → the failure message, exit 127; `command -v java` → the stub). Generation then ran under `env -i` — a **cleared** environment, not an amended one — with `PATH` reduced to the stub directory plus `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin` and `JAVA_HOME=/nonexistent`:
+
+```
+env -i HOME=$HOME PATH=/tmp/qa5a71-nojdk:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+  JAVA_HOME=/nonexistent bash -c './tools/generate.sh'
+```
+
+Exit **0**, three times. Grep of the captured logs: **zero** stub invocations. Corroborating inspection: `tools/generate.sh` contains no reference to `java` in any form (`grep -rn java tools/` → nothing), and its only external commands are `docker`, `find`, `sed` and `rm`.
+
+#### AC2 — determinism — **PASS**
+
+Three consecutive generations under the AC1 conditions above. After each: `git status --porcelain -- libs/` **empty**, and a SHA-256 over every file under `libs/` identical across all three runs — `e83b2bd7…5dd9731` — and equal to the committed tree (`git diff --exit-code -- libs/` clean).
+
+Stronger, because it removes this machine from the claim: `./tools/check-drift.sh` on a **fresh `git clone` into `/tmp`**, untouched, exits **0**. The committed generated tree is reproducible from a clean checkout at a different path, not merely stable in the working copy.
+
+#### AC3 — the drift check fails and names the divergence — **PASS**
+
+Both prior passes mutated additively; the reviewer noted their mutation was caught partly because the tracked `.openapi-generator/FILES` manifest also changed. I deliberately chose a mutation that **cannot** rely on that manifest: a pure constraint edit that adds and removes no files.
+
+- **Mutation A — `CreatePlaceholderRequest.label` `maxLength: 200` → `150`**, committed without regenerating. `check-drift.sh` exit **1**, naming three diverging files: `libs/GotIssues.Client/api/openapi.yaml`, and both `CreatePlaceholderRequest.cs` models. No new or deleted files were involved, so the manifest played no part. Restored and regenerated → exit **0**.
+- **Mutation B — hand-edit a generated file** (`libs/GotIssues.Contracts/…/Models/Placeholder.cs`) and commit it. `check-drift.sh` exit **1**, naming that file. This also proves the ticket's third Example scenario: regeneration **overwrote** the hand-edit (`grep -c QA5A71` → 0 afterwards).
+- **The dirty-`libs/` guard**: the same edit left uncommitted → exit **2** with the refusal message. So the gate distinguishes "you have not committed" from "the tree disagrees with the spec".
+
+Three failure modes and one return to green, all reproducible.
+
+#### AC4 — controllers implement generated interfaces, declare no routes — **PASS**
+
+`grep -rE '\[(Route|HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|ApiController|Produces|ProducesResponseType|Consumes)'` over hand-written `apps/` (tests, `bin/`, `obj/` excluded) → **nothing**. `PlaceholderController` is the only controller and inherits the generated `PlaceholderApiController`. The only endpoint registrations anywhere are `MapControllers()` and the two ADR-0005-exempt operational endpoints (`/health`, `/health/authenticated`). `spec/openapi.yaml` declares no health path — ADR-0005 holds in both directions.
+
+#### AC5 — the endpoint behaves as the specification declares — **PASS**
+
+Live stack from a fresh clone built with **`--no-cache`** (see AC10), all services asserted healthy before any response was trusted, and **attribution confirmed per TESTING.md**: with `api` stopped, `/health` and `/placeholders` both returned `000`; restarted and healthy, `401` returned. Nothing else on this host was answering for the API.
+
+- **401 carries the declared problem document** — the round-two blocking defect — on all three paths, including the invalid-token path that only the real `JwtBearer` handler produces: `Content-Type: application/problem+json`, body `{"type":"…rfc9110#section-15.5.2","title":"Unauthorized","status":401,…}`, `WWW-Authenticate: Bearer error="invalid_token"`.
+- **Every declared boundary behaves as declared.** `page`: 1 → 200, 1000000 → 200, 0 / -5 / 1000001 → 400, `abc` / `1.5` / `99999999999` → 400, omitted or empty → default 1. `pageSize`: 1 → 200, 100 → 200, 0 / -1 / 101 / 10000 → 400, omitted → 20. Every 400 was `application/problem+json`.
+- **Sixteen POST bodies** probed: `{}`, `{"label":null}`, `{"label":"   "}`, exactly 200 chars, unknown properties → **201**; `""`, 201 chars, wrong JSON types, `[]`, `null`, malformed JSON, empty body → **400 problem+json**. A body attempting to set `id` and `createdAt` was ignored and the server assigned its own — no mass-assignment path.
+- **Response conformance, field by field, against the declared schemas** — the "Contract tier" `TESTING.md` names and no automated test performs. I validated `201`, `200`, `400` and `401` payloads programmatically: required properties present, `id` matching a UUID pattern, `createdAt` parseable as a date-time, `label` string-or-null, `items`/`page`/`pageSize`/`totalCount` correct types, and **no undeclared properties** on `Placeholder` or `PlaceholderPage`. **0 conformance problems.**
+- **Paging integrity live**: 16 records walked at `pageSize=3` — 16 collected, 16 unique, equal to `totalCount`; globally newest-first across page boundaries, matching the operation's description; `page=999` returns an empty page rather than an error.
+
+#### AC6 — the README workflow works as written — **PASS**
+
+Walked verbatim on a fresh clone, using the ticket's own first Example scenario. Edited `spec/openapi.yaml` to add a `qaProbeField` to the `Placeholder` schema → `./tools/generate.sh` → **both** DTOs gained the field (`public string? QaProbeField` in the contracts model, `QaProbeFieldOption` in the client model) and `git diff` showed it → the solution still built **0 warnings / 0 errors** → committed spec and regenerated code together → `./tools/check-drift.sh` exit **0**. The README's other documented commands were exercised too: `cp .env.example .env`, `docker compose up`, the `/health` curl (matching the documented output), the client-credentials token command, and `/health/authenticated` → `200`. Both seeded identities work. The prerequisites table names Docker and the .NET SDK only, and the "no JDK is needed" statement is now true — verified by AC1.
+
+#### AC8 — the generator version is pinned explicitly — **PASS**
+
+`GENERATOR_VERSION="v7.18.0"` with the reason in a comment, consumed as `openapitools/openapi-generator-cli:${GENERATOR_VERSION}`. The "identical output on another day" half is the AC2 evidence: three runs, one hash. See N1 for the residual.
+
+#### AC9 — the analyzer exclusion, verified in both directions — **PASS**
+
+Mutated with a **third** rule set, different from the implementer's (`CA1707`) and the reviewer's (`CA1051`/`CA1707`/`CS0219`), so the exclusion is shown to be general rather than rule-specific. One file containing an unused local (`CS0168`), a culture-dependent `int.Parse` (`CA1305`) and a `ContainsKey`-then-indexer lookup (`CA1854`):
+
+| Identical file placed in | `dotnet build` | `dotnet format --verify-no-changes` |
+| --- | --- | --- |
+| `apps/GotIssues.Api/` (hand-written) | **3 errors** — `CS0168`, `CA1305`, `CA1854` | **errors** — `WHITESPACE` ×3, `IDE0040` |
+| `libs/GotIssues.Contracts/…/` (generated) | **0 errors** (CA rules gone; `CS0168` demoted to a warning) | **clean** |
+
+Both mechanisms, both directions. Worth stating precisely: under `libs/`, analyzer rules are switched **off** and compiler warnings are **demoted, not silenced** — the solution build is 0 warnings only because the real generated code emits none. AC9's "both are clean" holds as written.
+
+#### AC10 — the container build succeeds on a clean clone — **PASS**
+
+A stale layer misled the implementer once, so I removed layer caching from the question entirely: `git clone` into `/tmp/qa5a71-fresh`, own project name, and `docker compose build --no-cache`. All four images built. The stack then came up from those images and answered every probe above — so `libs/` and `spec/` genuinely reach the build context and the root `.editorconfig` is genuinely copied.
+
+#### Gates, each read from the tool's own exit status
+
+`python3 tools/validate-project-os/validate.py` → **OK** (16 tickets, 6 ADRs) · `dotnet build --no-incremental` → **0 warnings / 0 errors**, both `libs/` projects emitting to `bin/Debug/net10.0/` · `dotnet format --verify-no-changes` → **0** · `dotnet test` → **26/26** (2 unit, 24 integration), **0 skipped** · `./tools/generate.sh` ×3 → identical tree · `./tools/check-drift.sh` → **0**, including on an untouched fresh clone · `dotnet list package --vulnerable --include-transitive` → **no vulnerable packages in any of the six projects**.
+
+#### I closed the ticket's last open risk — and it is where the defect was
+
+The ticket carried this since re-refinement: *"The `csharp` client half of the recorded configuration is asserted, not verified… Confirm it on first use rather than trusting the note."* Both prior passes only **built** the client. Nobody had used it. So I did: a throwaway console app referencing the committed `libs/GotIssues.Client`, against the live stack.
+
+**It works, and the payoff is visible.** `CreatePlaceholderAsync` → `Created`, id and label round-tripped; `ListPlaceholdersAsync(pageSize: 5)` → `OK`, page/pageSize/totalCount/items correct; `label: null` deserialised cleanly through the `[string, 'null']` schema. And the response object exposes **typed `IsCreated` / `IsBadRequest` / `IsUnauthorized` discriminators** — which exist *only* because the 400 and 401 responses were declared during review. The undeclared-400 defect the reviewer found was, concretely, a missing branch in this client. **The risk is discharged: the recorded `generichost` configuration is now verified, not asserted.**
+
+#### D1 — the sixth contract defect: the specification claims a client behaviour the pipeline does not produce
+
+`spec/openapi.yaml` asserts, twice and unconditionally, that generated clients enforce the paging bounds before dispatch:
+
+- `pageSize.description`: *"Clients generated from this document enforce it before the request leaves them."*
+- `page.description`: *"The upper bound exists so the constraint is expressible in the contract and **enforced by generated clients**"* — here the sentence is the stated justification for inventing `maximum: 1000000` in the first place.
+
+**The only client generated from this document does not enforce either bound.** Live, through the committed client:
+
+```
+api.ListPlaceholdersAsync(pageSize: 10000) -> NO client-side rejection. Request LEFT the client; server answered BadRequest.
+api.ListPlaceholdersAsync(page: 0)         -> NO client-side rejection; server answered BadRequest.
+```
+
+Confirmed in the generated source: `PlaceholderApi.cs` has a `ValidateCreatePlaceholder` (a null check only) and **no validation whatsoever for query parameters** — `page` and `pageSize` are written straight into the query string. The `[Range]` attributes the spec's bounds produce land on the *server* contract, not the client.
+
+This is the same class as the **first** defect this ticket found and fixed — prose in the specification promising behaviour the generated artefact does not deliver. It survived three review rounds because every pass tested the *server*, and this is a claim about the *client*; it is the one statement in the document that only using the client can falsify.
+
+- **Severity: minor.** No runtime consequence — the server rejects out-of-range values regardless, so a client that does not pre-validate simply receives the declared 400. That distinguishes it from the five earlier defects, every one of which had a wrong status, body, or nullability on the wire.
+- **But it is a real documentation defect**, and not a trivial one to leave. `info.description` states this document "is the product's user-facing documentation as well as its contract", and `DOCUMENTATION.md` makes the specification *the* user-facing documentation, reviewed like any other contract change, adding: *"Stale documentation is a defect."* An integrator reading these two sentences would reasonably ship a client that never validates and be surprised by the first 400.
+- **Not an acceptance-criteria failure.** AC5 is scoped to *"the placeholder resource's endpoint … called through the running API"*, and the endpoint is correct in every respect I could test. Hence PASS rather than FAIL.
+- **Suggested fix — not mine to make** (`acceptance-test` MUST NOT modify the spec): reword both descriptions to state the constraint and where it is actually enforced, without asserting client-side behaviour the generator does not emit. Because descriptions flow into generated XML doc comments, the change requires regeneration and `check-drift.sh` will insist on it — the pipeline enforcing its own rule on the fix to its own document.
+- **DoD item 4 applies:** fix it in place (it is within this ticket's scope, and `DOCUMENTATION.md` says to fix in place when it is) or capture it in a ticket whose scope accepts it, with PO acceptance, **before `done`**.
+
+#### Non-blocking observations
+
+- **N1 — the pin is a mutable tag, not a digest.** `openapitools/openapi-generator-cli:v7.18.0` is a tag; a re-pushed tag would change output silently and the drift check would report it as a repository-wide diff with no cause. AC8 asks for an explicit version pin and gets one, so this passes — but a `@sha256:` digest is what makes "another machine or another day" airtight. Worth a line in T-0016 or its own note.
+- **N2 — `TESTING.md` defines a Contract tier that nothing automates.** The tier table names *"the OpenAPI spec: responses validated against the declared schemas"*, and no test performs it; I did it by hand above (0 problems). No AC requires it, so it does not block — but it is precisely the tier that would have caught four of the six defects mechanically instead of by three humans reading carefully. The strongest candidate for a follow-up this ticket has produced.
+- **N3 — `Problem` responses carry undeclared members `errors` and `traceId`.** Permitted: the schema sets no `additionalProperties: false`, and RFC 9457 explicitly allows extension members. Recording it so it is not re-found and mistaken for a defect.
+- **N4 — a second path into T-0016's blind spot.** `libs/GotIssues.Client/.gitignore` is itself generated, 362 lines long, and sits inside the tree the drift check inspects. Today it ignores only `bin/`/`obj/`, which is harmless — but any future generator output matching one of its patterns would be invisible to `git diff -- libs/` for the same reason untracked files are. Worth adding to T-0016's reasoning: the gate is blind to *ignored* files as well as untracked ones.
+- **N5 — the reviewer's finding 9 stands and my AC9 probe demonstrates it.** `RunAnalyzers=false` and `TreatWarningsAsErrors=false` in `libs/Directory.Build.targets` are scoped by path, not by generated-ness: my hand-written violation file dropped under `libs/` lost analyzers entirely and had its compiler errors demoted to warnings. Correct while `libs/` is generated-only; the first hand-written library placed there loses both guards silently.
+
+#### Definition of Done — assessment at this stage
+
+1. **Implementation complete** — met. Every In Scope item is present. Out of Scope is genuinely untouched: no CI configuration, no TypeScript or Python clients, no specification publishing, and exactly one placeholder resource.
+2. **All acceptance criteria verified** — met by this entry, independently and against running software.
+3. **Automated tests exist and pass** — met. 26/26, 0 skipped, run by me from a clean build.
+4. **No known unrecorded defects** — **not yet met: D1 is open.** The two delivery-state items the reviewer flagged for `complete-ticket` *are* now resolved, and I checked the destinations rather than the links: [T-0014](T-0014-correct-testing-standard-commands.md)'s In Scope now names `GIT.md` and `DOCUMENTATION.md` explicitly (its old Out of Scope disowned them), and [T-0016](T-0016-generation-output-ownership.md) exists with In Scope covering all three generation-ownership items including the untracked-file blindness. Both scope lines accept what was routed to them.
+5. **Code quality** — met. Three review rounds, eight blocking findings fixed; build 0 warnings / 0 errors; formatter clean; no `TODO`, `FIXME`, `HACK`, `Console.WriteLine` or debug scaffolding anywhere in hand-written `apps/`, `spec/` or `tools/`.
+6. **Documentation updated** — substantially met, with two knowns. README, `PROJECT.md` §5 and `ARCHITECTURE.md` are all corrected and accurate. `DOCUMENTATION.md` line 33 still lists a JDK prerequisite — governance-lane, routed to T-0014, whose scope now names it. ADR-0004's JDK consequences are deliberately untouched: it is Accepted and immutable, and a consequence overtaken by reality is not a defect in a record of what was expected at the time. D1 is the outstanding item under this heading.
+7. **Work Log complete** — met, and unusually so; a stranger could resume from it.
+8. **State updated** — for `complete-ticket`.
+
+Conditional items: **Security** — dependency scan clean across all six projects, run by me and recorded here as `SECURITY.md` requires; `NU1901`–`NU1904` promoted back to errors for generated code, so the guard cannot be lost again; no secrets in the change-set; all new external input (`page`, `pageSize`, `label`) validated at the contract boundary rather than in code. **Migrations** — the placeholder-label migration is scripted and applied by the explicit migrator service; T-0004 removes the resource. **ADR** — ADR-0004 and ADR-0005 already govern this work. The one architectural judgement made during it — that deterministic post-processing inside `tools/generate.sh` is part of generation and not hand-editing — is recorded in this Work Log and in the script's own comments; it clarifies an existing decision rather than making a new one, so I do not read it as meeting the ADR bar. Flagging it for `complete-ticket` to confirm.
+
+**Does anything need a recorded deviation? No.** Every DoD item is either satisfied or has a live destination whose scope accepts it. D1 is the single open item and the correct handling is fix-or-ticket at `complete-ticket`, not a deviation — the fix is a two-sentence edit to a file this ticket owns.
+
+#### What I could not verify
+
+- **That regeneration is identical on a different machine.** I verified it across three runs, two checkout paths and a cleared environment on this host. The tag-versus-digest gap (N1) is the only mechanism by which it could differ elsewhere, and testing that needs a second machine.
+- **The behaviour of clients in other languages.** ADR-0004's polyglot argument is the reason for this generator choice, and only the C# client exists — deliberately, per Out of Scope. D1 is worded against the C# client because that is the only one this document has produced.
+- **Long-run generator-image availability.** If `openapitools/openapi-generator-cli:v7.18.0` ever disappears upstream, generation stops working and nothing in the repository would warn first.
+
+- **Did:** Derived checks from the requirements before reading the Work Log. Ran generation three times in a cleared environment with nine JDK binaries stubbed to exit 127. Mutated the drift check three ways, one of them chosen specifically so the `FILES` manifest could not carry it. Mutated the analyzer and formatting exclusions in both directions with a rule set neither prior pass used. Built the containers `--no-cache` from a fresh clone, brought the stack up, proved attribution by stopping the API, and probed the live endpoint across boundaries, bodies, error shapes and schema conformance. Walked the README workflow verbatim. Built and ran a real consumer of the generated C# client, which closed the ticket's last open risk and found D1. Ran every gate myself. Read T-0014 and T-0016 to confirm the routed residuals are genuinely covered.
+- **Decided:** PASS. D1 violates no acceptance criterion and has no runtime consequence, so it does not send the ticket back to `in-progress` — but it is a genuine documentation defect in this ticket's own file and DoD item 4 keeps it open until `complete-ticket` fixes or tickets it.
+- **Remaining:** `complete-ticket` — resolve D1, and confirm the ADR judgement noted under conditional items. N1–N5 are take-or-leave; N2 (no automated contract tier) is the one I would most want to become a ticket.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged; verified on `main` @ `b0db08e`.
+- **Test state:** all gates green as listed above; 26/26 tests, 0 skipped.
+- **Acceptance verdict:** **PASS** — QA (`claude-qa-5a71`), 2026-08-31. `accepted_by` deliberately left `none`: the validator reserves it for `complete-ticket` at `done`.
