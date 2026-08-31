@@ -1478,3 +1478,272 @@ reverted.
 - **Branch / PR:** `t-0009-final-fixes` @ `41dfeba` — **approved for merge**.
 - **Test state:** 62/62 green, 0 skipped; six mutants run this round, six killed.
 - **Review verdict:** **Approve** — ENG + ARCH (`claude-rev-4a7e`).
+
+### 2026-08-31 — QA / Test Engineer + Product Owner (claude-qa-7c21) — independent acceptance
+
+Second independent acceptance pass, on `main` @ `ece515d` (the squash merge). I did not implement
+(`claude-sm-9d4e`), review (`claude-rev-8b4f`, `claude-rev-4a7e`, `claude-rev-2c8d`) or previously
+accept (`claude-qa-5a71`) this ticket. I derived my checks from the Problem, Scope, Acceptance
+Criteria and Examples before opening the Work Log, and I re-earned every claim by mutation rather
+than citing the earlier passes.
+
+**Verdict: PASS.** All eight criteria verified. Q1, Q2 (Q2a/Q2b), Q3, Q4, Q5 and N1 are all
+genuinely closed, each confirmed by my own mutation or by reading the artefact rather than the
+record. **Two new findings (F1, F2), neither blocking**, plus confirmation that N3 remains open.
+
+#### The criteria
+
+| AC | Verdict | Evidence |
+| --- | --- | --- |
+| AC1 admin → admin policy | **PASS** | `An_admin_reaches_an_admin_endpoint` (200); `AuthorizationPolicyTests` under both claim types |
+| AC2 member → admin policy = 403, not 401 | **PASS** | `A_member_is_refused_an_admin_endpoint_with_403_not_401`; 401 proven distinct by `An_unauthenticated_caller_is_refused_by_a_guarded_endpoint` and my own probe below |
+| AC3 either role → member policy | **PASS** | `Either_role_reaches_a_member_endpoint(admin\|member)` — the floor semantics hold |
+| AC4 absent/unrecognised role refused | **PASS** | Mutation M-AC4 below: **12 tests die** when the allow-list is replaced by the fallback the ticket warns about |
+| AC5 create then update, never duplicate | **PASS** (test host — see F1) | Mutation M-AC5: forcing always-insert kills `Returning_updates_the_record_rather_than_duplicating_it` |
+| AC6 no credential, secret or role stored | **PASS** | Mutation M-AC6: adding a `Role` property to `UserRecord` kills `The_projection_stores_no_role_and_no_credential`; migration + model carry only `Subject`, `DisplayName`, `FirstSeenAt`, `LastSeenAt` |
+| AC7 no display name or email in the log | **PASS** for the display name; email half vacuous (N3) | Mutations M-Q5a/M-Q5b below |
+| AC8 missing display-name claim still projects | **PASS** (test host — see F1) | `A_token_without_a_display_name_still_produces_a_usable_projection` |
+
+#### Mutations I ran myself — nine mutants, nine killed, plus two that deliberately survived
+
+Each was applied to the merged source, confirmed present in the artefact, run, then reverted;
+the tree was verified clean (`git status --porcelain` empty) and the suite re-run green afterwards.
+
+| # | Mutant | Result |
+| --- | --- | --- |
+| M-Q1 | Widen the catch back to every `DbUpdateException` | **Killed** — `A_subject_beyond_the_OIDC_limit_fails_loudly_rather_than_silently` |
+| M-Q4 | Delete the surrogate guard (`if (char.IsHighSurrogate(...)) cut--;`) | **Killed** — `EncoderFallbackException : Unable to translate Unicode character \uD83D at index 399` |
+| M-Q5a | `LogDisplayNameTrimmed` gains `{Name}` and is passed `rawName` | **Killed** — `Assert.DoesNotContain() Failure: Sub-string found` |
+| M-Q5b | Trim-log condition inverted (`!=` → `==`), so the line never fires | **Killed** — `Assert.Contains() Failure: Sub-string not found` |
+| M-N1 | Remove `.Where(identity => identity.IsAuthenticated)` from `RoleValues` | **Killed** — 2 unit tests |
+| M-AC4 | Member policy → "any authenticated caller is a member" | **Killed** — **8 unit + 4 integration** |
+| M-AC5 | Existing-record lookup can never match | **Killed** — return-visit test |
+| M-AC6 | Add a `Role` property to `UserRecord` | **Killed** — AC6 model test |
+| M-F1b | Keep **only** the `sub` branch of the subject lookup | **Killed** — 10 integration tests |
+| M-F1a | Keep **only** the `ClaimTypes.NameIdentifier` branch | **SURVIVED — 62/62 green.** See F1 |
+| P-F1c | Test host emits `sub` instead of `ClaimTypes.NameIdentifier` | **62/62 green** — the production branch is correct, merely unproven |
+
+M-Q5b is the one worth naming: it is what proves the presence assertion added for Q5 is
+load-bearing. Without it the AC7 test reverts to vacuous silently, which is exactly how Q5
+survived a green 62-test suite. I killed it here rather than reading that it had been killed.
+
+#### F1 — the projection's subject is proven only through a claim shape production cannot produce
+
+**Not a defect in behaviour; a coverage gap, and it is this ticket's own original failure recurring one level over.**
+
+`UserProjectionMiddleware.cs:34-35` reads the subject as:
+
+```csharp
+var subject = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+    ?? context.User.FindFirstValue("sub");
+```
+
+`Program.cs:46` sets `MapInboundClaims = false`, so the JWT handler emits the subject verbatim as
+**`sub`** and never as `ClaimTypes.NameIdentifier`. The second branch is therefore the **only** one
+that can ever execute in production. `TestAuthentication.cs:48` emits
+`new Claim(ClaimTypes.NameIdentifier, …)` — the first branch, and a claim type the real pipeline
+never produces. So every test of AC5, AC8, the trim, the race and the length boundaries reaches the
+projection through a claim the API will never actually receive.
+
+Measured, both directions:
+
+```
+delete the `?? FindFirstValue("sub")` branch   -> 62/62 GREEN   (production's only branch, unguarded)
+delete the ClaimTypes.NameIdentifier branch    -> 10 tests FAIL (the test-host-only branch carries all the evidence)
+```
+
+This is precisely the shape of the bug this ticket already paid for once: *the suite agreed with
+the test host rather than with reality.* That one was fixed for the **role** claim — `TestAuthHandler`
+deliberately emits the short `role`, and `AuthorizationPolicyTests` asks the real policies under
+both claim types. The **subject** claim never got the same treatment, and the asymmetry is
+invisible in a green run.
+
+- **Severity: low, and it does not fail the ticket.** I verified the production branch is *correct*
+  rather than merely untested: with the test host changed to emit `sub` — production's exact shape —
+  the full suite is **62/62 green** (P-F1c). No caller can reach this today in any case, since no
+  token the identity host issues carries a subject at all (client-credentials only; confirmed at
+  `ClientFactory.cs:20`, `AllowedGrantTypes = GrantTypes.ClientCredentials`).
+- **Destination: [T-0015](T-0015-compose-stack-smoke-test.md) AC8 accepts it** — "a token carrying a
+  real subject … T-0009's AC5 and AC8 against a real token rather than a test host". A real token
+  carries `sub`, so exercising AC8 exercises this branch. That is a genuine destination, not a
+  pointer.
+- **But the cheap fix does not need a real token and belongs here or in T-0015:** emitting `sub`
+  from `TestAuthHandler` (one claim type) makes the entire existing projection suite exercise the
+  production branch immediately. Recording it rather than writing it — `acceptance-test` MUST NOT
+  modify implementation code.
+
+#### F2 — a stale comment of the family this ticket keeps producing
+
+`RoleAuthorizationTests.cs:320`: *"OIDC permits 255 characters; the column holds 200."* The column
+is **255** and has been since the `WidenUserSubject` migration. The comment sits inside
+`A_subject_beyond_the_OIDC_limit_fails_loudly_rather_than_silently` and contradicts
+`A_subject_at_the_OIDC_limit_is_projected` a hundred lines above it, which proves 255 succeeds.
+
+The same stale pair was found and corrected in the middleware during Q4 ("the fifth instance of the
+pattern this ticket keeps producing"); this copy in the test file survived that sweep. Lines 23
+(`GotIssuesDbContext.cs`) and 214 (`RoleAuthorizationTests.cs`) state the same history in the **past**
+tense and are accurate — line 320 is the only one asserting it in the present. Cosmetic, one line,
+DoD item 5 rather than item 6.
+
+#### N3 is still open, and still correctly described
+
+AC7's email assertion — `Assert.DoesNotContain("logged-1@", log)` — cannot fail. `TestAuthHandler`
+emits no email claim, nothing in the projection reads or stores one, and no such string exists
+anywhere in the system. AC7 is satisfied **in substance** (there is no email to leak) and the
+display-name half is genuinely mutation-proven, so this is not a defect against the criterion. It
+was recorded as N3 by `claude-qa-5a71` and remains recorded; I re-confirmed it rather than assuming
+it, and I am not raising it again as new.
+
+#### Adversarial exploration — six probes, written and run, none broke it
+
+Written as a temporary test class against the merged code, run, then deleted (tree verified clean):
+
+| Probe | Result |
+| --- | --- |
+| Two subjects sharing one display name → two records (the ticket's Example) | **2 records** — identity is the subject |
+| A name disappearing from the token clears the stored one | `DisplayName` → null |
+| `FirstSeenAt` does not move on a return visit | unchanged |
+| Unauthenticated caller → 401 **and** zero rows written | 401, `users` empty — the projection does not run for anonymous callers |
+| A caller **refused** by the policy still gets a projection | 1 row — middleware sits between authentication and authorisation, which is the documented and correct order |
+| **Display name of 300 emoji** (every character non-BMP, so the cut lands mid-pair on the first try) | **200**, stored value does not end in a lone high surrogate |
+
+The last one is the case the Q4 fix was written for, driven harder than the committed test drives
+it: the committed test pads with BMP characters so exactly one pair straddles the boundary, while
+this one makes every character non-BMP. The guard holds.
+
+I also confirmed `dotnet ef migrations has-pending-model-changes` → *"No changes have been made to
+the model since the last migration"*, so the EF model and the deployed schema genuinely agree about
+the 255/400 widths that three tests depend on.
+
+#### Documentation — Q2, Q2a and Q2b verified against the code, not read
+
+- README *"Not here yet"* no longer claims nothing reads the role claim. ✔
+- README now states plainly **"No shipped endpoint uses them yet"** and names T-0004 as the first
+  that will (Q2b). I verified the substance: the only `RequireAuthorization` in
+  `apps/GotIssues.Api` is the bare one on `/health/authenticated`. ✔
+- README *"machine-client tokens, which carry a role but no subject"* — verified from source at
+  `ClientFactory.cs:20` (`GrantTypes.ClientCredentials`), independently of the earlier token decode. ✔
+- ARCHITECTURE banner lists T-0009 as built, and the self-counting staleness sentence is gone
+  (Q2a) — replaced by the instruction without the number, which is the right call. ✔
+- *"the only resource in the specification today is a … placeholder"* — `spec/openapi.yaml` declares
+  exactly one path, `/placeholders`. ✔
+
+#### Scope fidelity
+
+**In Scope complete:** policies (`AuthorizationPolicies`, `GotIssuesRoles`), the projection
+(`UserProjectionMiddleware`, `UserRecord`), two migrations, the deliberate AC4 refusal, and the
+role matrix in the test host.
+
+**Out of Scope untouched, checked by diff and by grep rather than asserted:** no role-management
+endpoint, no users API, no membership or per-project permission surface. There is no `MapPost`,
+`MapPut`, `MapDelete`, `[HttpPost]`, `[HttpPut]` or `[HttpDelete]` anywhere in `apps/GotIssues.Api`,
+and `Controllers/` holds only the generated `PlaceholderController`. No credential or secret is
+stored: the `users` table has four columns and none of them is one.
+
+No `TODO`, `FIXME`, `HACK`, `Console.WriteLine` or debugger scaffolding anywhere in the API or
+either test project.
+
+#### Definition of Done
+
+1. **Implementation complete** — met.
+2. **All acceptance criteria verified** — met, independently, with mutation evidence for each.
+3. **Automated tests exist and pass** — met. 62/62, 0 skipped, from a clean `--no-incremental` build.
+4. **No known unrecorded defects** — **met, conditionally.** Everything previously raised is closed:
+   Q1, Q3, Q4, Q5 and N1 fixed and pinned; Q2/Q2a/Q2b fixed. The AC5/AC8 residual has a destination
+   whose scope genuinely accepts it — **I read T-0015 rather than the claim that it accepts it**
+   (see below). **F1 and F2 are raised here and must be fixed or given an accepting destination by
+   `complete-ticket`**; F1's destination (T-0015 AC8) already exists and is cited above, F2 is a
+   one-line correction that belongs to this ticket. N3 remains recorded and is not a defect.
+5. **Code quality** — met, with F2 as the single blemish. Four review rounds; build warning-clean;
+   formatter clean; no scaffolding; no secrets.
+6. **Documentation updated** — **met.** This was the item the first acceptance failed the ticket on,
+   and I checked the replacement prose against the code rather than reading it. README and
+   ARCHITECTURE are both accurate as of this commit. **No deviation needs recording for item 6.**
+7. **Work Log complete** — met, and unusually valuable: the record of the claim-mapping bug, Q5's
+   "an assertion is only evidence about a code path if the input reaches that path", and the
+   build-rejected-mutant rule are all worth more than the feature.
+8. **State updated** — for `complete-ticket`.
+
+**Conditional items.** *Security:* negative cases are the bulk of the suite; authentication was
+never disabled (the test scheme adds a handler rather than removing enforcement); no secrets; new
+external input (the role, subject and name claims) is validated by an allow-list and by length
+handling. *Migrations:* scripted, applied by the explicit migrator step, and genuinely reversible —
+`AddUserProjection.Down` drops the table, `WidenUserSubject.Down` returns the column to 200. *ADR:*
+none required; `PROJECT.md` §5 and ADR-0003 already fix the model and nothing here changes it.
+*Observability:* the one new log statement carries two integers and no content.
+
+**Does anything need a recorded deviation?** **No — provided F1 and F2 are handled at
+`complete-ticket`.** Item 6 is clean. Item 4 is clean for everything raised before this pass; F1
+already has an accepting destination in T-0015 AC8, and F2 is a one-line fix. A deviation becomes
+necessary only if F2 is deferred without a home.
+
+#### The AC5/AC8 residual — I checked the destination rather than the pointer
+
+The project has been bitten three times by a link to a ticket that did not cover what was pointed
+at it, so I read T-0015 in full rather than trusting that it accepts this.
+
+It accepts it, twice over and explicitly:
+
+- **In Scope** carries a dedicated bullet: *"The user projection against a token carrying a real
+  subject (from T-0009)"*, with the reasoning intact — no token this system can issue carries a
+  `sub`, the blind spot is what hid the claim-mapping bug, and it is the condition under which the
+  narrowed write-failure handling first becomes reachable — closing with *"This scope line exists so
+  the residual has a destination that accepts it."*
+- **AC8** states the criterion in T-0009's own terms and, crucially, handles the conditional case:
+  *"If no such token can be issued when this ticket is implemented, that is recorded as the reason
+  and this criterion is deferred with a named successor — not silently passed."*
+
+T-0015's Out of Scope does **not** disown it: it excludes *"API behaviour that the in-process
+integration tier can already reach"*, and the whole point of this residual is that the in-process
+tier structurally cannot reach it. That is the exact trap T-0015 fell into with T-0010's token
+validation and was widened to fix, so I checked it specifically. **Genuine destination, not a false
+pointer.** T-0015 is `committed` in the current sprint, so the residual has a live home rather than
+a backlog one. F1 rides along with it.
+
+#### Gates — each exit status read directly from the tool, never through a pipe
+
+| Gate | Exit |
+| --- | --- |
+| `dotnet build --no-incremental` | **0** — 0 warnings, 0 errors, all 6 projects |
+| `dotnet test` | **0** — 62/62 (17 unit, 45 integration), 0 skipped |
+| `dotnet format --verify-no-changes` | **0** |
+| `./tools/check-drift.sh` | **0** — generated code matches `spec/openapi.yaml` |
+| `python3 tools/validate-project-os/validate.py` | **0** — OK (17 tickets, 6 ADRs) |
+| `dotnet ef migrations has-pending-model-changes` | **0** — no pending model changes |
+
+Build and suite were re-run after the final revert; working tree verified clean
+(`git status --porcelain` empty) before and after every mutant.
+
+#### What I could not verify
+
+- **AC5 and AC8 against a real token** — impossible today; no token this system can issue carries a
+  subject. This is the residual, and F1 sharpens it: what is unverified is not merely "a real token"
+  but the only subject-claim branch production can execute.
+- **AC1–AC4 through a shipped endpoint** — none exists by design; T-0004 is the first consumer.
+- I did not re-raise a Docker stack this pass. The earlier acceptance drove the full role matrix
+  with real signed tokens through the API's own `Program.cs` and I did not re-derive that; my
+  questions this round were about claim shapes, mutation survival, prose accuracy and the
+  destination ticket, all answerable in-process and by reading. The one claim I did re-derive from
+  source rather than take forward is the "no `sub` in any issuable token" premise, because both the
+  residual and F1 depend on it.
+
+- **Did:** Derived checks from the requirements before the Work Log. Ran all five gates plus the EF
+  model check, reading each exit status directly. Ran nine mutants and killed nine, including
+  independent re-kills of the Q1, Q4, Q5 and N1 fixes rather than citing the reviewers'. Discovered
+  F1 by mutating the subject lookup in both directions and confirmed it is a coverage gap rather
+  than a defect by giving the test host production's claim shape. Wrote and ran six exploratory
+  probes, including a 300-emoji display name, then deleted them. Verified every replacement
+  sentence in README and ARCHITECTURE against the code. Read T-0015 in full to confirm it accepts
+  the residual.
+- **Decided:** PASS. Q1, Q2/Q2a/Q2b, Q3, Q4, Q5 and N1 are all genuinely closed — each confirmed by
+  my own mutation or artefact reading, none taken on the record's word. F1 and F2 are recorded for
+  `complete-ticket`: neither violates a criterion for any caller the system can currently produce,
+  F1 has an accepting destination in T-0015 AC8, and F2 is one line. No DoD deviation is required,
+  including for items 4 and 6.
+- **Remaining:** `complete-ticket` — handle F1 (fix in the test host, or cite T-0015 AC8) and F2.
+- **Open questions / blockers:** none.
+- **Branch / PR:** merged; verified on `main` @ `ece515d`.
+- **Test state:** 62/62 green, 0 skipped; nine mutants run and killed, two deliberate survivors
+  recorded as evidence for F1.
+- **Acceptance verdict:** **PASS** — QA (`claude-qa-7c21`), 2026-08-31. `accepted_by` deliberately
+  left `none`: the validator reserves it for `complete-ticket` at `done`.
