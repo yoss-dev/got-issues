@@ -301,7 +301,14 @@ Measured on T-0005's two new operations, whose declared set is 400/401/403/404/5
 | --- | --- |
 | `403` on `createIssue` | Yes — one test, status code only |
 | `403` on `getIssue` | **No test at all** |
-| `500` on either | **No** — reached only under mutation, and in the smoke tier by stopping the database |
+| `500` on `createIssue` | ~~**No**~~ — **yes**, by `AllocationRollbackTests`, which forces a real failure after allocation |
+| `500` on `getIssue` | **No** — reached only in the smoke tier, by stopping the database |
+
+*Corrected 2026-08-31: the row above originally said neither operation's `500` is exercised.
+`AllocationRollbackTests` exercises `createIssue`'s, and had done since before this note was
+written — found by `claude-qa-8f52` during T-0005's acceptance. Struck rather than edited away: a
+wrong claim inside the ticket written **about** unexercised responses is exactly the kind that
+gets believed, and the correction is more useful to the next reader than a tidy table.*
 
 So a tier built exactly to AC1 would report green on a contract half of whose declared responses
 nothing has ever produced — including the `403` whose body already has no guard in any tier (noted
