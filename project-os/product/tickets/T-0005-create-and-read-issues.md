@@ -2,11 +2,11 @@
 id: T-0005
 title: Create and read issues within a project
 type: feature
-status: in-acceptance
+status: done
 priority: high
 owner: none
 implemented_by: claude-sm-9d4e
-accepted_by: none
+accepted_by: claude-qa-8f52
 depends_on: [T-0004]
 adrs: [ADR-0004]
 created: 2026-08-30
@@ -46,15 +46,15 @@ This is the point at which Got Issues becomes usable rather than demonstrable: S
 
 ## Acceptance Criteria
 
-- [ ] AC1: Given an existing project and an authenticated caller, when they create an issue with valid input, then it is persisted against that project and returned with an identifier of the form `<PROJECT-KEY>-<n>`.
-- [ ] AC1b: Given a project with no issues, when the first issue is created, then it is numbered **1** — numbering starts per project, not globally.
-- [ ] AC1c: Given two projects, when each has issues created, then their numbers are independent — `GOTI-1` and `PROJ-1` can both exist.
-- [ ] AC1d: Given several issues created **concurrently** in the same project, when they are all persisted, then every identifier is distinct and no number is skipped or reused.
-- [ ] AC2: Given an issue that exists, when it is requested by its identifier, then the API returns it as the specification declares.
-- [ ] AC3: Given a project identifier that does not exist, when an issue is created against it, then the API returns 404 with an `application/problem+json` body — not a 500, and not an orphaned issue.
-- [ ] AC4: Given an identifier that does not correspond to any issue, when it is requested, then the API returns 404 with a problem document.
-- [ ] AC5: Given an unauthenticated or invalid-token caller, when they attempt either operation, then the API returns 401 and nothing is persisted.
-- [ ] AC6: Given the specification, when generation and the drift check run, then the diff is empty.
+- [x] AC1: Given an existing project and an authenticated caller, when they create an issue with valid input, then it is persisted against that project and returned with an identifier of the form `<PROJECT-KEY>-<n>`.
+- [x] AC1b: Given a project with no issues, when the first issue is created, then it is numbered **1** — numbering starts per project, not globally.
+- [x] AC1c: Given two projects, when each has issues created, then their numbers are independent — `GOTI-1` and `PROJ-1` can both exist.
+- [x] AC1d: Given several issues created **concurrently** in the same project, when they are all persisted, then every identifier is distinct and no number is skipped or reused.
+- [x] AC2: Given an issue that exists, when it is requested by its identifier, then the API returns it as the specification declares.
+- [x] AC3: Given a project identifier that does not exist, when an issue is created against it, then the API returns 404 with an `application/problem+json` body — not a 500, and not an orphaned issue.
+- [x] AC4: Given an identifier that does not correspond to any issue, when it is requested, then the API returns 404 with a problem document.
+- [x] AC5: Given an unauthenticated or invalid-token caller, when they attempt either operation, then the API returns 401 and nothing is persisted.
+- [x] AC6: Given the specification, when generation and the drift check run, then the diff is empty.
 
 ## Examples / Scenarios
 
@@ -98,7 +98,7 @@ Integration tests against real PostgreSQL, covering the 404 paths in AC3/AC4 as 
 
 ## Definition of Done
 
-- [ ] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — checked by `complete-ticket`; deviations require recorded PO/human approval.
+- [x] Meets [DoD](../../governance/DEFINITION_OF_DONE.md) — walked item by item on 2026-08-31 by `claude-qa-8f52`; no deviation required.
 
 ---
 
@@ -2032,3 +2032,58 @@ ticket is the correct route (WoW §11) rather than reopening it.
 - **Remaining:** `complete-ticket`.
 - **Open questions / blockers:** none.
 - **Test state:** `dotnet test` **110/110** · `dotnet format` exit 0 · build 0 warnings.
+
+### 2026-08-31 — QA / Scrum Master (claude-qa-8f52) — Definition of Done walk, ticket closed
+
+State assessed: `main` @ `73a1833`.
+
+**Universal items**
+
+1. **Implementation complete** — the issue resource, its migration, the per-project allocator and
+   both operations. Review walked the diff against In Scope across three rounds; no scope drift.
+2. **Acceptance criteria verified independently** — all nine, twice, against a live Compose stack
+   with attribution bound both ways. AC1d was verified at **30-way real-HTTP concurrency**: numbers
+   exactly 1–30, none skipped or reused.
+3. **Automated tests** — 110 passing (17 unit, 93 integration), smoke 13/13, nothing skipped.
+4. **No known unrecorded defects** — F1, F2 and F3 fixed; **F4 (the connection leak) deferred to
+   [T-0023](T-0023-integration-tests-retain-a-connection-per-test-database.md)**, whose scope
+   accepts it and whose AC2 requires the suite to pass at `max_connections=100` so that raising a
+   ceiling cannot satisfy it. Deferral accepted by the PO persona, with the destination read rather
+   than trusted.
+5. **Code quality** — approved by `claude-rev-5c14` across three rounds; build 0 warnings under
+   warnings-as-errors; `dotnet format` exit 0 for the solution and the out-of-solution smoke project.
+6. **Documentation** — the item this ticket first failed on. README's banner and *Not here yet*,
+   and ARCHITECTURE's state banner, now describe what exists; re-grepped for survivors, none.
+7. **Work Log complete** — including two false claims I committed about the harness, corrected in
+   place rather than edited away.
+8. **State updated** — this commit.
+
+**Conditional items**
+
+- **Regression tests** — every defect found has a test that fails without the fix: the backfill
+  (`UpgradePathTests`), the exhaustion bound, the rollback, the malformed keys.
+- **ADR** — none required. [ADR-0010](../../architecture/adr/ADR-0010-clean-architecture-layering.md)
+  was raised the same day and governs [T-0022](T-0022-adopt-clean-architecture-layering.md), not
+  this ticket's shape.
+- **Security** — free-text title and description are personal-data-shaped; acceptance created an
+  issue carrying such text and found **0 occurrences** in API and migrator logs. `U+0000` is
+  refused at the contract boundary rather than reaching PostgreSQL.
+- **Migrations** — `AddIssues` creates `issues` with a unique index on `(ProjectId, Number)` and
+  adds the counter to `projects` with a database default of 1, proved against a **populated**
+  database by reverting a live stack and running the real migrator.
+- **Observability, Accessibility, Deployment** — not applicable.
+
+**Verdict: Done.** No deviation required.
+
+**What this ticket cost, and what it bought.** Three review rounds and two acceptance runs, which
+found: a migration that would have made every existing project's first issue unreadable, an
+identifier bound that broke at the top of its range, a response declaring one thing and returning
+another, and a connection leak that had been growing invisibly since T-0003. None of those was
+found by mutation; all came from exercising the running system in states it was not built for.
+
+- **Did:** Walked every universal item and every applicable conditional item against repository state.
+- **Decided:** F4's deferral is genuine — the destination exists and its criteria make a ceiling
+  raise insufficient.
+- **Remaining:** none.
+- **Branch / PR:** merged as `912448e`, `5649367`, `73a1833`; worktrees and branches removed.
+- **Test state:** 110/110 · smoke 13/13 · build 0 warnings · format 0 (both) · drift 0 · validate 0.
