@@ -1,5 +1,6 @@
 using GotIssues.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace GotIssues.Api.UnitTests;
 
@@ -20,8 +21,16 @@ namespace GotIssues.Api.UnitTests;
 /// </para>
 /// <para>
 /// Before the sentinel was stated, EF logged `Model.Validation[20601]` on every start to
-/// say it was guessing. Stating it silenced that — so this test is the signal that
-/// replaced it, and unlike the log line it fails the build and names the member.
+/// say it was guessing. Stating it silenced that — so this test is the signal that replaced it.
+/// </para>
+/// <para>
+/// <b>It fails `dotnet test`, not the build.</b> An earlier version of this comment said "fails
+/// the build", which acceptance measured to be false (G1): with a zero member present,
+/// `dotnet build --no-incremental` exits 0. The distinction is the whole point of the warning
+/// this replaced — that one was skippable too, and three people skipped it. A test in the
+/// sub-millisecond unit tier is a weaker gate than the compiler and a much stronger one than a
+/// log line; overstating it would repeat, in the comment on the guard, the exact fault the
+/// guard exists to prevent.
 /// </para>
 /// </summary>
 public sealed class IssueLifecycleEnumTests
@@ -41,7 +50,14 @@ public sealed class IssueLifecycleEnumTests
         {
             var clrType = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
 
-            if (clrType.IsEnum && property.GetDefaultValue() is not null)
+            // The annotation, not `GetDefaultValue()`. Acceptance G2 measured that
+            // `GetDefaultValue()` returns the CLR default for *any* non-nullable property, so the
+            // filter it reads as would be "every non-nullable enum" — a wider set than the
+            // description, and one that would fail a future `Severity { None = 0 }` column that
+            // has no default and therefore no sentinel problem. The annotation is present only
+            // when `HasDefaultValue` was actually called, which is the condition that creates the
+            // obligation.
+            if (clrType.IsEnum && property.FindAnnotation(RelationalAnnotationNames.DefaultValue) is not null)
             {
                 data.Add($"{property.DeclaringType.ShortName()}.{property.Name}", clrType);
             }
