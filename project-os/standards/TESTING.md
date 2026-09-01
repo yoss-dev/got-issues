@@ -89,6 +89,35 @@ Each was found by a person driving real infrastructure, and **none would have be
 - **Identifiers that must be unique are not truncated.** A name shortened to a "long enough" width silently dropped the random component and made two runs share one namespace. A cap chosen to be big enough is the same defect with a larger number.
 - **Gates are run in the working copy under test.** With work split across a trunk checkout and a ticket worktree, a gate run in the wrong one measures the wrong tree. SPRINT-002 recorded a validator result as green that was red on the branch it described.
 
+### Run the claim, don't read it
+
+A sentence that asserts a mechanism guarantees something is a claim, and **a claim is verified by executing the mechanism and observing the outcome** — not by reading the code and reasoning about what it must do. This applies to comments, Work Log entries, ADR sentences, mutation records, ticket criteria and commit messages alike: if the repository says a thing holds, someone has run the thing that makes it hold.
+
+The claims this catches all sound like conclusions:
+
+- *"this fails loudly if someone later adds a zero member"* — it did the opposite; it silenced the warning that had been reporting the problem ([T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) C1);
+- *"the foreign key enforces this criterion"* — measured, the foreign key produced a 500 where the criterion required a 400 ([T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) B3);
+- *"the integration tier structurally cannot host this assertion"* — it could; the real cause was narrower and the false generalisation would have steered the next engineer away from the tier they should use ([T-0004](../product/tickets/T-0004-create-and-list-projects.md) C1);
+- *"this closes the class, not just the instance"* — the class stayed open, and the sentence was exactly the one that would stop the next person writing the coverage ([T-0005](../product/tickets/T-0005-create-and-read-issues.md) B3);
+- *"the test fails the build"* — it fails `dotnet test`; `dotnet build` exits 0 ([T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) G1);
+- *"xUnit runs the classes in parallel"* — they share one collection and run sequentially, so the mechanism named could not produce the effect described ([T-0005](../product/tickets/T-0005-create-and-read-issues.md) F4).
+
+Three properties make these hard to catch by reading, and are the reason this is a required step rather than advice:
+
+1. **They are reasonable.** Every one was a correct-sounding inference from an adjacent mechanism — it compiles, therefore the compiler enforces it; the test runs in CI, therefore it gates the build.
+2. **They cluster inside fixes.** [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) ran three in sequence, each inside the fix for the previous one. A correction is written at speed, under the belief that the problem is now understood, which is the worst moment to reason instead of measure.
+3. **They are not an implementer failing.** Reviewers made them too, including one written *while approving the fix for this exact fault*. Treat this as a step in the process, not a lapse in someone's care.
+
+**Two consequences follow.**
+
+**A claim that cannot be executed is rewritten to one that can.** *"Someone adding a zero member will notice"* is not verifiable; *"`dotnet test` fails and names the member"* is, and it is what a reader needs to know anyway.
+
+**When a claim proves false, correct it in place rather than deleting it.** The false sentence and its correction together are the record; deleting it removes the evidence that the process caught something. This repository's Work Logs carry several such corrections deliberately.
+
+**Where this sits relative to mutation.** They answer different questions. A mutant asks *does this test detect that breakage*; this asks *does this mechanism do what the sentence says it does*. Across SPRINT-003's **eighteen** blocking findings, mutation produced none, and **eleven were claims this technique can reach** — a sentence asserting something checkable, which measurement then contradicted. Thirteen were defects in what the repository recorded, but two of those were records that existed nowhere at all, and a technique that runs claims cannot find a claim nobody wrote; they are DoD item 4's territory, not this section's. Three findings were wrong behaviour; two were tests that did not reach their subject. The mutants that did run were *prompted* by someone checking a claim. Neither practice replaces the other, and neither substitutes for exercising the system in a state it was not built in.
+
+*(Counts are from the three tickets' own review and acceptance verdict lines — [T-0004](../product/tickets/T-0004-create-and-list-projects.md) 7, [T-0005](../product/tickets/T-0005-create-and-read-issues.md) 4, [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) 7 — and are recounted in [RETRO-SPRINT-003](../delivery/retrospectives/RETRO-SPRINT-003.md) D1, where the first published figure was wrong in both terms.)*
+
 ### The gate
 
 - The full relevant suite passes before a ticket enters `in-acceptance`. "Passes on my machine" with red CI is red.

@@ -435,7 +435,7 @@ Refinement's ARCH note said "no ADR bar reached", but that was decided before th
 roles-cannot-be-expressed-in-OpenAPI problem surfaced; the implementer found it at plan time. The
 facts changed.
 
-Per review-code §4, an in-diff decision meeting the ADR bar without an ADR is blocking.
+Per review-code §4, an in-diff decision meeting the ADR bar without an ADR is blocking. *(That rule is step **5** as of 2026-08-31: [RETRO-SPRINT-003](../../delivery/retrospectives/RETRO-SPRINT-003.md) action 1 inserted a new step 4 and shifted the rest. Annotated rather than rewritten — the entry records what was cited at the time.)*
 
 **2. The 409 defect — fixed, and no other response repeats it.** Measured above: every declared
 `problem+json` response returns `problem+json`. `ControllerBase.Problem(…)` is the right fix.
