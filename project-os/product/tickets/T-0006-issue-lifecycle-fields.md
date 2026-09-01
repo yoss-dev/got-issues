@@ -2,9 +2,9 @@
 id: T-0006
 title: Track an issue's lifecycle — type, status, priority, assignee
 type: feature
-status: in-acceptance
+status: in-progress
 priority: normal
-owner: none
+owner: claude-sm-9d4e
 implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0005, T-0009]
@@ -1059,3 +1059,308 @@ error. That one genuinely is shared behaviour on every body-taking endpoint.
 - **Test state:** `dotnet test` **131/131** · `dotnet format` exit 0 · build 0 warnings ·
   `check-drift.sh` exit 0 · `validate.py` exit 0 · `tools/smoke.sh` **13/13** exit 0 (measured on
   the previous commit; this change is one attribute and two assertions, no runtime path altered).
+
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-2e64) — acceptance of `4e2c6a2` on `main`: **FAIL**
+
+Independent acceptance per [`acceptance-test`](../../skills/acceptance-test/SKILL.md). I did not
+implement this ticket; scenarios were derived from Problem / Outcome / Scope / AC / Examples before
+the Work Log was read.
+
+**All eight acceptance criteria hold.** The ticket fails on **Definition of Done item 6**, on the
+same three documentation lines that failed [T-0004](T-0004-create-and-list-projects.md)'s and
+[T-0005](T-0005-create-and-read-issues.md)'s acceptance — the third occurrence, and the one
+[`CURRENT_SPRINT.md`](../../delivery/CURRENT_SPRINT.md) (retro input, 2026-08-31) predicted by name.
+
+#### Gates, each exit code read from the tool itself, in this checkout on `main`
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 17 unit + 114 integration = **131** passed, 0 failed, 0 skipped |
+| `dotnet build --no-incremental` | **exit 0** — 6 projects, **0 warnings**, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0** — *"generated code matches spec/openapi.yaml"*, tree clean before and after (AC6) |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (8 m 08 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 24 tickets, 10 ADRs |
+
+#### How the criteria were verified
+
+Beyond the suite, I ran a live Compose stack under its own project name (`-p qa2e64`) on ephemeral
+ports 18085/18086, per [TESTING.md](../../standards/TESTING.md)'s attribution rule. **Attribution
+confirmed rather than assumed:** `qa2e64-api-1` was `running/healthy` before any response was
+trusted, and stopping that container made `:18085/health` stop answering (curl exit 7) — so nothing
+below was answered by another stack on this machine, and there are several. `docker compose down -v`
+ran first for stale volumes and again at the end; no containers, volumes or networks remain, and the
+working tree is clean.
+
+| AC | Verdict | Evidence |
+| --- | --- | --- |
+| AC1 | **PASS** | Live: each of `type`, `status`, `priority` set and re-read through a separate `GET` — 13 changes, all 200, all persisted. `IssueLifecycleTests.AC1_a_field_changes_and_stays_changed` (theory x3) and `AC1_an_omitted_field_is_left_alone` |
+| AC2 | **PASS** | Live: `cancelled`, `OPEN`, `in-progress`, `epic`, `critical`, numeric `2`, empty string and `["open"]` all returned **400 `application/problem+json`**, each naming `$.status` / `$.type` / `$.priority` and quoting the declared set. Nothing stored: after `{"status":"done","type":"epic","priority":"high"}` the issue still read `task` / `open` / `low` |
+| AC3 | **PASS** | Live: assign, reassign, unassign — each persisted; `assignee` carries `subject` **and** `displayName` (`{"subject":"alice","displayName":"Alice Example"}`), and a null `displayName` for a user who has none. A never-assigned and an unassigned issue both read `"assignee": null` — indistinguishable, as refinement decided |
+| AC4 | **PASS** | Live: unknown subject gives **400 problem+json**, `errors: {"Assignment.Subject": ["No user with subject 'ghost' is known to this system."]}`, and a *valid* `priority` sent in the same request did **not** land. NUL, TAB, DEL, lone surrogates and a 256-character subject all give 400 naming the field. I could not find an input that produces a 500 |
+| AC5 | **PASS** | Live: `open -> done -> open -> in_progress -> done -> in_progress -> open`, including the backwards `done -> open` twice — every one 200, no transition refused. Also `bug <-> task` and every priority pair |
+| AC6 | **PASS** | `./tools/check-drift.sh` exit 0 on a clean tree; `git status` empty afterwards |
+| AC7 | **PASS** | Live: `POST /projects/QAX/issues` returns `"type":"task","status":"open","priority":"normal","assignee":null` on creation and on re-read. Backed by database defaults, not CLR initialisers — confirmed in the live schema (`'Task'::character varying`, `'Open'`, `'Normal'`) |
+| AC8 | **PASS** | Live, with **real Duende client-credentials tokens**: the `member` client changed all four fields and assigned (200); the `admin` client likewise; no token gives 401; a garbage token gives 401. The same member is still refused `POST /projects` (403), so the policy is a floor and not a blanket |
+
+#### Exercising the system in a state it was not built in
+
+This is where the standard says the yield is, so it is where the run was spent.
+
+**1. The real migrator against a populated `issues` table — the T-0005 defect shape.** I did not
+trust `UpgradePathTests`; I reproduced it against live infrastructure. On the running stack I
+created projects and issues through the API (one patched to `bug` / `in_progress` / `high` and
+assigned), then reverted the live database exactly as the migration's `Down()` does — dropped the
+foreign key, the index and the four columns and deleted the `20260831230358_AddIssueLifecycle` row
+from `__EFMigrationsHistory` — and inserted **500 further issue rows through the old schema**, so
+the upgrade met 505 pre-existing rows rather than one. Then I ran the **real compose migration
+step** (`docker compose -p qa2e64 run --rm migrator`, exit 0), which emitted:
+
+```
+ALTER TABLE issues ADD "AssigneeSubject" character varying(255);
+ALTER TABLE issues ADD "Priority" character varying(20) NOT NULL DEFAULT 'Normal';
+ALTER TABLE issues ADD "Status"   character varying(20) NOT NULL DEFAULT 'Open';
+ALTER TABLE issues ADD "Type"     character varying(20) NOT NULL DEFAULT 'Task';
+CREATE INDEX "IX_issues_AssigneeSubject" ON issues ("AssigneeSubject");
+ALTER TABLE issues ADD CONSTRAINT "FK_issues_users_AssigneeSubject" ... ON DELETE RESTRICT;
+```
+
+Result: **all 505 pre-existing rows backfilled `Task` / `Open` / `Normal`, unassigned, and zero rows
+carrying a value the contract does not declare** — checked in SQL, not only through the API. Every
+sampled row (`OLD-1`, `OLD-2`, `OLD-3`, `OLD-250`, `OLD-503`, `QAX-1`) reads back 200 through the
+API. The `GOTI-0` class of defect does not recur here.
+
+**I also closed the gap review left open** (*"the new case does not exercise a pre-existing issue
+through the new `PATCH` after the upgrade; it only reads"*): I PATCHed rows that predate the
+migration — status, type, priority and assignment, including a non-ASCII subject — all 200, all
+persisted on re-read, and a new issue filed into the pre-existing project came out `OLD-504` with
+the declared defaults. Re-running the migrator was idempotent (*"No migrations were applied. The
+database is already up to date."*, exit 0); restarting the API against the upgraded, populated
+database came up healthy with no pending-model-changes error; and `DELETE FROM users WHERE
+"Subject" = 'alice'` was refused live by `FK_issues_users_AssigneeSubject` — `Restrict` is real, not
+merely configured.
+
+**2. A dependency removed underneath a live service.** `docker stop qa2e64-postgres-1` with the API
+still serving: `PATCH` (status), `PATCH` (assignment) and `GET` all returned **500 with
+`application/problem+json`** and the declared body — not the zero-length body T-0004 shipped.
+`/health` reported `Unhealthy` with `"database not reachable"` (503), and the API recovered by
+itself when PostgreSQL came back. Nothing hung and no exception text reached the caller.
+
+**3. Input nobody anticipated.** Roughly 45 request shapes the suite does not send, all against the
+live stack. No 500, no undeclared response, no empty body:
+
+- `U+0000`, TAB, `U+007F` and a **trailing newline** in `assignment.subject` all give 400 naming
+  `Assignment.Subject`. The trailing newline is worth recording: .NET's `$` matches before a final
+  newline, so the declared pattern *alone* would have admitted `"alice\n"` — it is
+  `RegularExpressionAttribute`'s whole-string length check that closes it. The hole T-0004 paid for
+  does not reopen, but the reason is the attribute, not the pattern.
+- **Lone surrogates** (`\ud800`, `\udc00`) give 400 from `System.Text.Json` before the value can
+  reach Npgsql. This was the one remaining route by which a request string could still have reached
+  PostgreSQL unstorable, since the new pattern excludes control characters but not surrogates; the
+  reader closes it. A valid surrogate pair (an emoji) is accepted and correctly reported unknown.
+- A 256-character subject gives 400 on `maxLength`; 255 gives 400 as an unknown user — so the
+  boundary sits exactly at the declared value. `café-user` is **not** over-rejected and round-trips
+  intact.
+- Malformed bodies — empty, `not json`, `null`, `[]`, `"open"`, `{"assignment":"alice"}`,
+  `{"assignment":[]}`, `{"assignment":{"subject":7}}` — all give 400 problem+json. `text/plain`
+  gives 415. Duplicate JSON keys: last wins, 200. An unknown property is ignored, 200 (N6).
+- Path keys: `QAX-0`, `qax-1`, `QAX--1`, `QAX-9999999999`, `QAX-1%0A` and `QA%20X-1` give 400
+  naming `issueKey`; `QAX-99`, `ZZZ-1` and `QAX-999999999` give 404 problem+json. `SplitKey`'s
+  "cannot fail" comment is now measured rather than inferred.
+- **20 concurrent PATCHes** on one issue (five each of four different fields): 20 x 200, and all
+  four changes survived — no lost update, because EF updates only the columns that changed.
+
+**4. All four assignment shapes, against what the contract now says.** `{"subject":"alice"}`
+assigns; `{"subject":null}` unassigns; `{}` unassigns and returns 200; an **absent** `assignment`
+leaves the holder alone while a sibling `status` change lands. All four match `AssignmentChange`'s
+table at `spec/openapi.yaml:546-561`. B2 is genuinely closed as documentation.
+
+**5. The `EnumMemberJsonConverter` blast radius — checked, not assumed.** I confirmed independently
+that `git grep -l EnumMember` over `libs/GotIssues.Contracts/src/` returns **nothing at `4e2c6a2^`**
+and only the three new enums after it, so no pre-existing payload can have changed; `GET /projects`,
+`POST /projects`, `GET /issues/{key}` and `POST /projects/{key}/issues` were re-read live and are
+shape-identical apart from the new fields. The values the tests do not send: an unknown string gives
+400, a numeric gives 400, an empty string gives 400, and an explicit `null` gives 200 with the field
+unchanged — so the `Nullable<T>` 400-to-500 regression does not recur. `Write` of an undeclared
+value is unreachable: `ToContract` is the only construction site of a contract `Issue` in the
+solution and both mapping switches are total.
+
+**6. N7 closed for this ticket's surface — the one thing nothing anywhere exercised.** Review
+recorded that no test round-trips the generated client, so the six client-side enum converters
+registered in `HostConfiguration.cs` are compiled and never run. I built a throwaway console app
+**outside the repository** against `libs/GotIssues.Client`, using the exact `JsonSerializerOptions`
+`HostConfiguration` builds. It deserialised a live response into `GotIssues.Client.Model.Issue`
+(`type=Bug status=InProgress priority=High assignee=alice/Alice Example`) and serialised
+`UpdateIssueRequest` back out as `{"type":"bug","status":"in_progress","priority":"high","assignment":{"subject":"alice"}}`
+and `{"type":null,"status":"done","priority":null,"assignment":{"subject":null}}` — both accepted
+200 and round-tripped correctly. **The published client works against the published contract.** One
+thing worth recording against B2's worry: the generated `AssignmentChange` has no parameterless
+constructor, so a C# client cannot produce `{}` by forgetting a property — the accidental-unassign
+hazard is real for hand-written JSON, not for this client. All artefacts were outside the
+repository; `git status` is clean.
+
+---
+
+### Blocking
+
+#### F1 — `README.md:7`, `README.md:113` and `ARCHITECTURE.md:5` say this ticket's deliverable does not exist. Third occurrence. DoD item 6.
+
+| Line | What it says today | Why it is false |
+| --- | --- | --- |
+| `README.md:7` | *"…each issue carries a key like `GOTI-1` numbered within its project. **Comments and lifecycle fields come next.**"* | Lifecycle fields do not "come next"; they are merged at `4e2c6a2` and I exercised them against a live stack |
+| `README.md:113`, under `### Not here yet` | *"**Issue lifecycle and comments.** An issue can be created and read, but **it carries no status, priority or assignee yet** ([T-0006](T-0006-issue-lifecycle-fields.md))"* | This ticket's deliverable, named by link, listed under a heading that says it does not exist |
+| `project-os/architecture/ARCHITECTURE.md:5` | *"What remains intended rather than built: **an issue's lifecycle fields** ([T-0006](T-0006-issue-lifecycle-fields.md))…"* | Same |
+
+[DoD](../../governance/DEFINITION_OF_DONE.md) item 6 names *"README/setup instructions affected by
+the change"*, and `README.md:113` is affected **by name**.
+[DOCUMENTATION.md](../../standards/DOCUMENTATION.md) is explicit: *"Stale documentation is a defect
+… fix in place when the fix is within your current ticket's scope."* And `ARCHITECTURE.md:7`
+addresses this ticket directly — *"if you are reading this while shipping something listed as
+intended, it is now your line to fix."*
+
+**This is not a first offence and it was predicted by name.** T-0004's acceptance failed on these
+three lines; T-0005's acceptance failed on the same three lines and scored DoD item 6 as its sole
+failure; and on 2026-08-31 `claude-rev-5c14` recorded them in
+[`CURRENT_SPRINT.md`](../../delivery/CURRENT_SPRINT.md) *"because **T-0006 lands before the retro
+and will falsify the same lines a third time**"*. It did. Neither the implementation nor two review
+passes caught it — which is itself evidence that reminder-shaped countermeasures do not work here.
+The retro has three candidate fixes recorded (delete the enumerations; generate them; make
+`validate.py` fail on a `done` ticket cited under *Not here yet*), and this run is its third data
+point.
+
+**Fix:** rewrite the three lines to describe what exists — lifecycle fields shipped; *Not here yet*
+narrows to listing and filtering ([T-0007](T-0007-list-and-filter-issues.md)), comments
+([T-0008](T-0008-comment-on-an-issue.md)) and user tokens
+([T-0018](T-0018-user-subject-tokens.md)) — then re-grep for survivors. No code change; `validate.py`
+is the only gate it touches.
+
+I have deliberately **not** fixed it myself: acceptance does not modify the change under test.
+
+---
+
+### Non-blocking
+
+- **F2 — the migrator and the API now log three EF `Model.Validation[20601]` warnings on every
+  start**, new with this ticket: *"The 'IssueStatus' property 'Status' … is configured with a
+  database-generated default, but has no configured sentinel value. The database-generated default
+  will always be used for inserts when the property has the value '0'."* Same for `Type` and
+  `Priority`. `projects.NextIssueNumber` produces none, because `0` is already `int`'s sentinel.
+  **Harmless today, latent tomorrow:** `Data.IssueType` / `IssueStatus` / `IssuePriority` all start
+  at `1` and every CLR initialiser is non-zero, so EF always sends an explicit value — I verified a
+  fresh issue writes `Task` / `Open` / `Normal` while a pre-existing row keeps the database default.
+  But if anyone ever adds a `= 0` member to one of those enums, EF will silently substitute the
+  database default on insert, and this warning is the only notice. One `HasSentinel(...)` per
+  property removes both the noise and the trap; recording the enforcement is the alternative.
+  Neither the Work Log nor either review pass mentions these three warnings, and they appear on
+  every `docker compose up`.
+- **F3 — `assignment.subject: ""` reaches the database lookup despite the declared pattern.**
+  `spec/openapi.yaml:573` declares a pattern excluding C0 controls and DEL, which the empty string
+  violates — but `RegularExpressionAttribute` treats an empty string as valid, so the value reaches
+  `IssuesController.cs:181` and comes back *"No user with subject '' is known to this system."* The
+  **outcome satisfies AC4** (400, problem+json, field named, issue unchanged) and PostgreSQL stores
+  an empty string happily, so nothing breaks — but the document and the enforcement disagree about
+  *which* rule rejects it, which is the family of divergence
+  [ADR-0004](../../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md) exists to
+  prevent. `minLength: 1` states what is already almost true. Not blocking: no client can observe
+  the difference.
+- **F4 — the AC2 theory's "and nothing changed" assertion re-reads only `status`.**
+  `IssueLifecycleTests.cs:152` asserts `status == "open"` for all three theory rows, so for
+  `{"type":"epic"}` and `{"priority":"critical"}` it asserts a field the request never mentioned.
+  I verified live that neither `type` nor `priority` changes on rejection, so the behaviour is right
+  and the test is one assertion short of its own comment — the same shortfall review already caught
+  once, on the B1 regression test.
+- **F5 — three claims re-measured rather than accepted**, because the implementer's Work Log names
+  *"a guard or a cause asserted by inference from an adjacent mechanism"* as this ticket's recurring
+  fault and asks for further instances. I found no fourth: `ValidationProblem` really does have
+  **exactly one call site** across `apps/` and `libs/` (grepped), and its 400 now carries
+  `"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1"` in a live response; the `Restrict`
+  foreign key really does refuse a live `DELETE`; and `SplitKey`'s *"cannot fail"* comment holds
+  against six malformed keys. The corrected enforcement record for AC2 and AC4 reads true against
+  what I measured.
+- **N2** is correctly deferred to [T-0024](T-0024-spurious-validation-error-on-every-body-taking-endpoint.md),
+  whose *In Scope* takes it on by name — I reproduced the spurious *"The updateIssueRequest field is
+  required."* beside every real body error, and the same on `POST /projects`. **N3**
+  (`{"status":null}` untested) and **N6** (unknown properties ignored) remain recorded rather than
+  ticketed; both behave as documented and I verified them live.
+
+---
+
+### Definition of Done, walked
+
+| # | Item | Verdict |
+| --- | --- | --- |
+| 1 | Implementation complete; nothing out of scope smuggled in | **Pass** — the diff touches `spec/`, generated `libs/`, the controller, `Data/`, the migration, `Serialization/`, `Program.cs` (+8, the converter registration) and tests. No transition validation, no per-project sets, no assignment history, no notifications |
+| 2 | All acceptance criteria verified independently | **Pass** — all eight, above, against executed tests and a running stack |
+| 3 | Automated tests exist and pass | **Pass** — 131/131, 0 skipped; smoke 13/13. The new tests genuinely encode the criteria, and the vacuous assertion review found (N5) is gone |
+| 4 | No known unrecorded defects | **Pass** — N2 goes to T-0024, whose scope accepts it; N3/N6/N7 recorded; F2–F4 recorded here |
+| 5 | Code quality | **Pass** — two review passes ending in `Approve`; build 0 warnings; format clean on both projects; no TODO, `Console.Write` or debug scaffolding anywhere in the diff |
+| 6 | Documentation updated | **FAIL — F1.** The OpenAPI specification, which is this project's user-facing documentation, is excellent and states even the awkward `{}` case. `README.md` and `ARCHITECTURE.md` are not |
+| 7 | Work Log complete | **Pass** — resumable, and honest about its own corrections |
+| 8 | State updated | Pending completion |
+| — | Regression test for a fixed bug | **Pass** — `A_subject_carrying_a_control_character_is_rejected_at_the_boundary` for B1; I confirmed the 500 it replaces cannot be reproduced |
+| — | ADR recorded | **N/A** — no decision at the ADR bar; ADR-0004, ADR-0008 and ADR-0010's sequencing are all respected |
+| — | Security | **Pass** — every new external input is declared in the spec and enforced by generated binding; no secrets; no new dependency. F3 is the one place declaration and enforcement differ, and it is not exploitable |
+| — | Migrations | **Pass** — scripted, reversible (`Down` is symmetric; I executed its equivalent against a live populated database), and tested both by `UpgradePathTests` and by the real migrator against 505 pre-existing rows |
+| — | Observability | **Concern, non-blocking** — see F2 |
+| — | Deployment | **Pass** — `docker compose up --wait` reaches every service healthy from a clean volume, and the migration step is idempotent |
+
+**No deviation needs recording.** F1 is a fixable defect, not something to waive — the same item was
+fixed rather than waived on T-0004 and T-0005.
+
+### Does the MVP deliver a usable issue tracker through the API?
+
+Asked because this closes SPRINT-003's goal. **Through the contract the loop is real, and I walked
+it end to end on a live stack with real Duende tokens:** an `admin` creates a project; either role
+files issues into it with per-project numbering (`QAX-1`, `OLD-504`); anyone reads one by the key
+people quote; moves it through `open` / `in_progress` / `done` in any direction; sets `type` and
+`priority`; and assigns or unassigns a person who reads back with a display name. Every failure
+answers `application/problem+json`, including with the database stopped. Five operations, all
+specified first, all generated, drift-free.
+
+**Two honest limits a first user meets immediately, both already ticketed:**
+
+1. **Nothing lists issues** ([T-0007](T-0007-list-and-filter-issues.md)). The only way to reach an
+   issue is to already know its key, so a tracker holding more than a handful is not yet navigable.
+   `GET /projects` is paginated; issues have no collection endpoint at all.
+2. **Assignment cannot be used against a live stack without seeding the database by hand.** No token
+   this system issues carries a `sub` ([T-0018](T-0018-user-subject-tokens.md)), so
+   `UserProjectionMiddleware` never writes and `users` stays empty — I had to `INSERT` rows with
+   `psql` to exercise AC3, AC4 and AC8's assignment. The ticket records this as a *testing*
+   constraint; it is equally a *product* one until T-0018 lands, and it is the difference between
+   "assignment works" and "a person can be assigned".
+
+Neither is a defect in this ticket — both are out of its scope and named in it. The honest answer to
+"is this a usable issue tracker" is: **the write path is; the read path is one endpoint short**, and
+`assignee` names a subject rather than a person until T-0018.
+
+#### One conflict resolved rather than silently followed
+
+[`acceptance-test`](../../skills/acceptance-test/SKILL.md)'s fail branch says *"`status: in-progress`,
+`owner: none`"*, but `validate.py` rejects that combination (*"status in-progress requires an
+owner"*) and this repository's three previous acceptance failures — `a3f27d1`, `9f89ddd` (T-0004)
+and `303fafb` (T-0005) — all restored the implementer as owner. Precedence puts the skill last
+([`README.md`](../../README.md)), so I followed the validator and the precedent and set
+`owner: claude-sm-9d4e`, recording the divergence here rather than quietly picking one. The skill's
+wording is worth correcting in a governance change; it is not this ticket's problem.
+
+- **Did:** Derived scenarios from the requirements before reading the Work Log; ran all six gates in
+  this checkout, reading each exit code from the tool itself; verified all eight criteria against
+  executed tests and a live Compose stack under `-p qa2e64` on ports 18085/18086 with attribution
+  proved by stopping the container; reverted that live stack to the pre-T-0006 schema with 505 rows
+  present and ran the real compose migrator against it; stopped PostgreSQL under the running API;
+  drove ~45 unanticipated request shapes; round-tripped the generated client against the live API;
+  walked the Definition of Done.
+- **Decided:** **FAIL** — one blocking finding (F1, DoD item 6). All eight acceptance criteria pass.
+- **Remaining:** an engineer takes F1 (three documentation lines, no code change), decides F2–F4,
+  and re-submits. F1 needs no re-run of the suite.
+- **Open questions / blockers:** none for me. F1's fix is mechanical; whether the *class* of defect
+  is fixed by prose, by generation or by a validator rule is the retro's call, and this run is its
+  third data point.
+- **Branch / PR:** n/a — accepted against `4e2c6a2` on `main`.
+- **Test state, as I measured it:** `dotnet test` **131/131** exit 0 · `dotnet build
+  --no-incremental` 0 warnings exit 0 · `dotnet format --verify-no-changes` exit 0 (solution) and
+  exit 0 (`GotIssues.SmokeTests.csproj`) · `./tools/check-drift.sh` exit 0 · `./tools/smoke.sh`
+  13/13 exit 0 · `python3 tools/validate-project-os/validate.py` exit 0. Stack torn down with
+  `docker compose -p qa2e64 down -v`; no containers, volumes or networks left behind; working tree
+  clean.
