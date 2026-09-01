@@ -1,0 +1,730 @@
+openapi: 3.1.0
+info:
+  description: |
+    A self-hosted, API-first issue and task tracker for internal engineering work.
+
+    This document is the product's user-facing documentation as well as its
+    contract: every operation and schema is described for a reader who has never
+    seen the implementation.
+  title: Got Issues API
+  version: 0.1.0
+servers:
+- description: Local development stack (docker compose)
+  url: http://localhost:8080
+security:
+- bearerAuth: []
+tags:
+- description: |
+    A unit of work inside a project.
+
+    Every issue carries a **key** of the form `GOTI-1`: the project's key, a
+    hyphen, and a number allocated within that project. Numbering starts at 1 in
+    each project and is independent between them, so `GOTI-1` and `PROJ-1` both
+    exist and refer to different work.
+
+    A number is never reused. If an issue is ever removed, its number stays
+    retired rather than being handed to something else — `GOTI-7` pointing at
+    different work than it did last week would be worse than a gap.
+  name: Issues
+- description: |
+    A project groups related work and owns a **key** — a short uppercase
+    identifier such as `GOTI` that becomes the human-quotable half of every
+    issue reference (`GOTI-123`).
+
+    The key is chosen at creation and cannot be changed afterwards. Every issue
+    reference derives from it, including ones written down outside this system,
+    so renaming a key would orphan them all.
+  name: Projects
+paths:
+  /projects:
+    get:
+      description: |
+        Returns a page of projects, newest first.
+
+        Any caller holding a recognised role may list projects; there is no
+        per-project visibility, because roles in this system are global.
+      operationId: listProjects
+      parameters:
+      - description: |
+          1-based page number. Out-of-range values are rejected with 400 rather
+          than silently adjusted, matching pageSize.
+
+          Enforcement is the server's. Declaring a bound does not mean a generated
+          client checks it before dispatching — the C# client generated from this
+          document does not.
+        explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          maximum: 1000000
+          minimum: 1
+          type: integer
+        style: form
+      - description: |
+          Projects per page. The maximum is a declared constraint, so a larger
+          value is rejected with 400 rather than silently reduced — a client
+          asking for 10 000 and receiving 100 without being told is worse.
+        explode: true
+        in: query
+        name: pageSize
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPage"
+          description: A page of projects.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: List projects.
+      tags:
+      - Projects
+    post:
+      description: |
+        Creates a project with a name and a key.
+
+        **Requires the `admin` role.** Creating a project is one of the three
+        administrative acts in this system; a caller holding only `member` receives
+        403. The restriction is a property of the caller's role claim rather than of
+        an OAuth scope, so it cannot be expressed in this document's security
+        requirements — it is declared here, and in the 403 response, so that a client
+        generating from this contract knows the endpoint can refuse an authenticated
+        caller.
+
+        The key must be unique across the deployment. A key already in use is
+        rejected with 409 rather than silently reused.
+      operationId: createProject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+          description: The project was created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Create a project.
+      tags:
+      - Projects
+  /projects/{projectKey}/issues:
+    post:
+      description: |
+        Creates an issue and allocates its number within the given project.
+
+        The number is allocated by the server and cannot be chosen.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        create an issue; a token carrying neither receives 403. Unlike creating a
+        project, this is not an administrative act.
+
+        A project that has exhausted its issue numbers — 999 999 999 of them, the
+        most a key can express — is refused with 409. Issuing a key beyond that would
+        produce an identifier this document's own pattern rejects.
+      operationId: createIssue
+      parameters:
+      - description: "The key of the project the issue belongs to, for example `GOTI`."
+        explode: false
+        in: path
+        name: projectKey
+        required: true
+        schema:
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+          description: The issue was created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Create an issue in a project.
+      tags:
+      - Issues
+  /issues/{issueKey}:
+    get:
+      description: |
+        Returns the issue with the given key, for example `GOTI-1`.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        read an issue; a token carrying neither receives 403. There is no per-project
+        visibility — roles in this system are global.
+
+        Issues are addressed by the key people quote rather than by project and
+        number separately, because that string is the thing written in commit
+        messages and chat.
+      operationId: getIssue
+      parameters:
+      - description: "The issue's key, for example `GOTI-1`."
+        explode: false
+        in: path
+        name: issueKey
+        required: true
+        schema:
+          maxLength: 20
+          minLength: 4
+          pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$"
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+          description: The issue.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Read an issue by its key.
+      tags:
+      - Issues
+    patch:
+      description: |
+        Changes any of an issue's type, status, priority or assignee. Every field is
+        optional; omitting one leaves it as it was.
+
+        **Any declared status may follow any other.** There are no transition rules —
+        an issue may move from `done` back to `open`. Configurable workflows and
+        validated transitions are a later product goal, and enforcing them here would
+        pre-empt that decision.
+
+        **Requires a recognised role.** Any caller holding `admin` or `member` may
+        change these fields; a token carrying neither receives 403. Moving an issue is
+        not one of this system's administrative acts.
+      operationId: updateIssue
+      parameters:
+      - description: "The issue's key, for example `GOTI-1`."
+        explode: false
+        in: path
+        name: issueKey
+        required: true
+        schema:
+          maxLength: 20
+          minLength: 4
+          pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$"
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIssueRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+          description: The issue as it now stands.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      summary: Change an issue's lifecycle fields.
+      tags:
+      - Issues
+components:
+  responses:
+    BadRequest:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: The request was malformed or failed validation.
+    Unauthorized:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: "No credentials were supplied, or they were not valid."
+    Forbidden:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The credentials were valid, but the caller's role does not permit this
+        operation. Distinct from 401: the caller is known, and still refused.
+    NotFound:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The addressed resource does not exist — a project that was never created,
+        or an issue key that corresponds to nothing.
+    InternalServerError:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The request could not be completed because of an unexpected failure.
+
+        Declared because the API can return it: an operation that reaches the
+        database can fail in ways no validation anticipates, and a contract that
+        lists only the outcomes it likes is as wrong as one that promises a body it
+        does not send. The response is a problem document like every other failure —
+        never an empty body, which is what a caller received before this was
+        declared.
+    Conflict:
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: |
+        The request conflicts with the state of the system — for a project, a key
+        already in use; for an issue, a project that has exhausted its issue
+        numbers.
+  schemas:
+    Problem:
+      description: |
+        An RFC 9457 problem document. Every failure in this API uses this shape,
+        so clients get one error type generated rather than guessing per endpoint.
+      properties:
+        type:
+          description: A URI identifying the problem type.
+          type: string
+        title:
+          description: "A short, human-readable summary of the problem type."
+          type: string
+        status:
+          description: The HTTP status code.
+          type: integer
+        detail:
+          description: A human-readable explanation specific to this occurrence.
+          type: string
+        instance:
+          description: A URI identifying this specific occurrence.
+          type: string
+    Issue:
+      description: A unit of work inside a project.
+      example:
+        number: 80082819
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        projectKey: projectKey
+        description: description
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        assignee: ""
+        title: title
+        type: task
+        priority: normal
+        key: key
+        status: open
+      properties:
+        id:
+          description: The issue's identifier.
+          format: uuid
+          type: string
+        key:
+          description: |
+            The issue's key: the project's key, a hyphen, and the number allocated
+            within that project. This is the identifier people quote.
+          pattern: "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}$"
+          type: string
+        projectKey:
+          description: The key of the project this issue belongs to.
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        number:
+          description: |
+            The issue's number within its project. Allocated by the server, starting
+            at 1 in each project, and never reused.
+
+            The maximum is not arbitrary: it is the largest number `key` can express,
+            since that pattern allows nine digits. Without it the two fields could
+            disagree — a number of ten digits would produce a key violating the very
+            pattern this document declares, and the issue would be unreadable through
+            the only operation that fetches one. A project reaching this limit is
+            refused with 409 rather than issued a key it cannot use.
+          maximum: 999999999
+          minimum: 1
+          type: integer
+        title:
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded, for the
+            same two reasons a project name excludes them: PostgreSQL cannot store
+            `U+0000` at all, and the ASCII line breaks and tabs in that range have no
+            place in a title.
+
+            Deliberately **not** full Unicode line-break handling: `U+0085` and
+            `U+2028` are accepted. Refinement asked this ticket to decide rather than
+            inherit the limit, and the decision is to keep the constraint the narrow,
+            checkable one — a title carrying an exotic separator is a cosmetic
+            problem, while a title carrying `U+0000` cannot be stored at all.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+        description:
+          description: |
+            Optional free text. Multi-line **by design** — unlike a title, this is
+            where the reasoning goes, so line breaks are permitted and only `U+0000`
+            is excluded, because PostgreSQL cannot store it in any text column.
+
+            That difference is deliberate: the constraint on a title is about being
+            one line, the constraint here is about being storable, and they are not
+            the same rule (recorded on T-0005 from T-0004's review).
+          maxLength: 10000
+          nullable: true
+          pattern: "^[^\\u0000]*$"
+          type: string
+        type:
+          $ref: "#/components/schemas/IssueType"
+        status:
+          $ref: "#/components/schemas/IssueStatus"
+        priority:
+          $ref: "#/components/schemas/IssuePriority"
+        assignee:
+          allOf:
+          - $ref: "#/components/schemas/Assignee"
+          nullable: true
+        createdAt:
+          description: "When the issue was created, in UTC."
+          format: date-time
+          type: string
+      required:
+      - createdAt
+      - id
+      - key
+      - number
+      - priority
+      - projectKey
+      - status
+      - title
+      - type
+    IssueType:
+      default: task
+      description: |
+        What kind of work this is. Two values, deliberately: `story` and `epic` imply a
+        planning model this product does not have, and adding a value later is additive
+        while renaming one is a breaking change for every generated client.
+      enum:
+      - bug
+      - task
+      type: string
+    IssueStatus:
+      default: open
+      description: |
+        Where the work stands. Any value may follow any other — there are no transition
+        rules, by design.
+
+        `in_review` was considered and deliberately left out: it is the first status
+        that invites the transition rules this API does not have. Adding it later is the
+        additive direction.
+      enum:
+      - open
+      - in_progress
+      - done
+      type: string
+    IssuePriority:
+      default: normal
+      description: |
+        How urgent the work is. Three levels, because `critical` reliably becomes a
+        second `high`.
+      enum:
+      - low
+      - normal
+      - high
+      type: string
+    Assignee:
+      description: |
+        The person an issue is assigned to.
+
+        Carries the display name as well as the subject so a client can render who holds
+        an issue without a second call — which is what the user projection exists for.
+      properties:
+        subject:
+          description: |
+            The subject claim identifying the person. This is the identifier: the
+            projection stores no email, and a display name is neither unique nor stable.
+          maxLength: 255
+          type: string
+        displayName:
+          description: |
+            The person's display name as their token last carried it, or null if their
+            token carried none.
+          maxLength: 400
+          nullable: true
+          type: string
+      required:
+      - subject
+    UpdateIssueRequest:
+      description: |
+        Every field is optional. An omitted field is left unchanged; this is a partial
+        update, not a replacement.
+      example:
+        assignment: ""
+        type: ""
+        priority: ""
+        status: ""
+      properties:
+        type:
+          allOf:
+          - $ref: "#/components/schemas/IssueType"
+          nullable: true
+        status:
+          allOf:
+          - $ref: "#/components/schemas/IssueStatus"
+          nullable: true
+        priority:
+          allOf:
+          - $ref: "#/components/schemas/IssuePriority"
+          nullable: true
+        assignment:
+          allOf:
+          - $ref: "#/components/schemas/AssignmentChange"
+          nullable: true
+    AssignmentChange:
+      description: |
+        A change of assignment.
+
+        There are three ways to send this object and they mean two things:
+
+        | Sent | Meaning |
+        | --- | --- |
+        | `{"subject": "alice"}` | assign to `alice` |
+        | `{"subject": null}` | unassign |
+        | `{}` | **unassign** — an absent `subject` is read as null |
+
+        The third is worth stating plainly rather than leaving to be discovered: a
+        client that forgets to send `subject` unassigns the issue and receives 200. The
+        API cannot distinguish an omitted `subject` from an explicit null — that is the
+        same limitation this object exists to work around one level up — so it is
+        documented rather than rejected. Omit `assignment` entirely to leave the holder
+        alone.
+
+        `subject` is deliberately **not** listed as required. In JSON Schema `required`
+        means "the property must be present", but the C# generator renders it as
+        `[Required]`, which means "must not be null" — and null is precisely the value
+        that unassigns. Listing it would reject the operation this object exists to
+        express.
+      properties:
+        subject:
+          description: |
+            The subject of the person to assign, or **null to unassign**.
+
+            Control characters are excluded, for the reason every other free-text field
+            in this document excludes them: PostgreSQL cannot store `U+0000`, so without
+            this the value reaches the database and fails as an unhandled error rather
+            than as validation. A subject is a token claim and spans one line.
+
+            A subject with no user record is rejected with 400: this API assigns to
+            people it has seen, and inventing one silently would produce an assignee no
+            client could render.
+          maxLength: 255
+          minLength: 1
+          nullable: true
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+    CreateIssueRequest:
+      example:
+        description: description
+        title: title
+      properties:
+        title:
+          description: |
+            A one-line summary. C0 control characters and DEL are excluded — see
+            `Issue.title` for both reasons and for the limit this constraint
+            deliberately stops at.
+
+            `U+0085` and `U+2028` are accepted: the constraint is the narrow,
+            checkable one.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+        description:
+          description: |
+            Optional free text; multi-line is expected. Explicitly null means the
+            same as omitting it.
+          maxLength: 10000
+          nullable: true
+          pattern: "^[^\\u0000]*$"
+          type: string
+      required:
+      - title
+    Project:
+      description: "A project, which groups related work and owns the key its issues\
+        \ are numbered under."
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        name: name
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        key: key
+      properties:
+        id:
+          description: The project's identifier.
+          format: uuid
+          type: string
+        key:
+          description: |
+            The project's key: 2-10 characters, uppercase letters and digits,
+            starting with a letter. Unique across the deployment and immutable
+            once set.
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        name:
+          description: |
+            The project's display name. Names need not be unique — the key is the
+            identifier, and requiring unique names would be a constraint on people
+            rather than on data.
+
+            C0 control characters and DEL are excluded. Two reasons, and they are
+            not the same reason: PostgreSQL cannot store `U+0000` in text at all, so
+            a name carrying one fails as an unhandled error rather than as
+            validation; and the rest of the range carries tabs and line breaks, which
+            a display name has no use for.
+
+            This is not full Unicode line-break normalisation — `U+0085` and `U+2028`
+            are accepted. The constraint is deliberately the narrow, checkable one.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+        createdAt:
+          description: "When the project was created, in UTC."
+          format: date-time
+          type: string
+      required:
+      - createdAt
+      - id
+      - key
+      - name
+    CreateProjectRequest:
+      example:
+        name: name
+        key: key
+      properties:
+        key:
+          description: |
+            The key this project's issues are numbered under, for example `GOTI`.
+            Cannot be changed afterwards, so it is worth choosing deliberately.
+          maxLength: 10
+          minLength: 2
+          pattern: "^[A-Z][A-Z0-9]{1,9}$"
+          type: string
+        name:
+          description: |
+            The project's display name. C0 control characters and DEL are excluded:
+            `U+0000` cannot be stored by PostgreSQL at all, and the rest of the range
+            carries tabs and line breaks a display name has no use for.
+          maxLength: 200
+          minLength: 1
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$"
+          type: string
+      required:
+      - key
+      - name
+    ProjectPage:
+      description: |
+        One page of results. Collection endpoints are always paginated — an
+        unbounded result set is forbidden by the project's engineering standards.
+      example:
+        pageSize: 6
+        page: 0
+        totalCount: 1
+        items:
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          key: key
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          name: name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          key: key
+      properties:
+        items:
+          description: The projects on this page.
+          items:
+            $ref: "#/components/schemas/Project"
+          type: array
+        page:
+          description: The 1-based page number this response represents.
+          type: integer
+        pageSize:
+          description: How many projects this page can hold.
+          type: integer
+        totalCount:
+          description: "Total projects matching the query, across all pages."
+          type: integer
+      required:
+      - items
+      - page
+      - pageSize
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: |
+        A JWT issued by the identity host. Machine clients obtain one through the
+        client-credentials flow; the token carries a `role` claim the API reads
+        per request and never stores.
+      scheme: bearer
+      type: http
+
