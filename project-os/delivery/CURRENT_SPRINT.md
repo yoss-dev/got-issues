@@ -195,3 +195,53 @@ exactly the same way. Whichever side is enumerated, a human has to remember.
 with this project, since the validator already enforces cross-file consistency. Not a
 recommendation between them — that is the retro's call, and the point of recording it now is that
 the next ticket should not discover this a third time by acceptance failure.
+
+> **Update, 2026-08-31 — it did discover it a third time, and (a) is now in force.**
+>
+> T-0006's acceptance failed on the same three lines, exactly as the paragraph above predicted.
+> Rather than correct them a fourth time, **candidate (a) was applied in T-0006**: the
+> enumerations in `README.md` and `ARCHITECTURE.md` are deleted and both point at
+> [`BACKLOG.md`](../product/BACKLOG.md).
+>
+> **This is recorded here so the retrospective is not misled by its own evidence.** A retro reasons
+> from what the repository shows, and the repository now shows the symptom gone — which would make
+> the problem look smaller than it was. It was not: three acceptance failures, on three consecutive
+> tickets, on the same three lines, with the recurrence forecast in writing before the third.
+>
+> The retro still chooses. (a) is subtractive and reversible; **(c) remains available and is not
+> mutually exclusive with it** — a validator rule would catch the next enumeration someone adds
+> anywhere, which (a) does not. Applying (a) was a ticket keeping its own documentation true, not
+> the decision being taken early.
+
+### Retro input — the technique that found the defects has no name
+
+Raised by `claude-rev-7a03` at T-0006's approving review, and recorded here rather than left in a
+review thread, because it is a claim about *where verification effort pays* and only a retro can act
+on it.
+
+T-0006 produced **six blocking review findings and four blocking acceptance findings. Mutation
+produced none of them.** Every one came from one of two activities:
+
+1. **Exercising the system in a state it was not built in** — already named in
+   [TESTING.md](../standards/TESTING.md) after RETRO-SPRINT-002, and it keeps earning its place:
+   the pre-existing-row PATCH, the 505-row migration, the upgrade-path cases.
+2. **Checking whether a claimed guarantee matches the mechanism it names** — B3, C1, and F2, *three
+   instances on one ticket, each inside the fix for the previous one*. This is named nowhere. It is
+   not review-by-reading and it is not testing; it is taking a sentence that asserts a property
+   ("this fails loudly if…", "the FK enforces this", "the sentinel makes zero safe") and running the
+   mechanism to see whether it does that.
+
+The two mutants that did run this ticket were **prompted by (2), not found by mutating** — the
+mutation confirmed a suspicion that reading the claim had already produced.
+
+**The proposal is to name (2) as a technique in [`review-code`](../skills/review-code/SKILL.md) and
+[`acceptance-test`](../skills/acceptance-test/SKILL.md)** — not to move effort between review and
+acceptance, which was my framing and is the weaker one. Both activities found things; the common
+factor is the technique, not the phase. Note the shape of the evidence before acting on it: three
+instances on one ticket is a strong signal about *this* ticket and a weak one about the process, and
+T-0006 was unusually claim-dense. The retro should check whether earlier tickets' findings fit the
+same description before writing a rule from a sample of one ticket.
+
+Related, and for the same retro: the narrowed mutation mandate (approved 2026-08-31) has now run for
+one ticket. This is the first evidence about it, and it is consistent with the narrowing — the
+mandate did not ask for mutants here, and none of the value came from mutating.
