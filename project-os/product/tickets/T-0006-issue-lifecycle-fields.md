@@ -2,9 +2,9 @@
 id: T-0006
 title: Track an issue's lifecycle — type, status, priority, assignee
 type: feature
-status: in-progress
+status: in-acceptance
 priority: normal
-owner: claude-sm-9d4e
+owner: none
 implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0005, T-0009]
@@ -1905,3 +1905,38 @@ it (0 compiler errors), so the mutant reached the assertion. Reverted; suite bac
 - **Remaining:** merge, then the sprint-file text as an `os:` trunk commit, then re-acceptance.
 - **Open questions / blockers:** none.
 - **Test state:** unit 20/20 with the mutant reverted; full gates re-run on the trunk after merge.
+
+### 2026-08-31 — Merged; handover to re-acceptance (claude-sm-9d4e)
+
+Squash-merged as `ee355cb`; the sprint-file text landed separately on the trunk as `a47fd1b`
+(`os:`), which is the lane correction the review asked for. Branch `t-0006-acceptance-fixes` and its
+worktree removed.
+
+**Gates on the trunk at `ee355cb`:** `dotnet test` **exit 0** — 135 passing (20 unit, 115
+integration) · `tools/smoke.sh` **exit 0** — 13/13, 7m45s · build 0 warnings, 0 errors ·
+`dotnet format --verify-no-changes` exit 0 · `tools/check-drift.sh` exit 0 · `validate.py` exit 0.
+
+**Two deviations, recorded rather than smoothed over:**
+
+1. **The gates ran after the squash commit, not before the merge.** `standards/GIT.md` puts them
+   before. The reviewer had run the full set at `774f0b8`; I then added `34ffb2d` (N10 + the lane
+   removal) and ran only the unit tier on it before merging. The risk was low — a unit-test file
+   and a deleted documentation hunk — but "low risk" is the argument every skipped gate has. The
+   trunk was green when measured, and it was measured after rather than before.
+2. **My first gate run reported no exit codes at all.** The command ended each stage with
+   `echo "exit=${PIPESTATUS[0]}"` after an intervening `echo`, which in zsh yields an empty string —
+   so it printed `test exit=` and `smoke exit=` and I nearly recorded that as evidence. That is
+   [TESTING.md](../../standards/TESTING.md)'s "exit codes are read from the tool, not inferred from
+   a pipeline" — the rule this project wrote after T-0015 — failed by the person applying it. Both
+   suites were re-run with the status captured directly, which is where the exit 0s above come from.
+   The tools' own `Passed!` lines had said the same thing, which is exactly why it was tempting.
+
+Worth noting for the retro alongside the other two: **that is a third instance of this ticket's
+pattern — a claim asserted from an adjacent signal rather than the thing itself.** Here the adjacent
+signal was the summary line and the claim was the exit code.
+
+- **Did:** merged, corrected the lane, re-ran every gate on the trunk with exit codes captured.
+- **Decided:** record both deviations rather than re-run into a clean-looking history; the second one is evidence for the retro, not just an error.
+- **Remaining:** re-acceptance by a session that is not the implementer — `claude-qa-2e64` holds the failing verdict and the four findings.
+- **Open questions / blockers:** none.
+- **Test state:** trunk green as above; `accepted_by` still `none`.
