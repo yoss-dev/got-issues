@@ -1,319 +1,43 @@
-# SPRINT-003
+# No active sprint
 
-## Goal
+SPRINT-003 closed on 2026-08-31: goal achieved, all three committed tickets `done`, nothing
+returned to the backlog. It is archived at [SPRINT-003.md](sprints/SPRINT-003.md) and reviewed in
+[RETRO-SPRINT-003](retrospectives/RETRO-SPRINT-003.md).
 
-**Got Issues becomes a usable issue tracker: a person can create a project, file issues in it, and move them through their lifecycle — all through the API.**
+**The next sprint is SPRINT-004.** Start it with [`plan-sprint`](../skills/plan-sprint/SKILL.md),
+which sets one goal and commits Ready work against it.
 
-This is the MVP the Product Owner asked for, and it is the first sprint whose outcome is
-*product* rather than foundation. Everything shipped so far answered *can we run this?*;
-this answers *is it worth running?* As the mid-sprint tiebreaker: work that gets a real
-resource through the contract-first pipeline serves the goal, and work that hardens what
-already exists does not — this sprint.
+## Where the project stands
 
-The word doing the work is **lifecycle**. Creating and reading issues would make this a
-system that records work; changing their state is what makes it one that tracks it
-([T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md)'s own framing, and the reason
-it is committed rather than held back).
+The **MVP is delivered and running**: a project can be created and listed, issues created within it
+and read by key, and an issue's type, status, priority and assignee changed through
+`PATCH /issues/{issueKey}`. Everything runs under Docker Compose with Duende IdentityServer issuing
+tokens and role authorisation enforced by policy.
 
-## Dates
+## What SPRINT-004 should weigh
 
-**Continuous flow — no fixed end date.** The sprint closes when the goal is met, as in
-SPRINT-001 and SPRINT-002. Throughput history is now two data points — **4 tickets, then 3** —
-and this commitment of 3 sits at the lower one deliberately, because of the shape change
-described in Notes.
+Not a plan — `plan-sprint` decides, and the Product Owner sets the goal. These are the facts that
+should be in front of whoever does.
 
-## Committed Work
-
-**Sequenced, not parallel — the first sprint where that is true.** Each ticket depends on the
-one above it, so the order in this table is the order of work, not a ranking.
-
-| Ticket | Title | Status | Owner | Blocked by |
-| --- | --- | --- | --- | --- |
-| [T-0004](../product/tickets/T-0004-create-and-list-projects.md) | Create and list projects | done | none | — |
-| [T-0005](../product/tickets/T-0005-create-and-read-issues.md) | Create and read issues within a project | done | none | — (T-0004 done) |
-| [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | done | none | — (T-0005 done) |
+- **[T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md) sits at backlog
+  position 1 and is unrefined.** It implements [ADR-0010](../architecture/adr/ADR-0010-clean-architecture-layering.md),
+  which the maintainer accepted, and it was explicitly sequenced *after* the MVP by their decision.
+  Its own Work Log notes that its scope grew when T-0006 shipped in the pre-refactor shape, so it
+  should be sized against the code as built rather than its description. Every product ticket after
+  it copies what it produces.
+- **Product work is ready and unblocked:** [T-0007](../product/tickets/T-0007-list-and-filter-issues.md)
+  (list and filter issues) and [T-0008](../product/tickets/T-0008-comment-on-an-issue.md) (comments).
+  Both were written before ADR-0010 and would be built in the shape T-0022 replaces.
+- **Three of the open tickets are now checks** —
+  [T-0025](../product/tickets/T-0025-documentation-truth-sweep.md),
+  [T-0026](../product/tickets/T-0026-self-reporting-gate-runner.md),
+  [T-0027](../product/tickets/T-0027-specification-authoring-lint.md) — the last two created by
+  [RETRO-SPRINT-003](retrospectives/RETRO-SPRINT-003.md). Whoever schedules them should decide
+  whether they share a home rather than each inventing one.
+- **[RETRO-SPRINT-003](retrospectives/RETRO-SPRINT-003.md) action 1 needs maintainer approval
+  before it can be applied** — a governance change naming the verification technique that found
+  two-thirds of last sprint's defects. It is not blocked on anything else.
 
 ## Blockers & Escalations
 
 *(none)*
-
-## Discovered / Unplanned Work
-
-*(none)*
-
-## Sprint exit report — SPRINT-003 drained (2026-08-31, claude-sm-9d4e)
-
-**The goal is met.** All three committed tickets are `done`, and the MVP works end to end: create a
-project, create issues inside it, read one by key, change its type, status, priority and assignee.
-
-| Ticket | Outcome | Evidence |
-|---|---|---|
-| [T-0004](../product/tickets/T-0004-create-and-list-projects.md) | done | accepted `claude-qa-b81d`; `POST`/`GET /projects` |
-| [T-0005](../product/tickets/T-0005-create-and-read-issues.md) | done | accepted `claude-qa-4f18`; per-project allocator holds at 30-way concurrency |
-| [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) | done | accepted `claude-qa-2e64` after one FAIL; `PATCH /issues/{issueKey}` |
-
-**Gates on the trunk at `b3242a4`**, run with nothing else touching the repository: `dotnet test`
-exit 0 (**135** — 20 unit, 115 integration, 0 skipped) · `tools/smoke.sh` exit 0 (**13/13**) ·
-build 0 warnings · `dotnet format` exit 0 · `check-drift.sh` exit 0 · `validate.py` exit 0.
-
-**Discovered work, all with homes:** [T-0021](../product/tickets/T-0021-prove-migrations-against-populated-databases.md),
-[T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md),
-[T-0023](../product/tickets/T-0023-integration-tests-retain-a-connection-per-test-database.md),
-[T-0024](../product/tickets/T-0024-spurious-validation-error-on-every-body-taking-endpoint.md),
-[T-0025](../product/tickets/T-0025-documentation-truth-sweep.md). No blockers; nothing dropped;
-nothing returned to `ready`.
-
-**Two process deviations, disclosed rather than waived** — both on T-0006, both in its Work Log:
-the repair commit `b3242a4` reached the trunk unreviewed after this session broke `main`, and the
-gates at T-0006's first merge ran after the squash rather than before it.
-
-**Nothing here requires a decision from the maintainer.** The one open sequencing question of this
-sprint — T-0006 before the layering refactor — was answered by them and is now discharged;
-[T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md) sits at backlog position 1
-and is unrefined, which is the natural next thing to look at.
-
-**The retrospective is not run automatically.** Closing a sprint is a human-visible act, and the
-retro input accumulated below is substantial enough that it should not be spent without the
-maintainer deciding to spend it.
-
-## Notes
-
-**Goal and scope confirmed by the human Product Owner (2026-08-31)**, who asked for an MVP as
-soon as possible and chose this scope over a thinner two-ticket version and two larger ones.
-
-**The shape of this sprint is different, and it is the main risk.** SPRINT-002's plan said of
-its commitment: *"All three are independent: none blocks another, and all three can start
-immediately."* The opposite is true here. T-0004 → T-0005 → T-0006 is a strict chain, and
-solo mode runs one ticket at a time ([GIT.md](../standards/GIT.md)), so there is no
-parallelism to spend and no way to absorb a stalled ticket by starting another. A review round
-that bounces does not cost one ticket's slack; it delays everything behind it.
-
-**T-0004 carries most of the risk, and not because it is the largest.** It is the first *real*
-resource to travel the contract-first pipeline — [ADR-0004](../architecture/adr/ADR-0004-contract-first-openapi-code-generation.md)
-has so far been exercised only by a deliberately disposable placeholder. Whatever T-0004
-discovers about writing a genuine resource in `spec/openapi.yaml` and implementing the
-generated interface, it discovers once and T-0005 and T-0006 inherit. That is also the reason
-to expect the second and third tickets to be cheaper than the trailing average suggests:
-SPRINT-002's cost was concentrated in three novel problems, while this chain repeats one
-pattern three times.
-
-**Two expectations recorded before the demo rather than after** (raised with the PO, 2026-08-31):
-
-- **There is no UI, by confirmed decision** (`PROJECT.md` §3 — the API is the deliverable). The
-  MVP is demonstrated with the generated client, `curl`, or the specification in a viewer.
-- **`assignee` will read as a client id, not a person.** No token this system issues carries a
-  `sub` ([ADR-0007](../architecture/adr/ADR-0007-test-only-extension-grant-for-user-tokens.md)),
-  so T-0006's assignment works and points at `gotissues-member-client`. Fixing that is
-  [T-0018](../product/tickets/T-0018-user-subject-tokens.md), deliberately **not** committed
-  here: it would add a fourth ticket to a chain already at capacity, and the MVP is legible
-  without it. It is the first thing to consider for SPRINT-004.
-
-**Not committed, deliberately.** [T-0007](../product/tickets/T-0007-list-and-filter-issues.md)
-(list and filter) is `ready` and is arguably what a demo *shows* — "here are the open issues".
-It was left out because it makes the chain four deep with no slack. If the first two tickets
-land faster than the trailing average suggests, it is the obvious candidate to pull in under
-[WoW](../governance/WAY_OF_WORKING.md) §7 — and the honest reason to consider it is that
-without it, the MVP can create and change issues but can only read them one at a time.
-
-Nine other tickets are `ready` and none is committed: T-0008, T-0012, T-0013, T-0014, T-0016,
-T-0017, T-0018, T-0019 and T-0007. That is a healthy buffer, and the reason none of them is
-here is that they do not serve this goal.
-
-### Remote configured — and what it deliberately does not change (2026-08-31)
-
-**Approved by the maintainer**, who supplied the remote and chose "remote as backup; workflow
-unchanged" over PR-based review and over full multi-agent mode. Applied via `evolve-governance`;
-to be folded into RETRO-SPRINT-003.
-
-`https://github.com/yoss-dev/got-issues.git` is configured and `main` tracks `origin/main`; 117
-commits pushed. Eight `[confirmed]` statements across [GIT.md](../standards/GIT.md),
-[PROJECT.md](../PROJECT.md) §5–6 and [FOUNDATION.md](../FOUNDATION.md) asserted that no remote
-existed and are corrected.
-
-**The distinction worth keeping**, because getting it backwards is the dangerous direction:
-**a remote alone does not end solo mode.** Push-based collision detection is a *workflow* — the
-claim commit is pushed and a rejected push means the claim was lost — and no skill here performs
-it. So the repository is still safe for **one agent at a time**, and GIT.md now says that in the
-general section rather than leaving it to be inferred from "no remote".
-
-Pull requests are available and deliberately unused: review stays an independent session against
-the branch diff, merges stay local. `PROJECT.md` Q6 is narrowed rather than answered — a remote
-exists; whether to add a pipeline is still open.
-
-*Noticed independently by `claude-qa-8f52` during T-0005's acceptance, which flagged the `origin`
-URL against `PROJECT.md`'s claim and declined to edit the trunk mid-run — the right call.*
-
-### Sequencing decision — T-0006 before the layering refactor (2026-08-31)
-
-The maintainer adopted Clean Architecture layering mid-sprint
-([ADR-0010](../architecture/adr/ADR-0010-clean-architecture-layering.md), superseding ADR-0009)
-and created [T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md) for it. Asked
-whether that should precede [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md), the
-MVP's last committed ticket, they chose **T-0006 first**.
-
-The sprint's committed work is unchanged: T-0022 is not added to this sprint, and the goal still
-closes when T-0006 is done. T-0006 is written in the current shape on purpose — a half-migrated
-third shape would be worse for T-0022 than either endpoint. The cost accepted is that lifecycle
-code is written once and moved once.
-
-### Governance change — mutation narrowed, exploration strengthened (2026-08-31)
-
-**Approved by the maintainer (human) on 2026-08-31**, raised by them mid-sprint: *"our current
-mutation approach to testing is wasting a lot of time and resources"*. Applied via
-[`evolve-governance`](../skills/evolve-governance/SKILL.md) in one commit. Owning personas: QA/Test
-Engineer for [TESTING.md](../standards/TESTING.md), Scrum Master for the three skills. To be
-folded into RETRO-SPRINT-003.
-
-**The evidence, counted rather than argued.** ~80 recorded mutants across seven tickets (T-0009
-alone: 33; T-0015: 19), **nine explicitly recorded as invalid**, and blocking review findings on
-both T-0004 and T-0005 that were about *mutation records* rather than about defects. Meanwhile the
-sprint's two most serious defects — an undeclared 500 with an empty body, and a migration that
-would have made every existing project's first issue unreadable — were found by **driving real
-infrastructure into a state the code was not built for**, and neither came from mutation.
-
-| Change | Artifact |
-| --- | --- |
-| Mutation required only where a test is the sole evidence for a load-bearing claim, or where a reviewer challenges one; exempt where a compiler, constraint or framework enforces it; one mutant per claim; no re-mutation of unchanged claims; cheapest tier | [TESTING.md](../standards/TESTING.md), [implement-ticket](../skills/implement-ticket/SKILL.md) |
-| New: *Exercise the system in a state it was not built in* — unanticipated input, **a database that already holds rows**, a dependency removed underneath a live service | [TESTING.md](../standards/TESTING.md) |
-| Acceptance's existing adversarial step sharpened with those three techniques and the evidence for them | [acceptance-test](../skills/acceptance-test/SKILL.md) |
-| Reviewers may demand a mutant when they doubt a claim — and may not demand re-mutation of a claim whose code has not changed | [review-code](../skills/review-code/SKILL.md) |
-
-**What is deliberately unchanged:** the principle that a test is not shown to guard a behaviour
-until seen to fail, and the rule that a mutant only counts if it reaches the assertion. The
-narrowing is about when a demonstration is *required*, not about what counts as one.
-
-**Precondition checked:** T-0005 is the only in-flight ticket; its mutation evidence is complete
-and valid, and nothing here lets it newly pass a gate.
-
-**How we would notice this was wrong:** a coverage claim reaching acceptance unchallenged and
-proving false. That is the SPRINT-001 failure the original mandate was built for, and it is the
-signal that this narrowing went too far.
-
-**Process changes now in force** from [RETRO-SPRINT-002](retrospectives/RETRO-SPRINT-002.md),
-applying to every ticket in this sprint: a mutant only counts if the build accepts it; a
-mutation record must state what its mutant proves; the testing standards bind the test
-infrastructure too, including running gates in the working copy under test; and `review-code`
-now asks what input actually reaches the code under test.
-
----
-
-### Retro input, recorded 2026-08-31 by `claude-rev-5c14` (T-0005 review, F1)
-
-**Two acceptance runs have now failed a ticket on the same three lines.** `README.md:7`,
-`README.md:113` and `ARCHITECTURE.md:5` enumerate what exists and what does not.
-[T-0004](../product/tickets/T-0004-create-and-list-projects.md)'s acceptance caught them stale and
-they were fixed by rewriting the sentences to describe projects; [T-0005](../product/tickets/T-0005-create-and-read-issues.md)'s
-acceptance caught the same lines stale again, with T-0005's own deliverable listed under
-*Not here yet*. Recorded here rather than left to the retro because **T-0006 lands before the
-retro and will falsify the same lines a third time.**
-
-**The countermeasure already in place has already failed.** `ARCHITECTURE.md` line 7 reads
-*"Updating this banner is part of any ticket that changes the state above. It has repeatedly been
-left stale by the very ticket that falsified it."* That reminder was written **because** of the
-first occurrence, and the second occurrence happened anyway. A stronger reminder is the same idea
-louder, and the evidence says the idea does not work.
-
-**The proposed durable fix does not survive inspection either.** T-0005's Work Log suggests the
-banner should name *what is not yet built* by ticket rather than enumerating what is. That is
-still a hand-maintained enumeration — when T-0006 ships, "not yet built: T-0006" becomes false in
-exactly the same way. Whichever side is enumerated, a human has to remember.
-
-**Three candidates that actually remove the failure mode**, for the retro to choose between:
-
-| | Approach | Cost |
-| --- | --- | --- |
-| a | **Delete the enumerations**; point at [`BACKLOG.md`](../product/BACKLOG.md), which is already authoritative and already updated by `complete-ticket` at every handover | Lowest — removes machinery rather than adding it |
-| b | **Generate** the lists from ticket frontmatter, which `validate.py` already parses | Moderate; keeps prose, adds a build step |
-| c | **Make `validate.py` fail** when a ticket whose `status` is `done` is referenced under a *Not here yet* / *remains intended* heading | Small; encodes the exact defect, which has now occurred twice, and keeps the prose humans read |
-
-(a) is the cheapest and is the only one that cannot go stale at all; (c) is the most in keeping
-with this project, since the validator already enforces cross-file consistency. Not a
-recommendation between them — that is the retro's call, and the point of recording it now is that
-the next ticket should not discover this a third time by acceptance failure.
-
-> **Update, 2026-08-31 — it did discover it a third time, and (a) is now in force.**
->
-> T-0006's acceptance failed on the same three lines, exactly as the paragraph above predicted.
-> Rather than correct them a fourth time, **candidate (a) was applied in T-0006**: the
-> enumerations in `README.md` and `ARCHITECTURE.md` are deleted and both point at
-> [`BACKLOG.md`](../product/BACKLOG.md).
->
-> **This is recorded here so the retrospective is not misled by its own evidence.** A retro reasons
-> from what the repository shows, and the repository now shows the symptom gone — which would make
-> the problem look smaller than it was. It was not: three acceptance failures, on three consecutive
-> tickets, on the same three lines, with the recurrence forecast in writing before the third.
->
-> The retro still chooses. (a) is subtractive and reversible; **(c) remains available and is not
-> mutually exclusive with it** — a validator rule would catch the next enumeration someone adds
-> anywhere, which (a) does not. Applying (a) was a ticket keeping its own documentation true, not
-> the decision being taken early.
-
-### Retro input — the technique that found the defects has no name
-
-Raised by `claude-rev-7a03` at T-0006's approving review, and recorded here rather than left in a
-review thread, because it is a claim about *where verification effort pays* and only a retro can act
-on it.
-
-T-0006 produced **six blocking review findings and four blocking acceptance findings. Mutation
-produced none of them.** Every one came from one of two activities:
-
-1. **Exercising the system in a state it was not built in** — already named in
-   [TESTING.md](../standards/TESTING.md) after RETRO-SPRINT-002, and it keeps earning its place:
-   the pre-existing-row PATCH, the 505-row migration, the upgrade-path cases.
-2. **Checking whether a claimed guarantee matches the mechanism it names** — B3, C1, and F2, *three
-   instances on one ticket, each inside the fix for the previous one*. This is named nowhere. It is
-   not review-by-reading and it is not testing; it is taking a sentence that asserts a property
-   ("this fails loudly if…", "the FK enforces this", "the sentinel makes zero safe") and running the
-   mechanism to see whether it does that.
-
-The two mutants that did run this ticket were **prompted by (2), not found by mutating** — the
-mutation confirmed a suspicion that reading the claim had already produced.
-
-**The proposal is to name (2) as a technique in [`review-code`](../skills/review-code/SKILL.md) and
-[`acceptance-test`](../skills/acceptance-test/SKILL.md)** — not to move effort between review and
-acceptance, which was my framing and is the weaker one. Both activities found things; the common
-factor is the technique, not the phase. Note the shape of the evidence before acting on it: three
-instances on one ticket is a strong signal about *this* ticket and a weak one about the process, and
-T-0006 was unusually claim-dense. The retro should check whether earlier tickets' findings fit the
-same description before writing a rule from a sample of one ticket.
-
-Related, and for the same retro: the narrowed mutation mandate (approved 2026-08-31) has now run for
-one ticket. This is the first evidence about it, and it is consistent with the narrowing — the
-mandate did not ask for mutants here, and none of the value came from mutating.
-
-### Retro input — committing a tree nobody looked at, while a gate was rewriting it
-
-T-0006's completion was preceded by this session **breaking the trunk**: an `os:` commit intended to
-carry 32 lines of Work Log also deleted all 62 files of `libs/GotIssues.Client` (9,496 lines),
-because `git add -A` ran while `tools/check-drift.sh` was regenerating `libs/` in a backgrounded
-gate run. Full account in [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md)'s Work Log.
-
-Two separable findings, and the second is the one no rule currently covers:
-
-1. **`git add -A` stages what is there, not what you meant.** The commit message and the commit
-   disagreed by four orders of magnitude and nothing objected. A `git status` before staging would
-   have caught it; so would staging paths explicitly. Cheap to make a habit, cheap to write down.
-2. **The gates are not read-only, and nothing says so.** `check-drift.sh` deletes and regenerates
-   the working tree by design. Any repository operation running concurrently is therefore unsafe in
-   *both* directions: the commit captures a tree mid-rewrite, and **the gate's own verdict is taken
-   while its subject is moving.** That run's `drift exit=1` may have been an artifact rather than a
-   finding — and a gate result that cannot be trusted in either direction is worse than no gate,
-   because it is read as evidence. This is the same class as the `PIPESTATUS` slip earlier in the
-   ticket: a measurement whose conditions were never checked.
-
-Neither [GIT.md](../standards/GIT.md) nor [TESTING.md](../standards/TESTING.md) says gates must run
-against a quiescent tree, and the skills encourage backgrounding long ones — which is right, and is
-precisely what made this reachable. A candidate rule, for the retro to accept or reject: *while a
-gate is running, the repository is read-only; a gate result is void if the tree changed during it.*
-That is one sentence and it is mechanically checkable (compare `git status` before and after).
-
-**Counter-consideration, so the retro is not handed a one-sided case:** this was one incident, it
-never reached `origin`, and the existing gate caught it within minutes. A rule that forbids
-concurrent work during a ten-minute smoke run has a real cost in a solo workflow that is already
-serialised. The cheaper half is (1), which is a habit rather than a rule.
-
-**A third instance from the same hour, smaller and unrelated to gates:** T-0025's backlog row was
-appended next to T-0024's, which had itself been sitting *below* the Completed table since creation —
-placed by matching a neighbouring row rather than checking which section it was in. `validate.py`
-stayed green, so it does not check that Active rows are inside the Active table. Fixed in `dd95d06`;
-the validator gap belongs with [T-0025](../product/tickets/T-0025-documentation-truth-sweep.md).
