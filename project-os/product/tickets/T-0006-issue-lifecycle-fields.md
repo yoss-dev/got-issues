@@ -1940,3 +1940,307 @@ signal was the summary line and the claim was the exit code.
 - **Remaining:** re-acceptance by a session that is not the implementer — `claude-qa-2e64` holds the failing verdict and the four findings.
 - **Open questions / blockers:** none.
 - **Test state:** trunk green as above; `accepted_by` still `none`.
+
+
+### 2026-08-31 — QA / Test Engineer (claude-qa-2e64) — re-acceptance of `2a65db3` (merge `ee355cb`) on `main`: **PASS**
+
+Same acceptor as the failing verdict, re-verifying the four findings. All eight acceptance criteria
+still hold, F1–F4 are closed, and **DoD item 6 — the item this ticket failed on — now passes.**
+Two new non-blocking findings, both inside the fix for the third instance of this ticket's own
+pattern, both measured rather than read.
+
+#### Gates, re-run by me on the trunk, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 20 unit + 115 integration = **135** passed, 0 failed, 0 skipped |
+| `dotnet build --no-incremental` | **exit 0** — 6 projects, **0 warnings**, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0**, tree clean before and after — AC6 |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (8 m 12 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 24 tickets, 10 ADRs |
+
+These are my own measurements on `2a65db3`, taken before I touched anything, and they agree with the
+handover. The suite was re-run to 135/135 after every mutant below was reverted.
+
+---
+
+### The four findings
+
+#### F1 — closed, and closed better than "corrected a fourth time"
+
+The three lines no longer enumerate anything. `README.md:7` and `ARCHITECTURE.md:5` now describe
+what exists and point at [`BACKLOG.md`](../BACKLOG.md); the *Not here yet* inventory is replaced by
+a pointer to the same file. I swept for survivors rather than reading the diff: no statement in
+`README.md`, `spec/README.md`, `ARCHITECTURE.md` or `PROJECT.md` now claims this ticket's
+deliverable is unbuilt, and the two rewritten sentences are true against the running system I
+exercised.
+
+**The disclosure is the part that mattered and it is done properly.** `a47fd1b` records in
+`CURRENT_SPRINT.md` that the third occurrence happened as forecast, that candidate (a) is in force,
+and that (c) remains available and is not mutually exclusive — so the retrospective is not misled by
+a repository that shows the symptom gone. That was the reviewer's point and it was better than my
+finding, which only asked for the lines to be true.
+
+**I checked the lane justification rather than accepting it.** `CURRENT_SPRINT.md` has been touched
+by **`os:` trunk commits only** — every one of its 20 commit subjects begins `os:` — while
+`ARCHITECTURE.md` has travelled on ticket branches six times (T-0002, T-0009 twice, T-0015, T-0004,
+T-0005). So the split — documentation on the branch, sprint file as `os:` — is the precedent, not a
+convenience.
+
+One thing I want on record, because it is the same shape one turn further on: the new *"One thing
+worth knowing before you try it"* section is a hand-maintained statement about something not yet
+built ([T-0018](T-0018-user-subject-tokens.md)), and when T-0018 lands it becomes false with nothing
+to catch it. I am **not** raising it as a finding — it explains *why* the projection stays empty,
+which a backlog row cannot, it is explicitly scoped to "a fact about today", and it is the single
+most useful paragraph in that README for anyone actually trying assignment (I needed exactly that
+fact, and had to discover it). Worth knowing it exists when T-0018 is accepted.
+
+#### F2 / C1 — closed, and the correction to the correction is the right one
+
+The `HasSentinel` comment no longer claims the mechanism fails loudly; it says what it does —
+silences three warnings — and points at the test for the guarantee. I verified all three parts:
+
+- **The sentinel is what the comment says it is.** I did not infer this from the overload set. I
+  built the model outside the repository and read `IProperty.Sentinel` directly:
+  `IssueRecord.Type`, `.Status` and `.Priority` each report **sentinel `0` of the enum's own type**,
+  so `HasSentinel(default)` bound to the generic `HasSentinel(TProperty)` overload and not to
+  `HasSentinel(object)`, which would have set `null` and made the comment false. It is `0`.
+- **The warnings are actually gone.** On a live stack: `grep -c 20601` returns **0** on the migrator
+  log and **0** on the API log, where each previously logged three.
+- **The behaviour the sentinel could have broken is intact.** A freshly created issue still reads
+  `task` / `open` / `normal` (AC7), and pre-existing rows still keep their backfilled values.
+
+#### F3 / C2 — closed, and the test is the sharp one
+
+`{"subject":""}` is now refused by the contract:
+
+```
+400 application/problem+json
+errors: {"Assignment.Subject": ["The field Subject must be a string with a minimum length of 1
+                                and a maximum length of 255."]}
+```
+
+The reviewer's C2 point is correct and load-bearing: before the fix this input was *also* 400,
+*also* naming `Assignment.Subject`, so status and field cannot tell the fix from the defect, and
+only the message can. Asserting the message is right here for that reason.
+
+**The two ways this fix could have broken things, both checked**, because `StringLength` replaced
+`MaxLength` on the one property whose null value is the operation's whole purpose:
+
+- `{"subject":null}` **still unassigns** (200, `assignee: null`). `StringLengthAttribute` treats
+  null as valid, exactly as `RegularExpressionAttribute` does — the hazard that made
+  `required: [subject]` unusable does not recur through the new attribute either.
+- `{}`, absent `assignment`, and `"assignment": null` all still behave as the contract's table says.
+  All four distinguishable shapes intact.
+- Boundary sits exactly at the declared value: 255 characters passes the length check and is refused
+  as an unknown user; 256 gets the length message.
+
+#### F4 — closed
+
+Each AC2 theory row now re-reads the field it tried to change (`status`/`open`, `type`/`task`,
+`priority`/`normal`) instead of re-reading `status` three times. Two rows that measured nothing now
+measure something.
+
+---
+
+### Mutants — three, because two of these claims rest on a test alone
+
+[TESTING.md](../../standards/TESTING.md): *"a reviewer or acceptor challenges a coverage claim —
+then the answer is a mutant, not an argument."* I challenged the new guard and the new regression
+test. All three were build-accepted and each failure was the intended assertion, not a bystander.
+
+| # | Mutant | Result |
+| --- | --- | --- |
+| M1 | `Unknown = 0` added to **`IssueStatus`** — a different enum from the one the implementer mutated | **Killed.** Exactly one row fails, `IssueRecord.Status`, on its own assertion, naming member, enum and column. The other two rows pass |
+| M2 | A non-nullable enum property (`Severity`, with `None = 0`) added with **no** database default | **Survived in the wrong direction — see G2.** The theory picked it up and failed, asserting the property "has a database default" when it has none |
+| M3 | `[StringLength(255, MinimumLength=1)]` reverted to `[MaxLength(255)]` in the generated contract | **Killed.** Only `An_empty_subject_is_refused_by_the_contract_not_by_the_user_lookup` fails, on `Assert.Contains("minimum length")` — the other 20 tests in the class pass, which is the C2 point demonstrated rather than argued |
+
+Every mutant reverted; `git status` clean; suite re-run to 135/135 afterwards.
+
+---
+
+### New, non-blocking
+
+- **G1 — the guard does not fail the build, and two places say it does.**
+  `IssueLifecycleEnumTests.cs:24` says *"unlike the log line it fails the build and names the
+  member"*, and this Work Log at line 1762 says *"A test that fails at build time"*. Measured with
+  M1 in place: `dotnet build --no-incremental` returns **exit 0, 0 warnings, 0 errors**; the guard
+  fails `dotnet test`. The distinction is the whole point of the claim — someone told the compiler
+  will stop them will not think to run the test tier, and the sentinel hazard is invisible without
+  it. This is C1's shape at one lower amplitude, inside C1's own fix: *"a wrong enforcement note is
+  worse than a missing one, because it is the reason a mutant does not get run."* One-word fix.
+- **G2 — the guard's discovery predicate is wider than its own description, and its diagnostic
+  asserts the thing it does not check.** `IssueLifecycleEnumTests.cs:29` says *"Every enum property
+  in the model that carries a database default"*, and the filter is
+  `clrType.IsEnum && property.GetDefaultValue() is not null`. `GetDefaultValue()` returns the **CLR**
+  default for any non-nullable value-typed property, so it is never null for a non-nullable enum
+  whether or not a default is configured — I measured this directly: `IssueRecord.Number`,
+  `.Id`, `.CreatedAt` all report a non-null `GetDefaultValue()` with **no** `Relational:DefaultValue`
+  annotation, while `Type`/`Status`/`Priority`/`NextIssueNumber` carry the annotation. So the
+  predicate means *"every non-nullable enum property"*. M2 shows the consequence: a future
+  `Severity` column with a legitimate `None = 0` and no database default is failed by a message
+  telling the author it "has a database default". **It errs safe** — it over-guards, and cannot let
+  the real hazard through, which is why this is not blocking — and today it selects exactly the
+  right three columns. The predicate that matches the description is the annotation
+  (`FindAnnotation(RelationalAnnotationNames.DefaultValue)`), which my measurement shows separates
+  the two cases cleanly. Nullable enum properties are already correctly excluded.
+- **G3 — `spec/README.md:9` is F1's defect in a fourth file, and it is *not* this ticket's.** It
+  reads *"The specification itself does not exist yet — it arrives with
+  [T-0002](T-0002-contract-first-codegen-pipeline.md)"*. T-0002 is `done` and `spec/openapi.yaml` is
+  26 KB and is the file `check-drift.sh` regenerates from. **T-0006 did not falsify this line and
+  must not be made to own it** — recording it here rather than attaching it to this ticket, because
+  a deferral pointed at a ticket whose scope does not accept it is worse than none
+  ([DoD](../../governance/DEFINITION_OF_DONE.md) item 4). It needs its own ticket. I have
+  deliberately not raised one, because it is direct evidence for the retro's live choice: candidate
+  (a) was applied to the two files anyone had looked at and did not find the third, while candidate
+  (c) — a validator rule — would have. That is worth more to the retro as evidence than as a ticket
+  filed ahead of it, and the retro can create it in either case.
+- **G4 — *"drift and smoke below"* recurs.** The 2026-08-31 C1 entry ends its *Test state* with
+  `drift and smoke below`, and what follows is the **reviewer's** measurement, not the implementer's.
+  This exact wording was corrected once in this ticket as *"a promise of evidence standing in for
+  the evidence"*. Trivial in isolation; noted only because it is the same substitution.
+
+---
+
+### The two disclosed deviations, weighed
+
+Both are recorded in the Work Log rather than smoothed over, which is the behaviour the standard
+wants. My assessment:
+
+1. **Gates ran after the squash rather than before the merge ([GIT.md](../../standards/GIT.md)).**
+   A real deviation and it should be carried into `complete-ticket` as one. Materially, the risk it
+   guards against did not occur: the reviewer measured the full set at `774f0b8`, the trunk was
+   green when measured afterwards, and **I have now run every gate on the trunk myself and all six
+   pass**, which is the strongest available answer to "was the merged artefact good". The honest
+   counterfactual is worth stating: had the trunk been red, this run would have been where it
+   surfaced, and that is precisely the argument for the ordering. It does not warrant another round;
+   it warrants being recorded and not repeated.
+2. **The first trunk gate run printed no exit codes** — `${PIPESTATUS[0]}` after an intervening
+   `echo`, empty under zsh, with the tools' own `Passed!` lines making it look fine. Self-caught,
+   self-disclosed, corrected by re-running with the status captured directly. **No residual risk to
+   the artefact**, and independently moot here because I re-measured all six gates from scratch. Its
+   value is entirely as evidence, and I agree with the framing: the adjacent signal was the summary
+   line, the claim was the exit code.
+
+**On whether the pattern deserves a rule rather than Work Log entries** — you asked, so: my run
+takes it from three instances to **five on this one ticket** (B3, C1/F2, the `PIPESTATUS` read, and
+now G1 and G2), and the last two are inside the fix for the third. That is a strong signal, and I
+would support naming the technique in
+[`review-code`](../../skills/review-code/SKILL.md) and
+[`acceptance-test`](../../skills/acceptance-test/SKILL.md) — additive, cheap, reversible, and it
+describes what actually found things here. **But I am not deciding it and this verdict does not
+depend on it.** `claude-rev-7a03`'s own caution in `a47fd1b` is the right one and I will not talk
+past it: five instances on one unusually claim-dense ticket is a strong statement about T-0006 and a
+weak one about the process. The retro should check T-0004, T-0005 and T-0009's blocking findings
+against the description before writing anything, and that routing is [WoW](../../governance/WAY_OF_WORKING.md)
+§13's, not mine.
+
+---
+
+### Acceptance criteria — all eight still hold on `2a65db3`
+
+Re-verified against the suite and a live Compose stack (`-p qa2e64r2`, ephemeral ports 18095/18096),
+attribution proved both ways: `qa2e64r2-api-1` healthy before any response was trusted, and stopping
+it made `:18095/health` stop answering (curl exit 7).
+
+| AC | Verdict | Evidence on this build |
+| --- | --- | --- |
+| AC1 | **PASS** | Live changes to type, status and priority persist across a separate `GET`, including on rows that predate the migration |
+| AC2 | **PASS** | `cancelled` and `epic` → 400 problem+json naming `$.status` / `$.type`; each theory row now re-reads the field it tried to change (F4) |
+| AC3 | **PASS** | Assign / reassign / unassign live; `assignee` carries `subject` + `displayName`, null `displayName` for a user without one; never-assigned and unassigned indistinguishable |
+| AC4 | **PASS** | Unknown subject, NUL, TAB, lone surrogate, 256 chars → 400 problem+json naming `Assignment.Subject`; no 500 found |
+| AC5 | **PASS** | `open → done → open → in_progress → open` live, all 200; no transition refused |
+| AC6 | **PASS** | `check-drift.sh` exit 0, tree clean |
+| AC7 | **PASS** | A fresh issue reads `task` / `open` / `normal` with `assignee: null` — **checked specifically because `HasSentinel` is new on this path** |
+| AC8 | **PASS** | Real Duende member and admin tokens both permitted; member still 403 on `POST /projects`; no token → 401 |
+
+---
+
+### The 505-row case, re-run against the current schema
+
+You asked for this specifically, and you were right that nobody had re-run it since the sentinel
+change. I did, from scratch on a fresh stack.
+
+Created a project and issues through the API, patched one to `bug`/`in_progress`/`high` with an
+assignee, then reverted the live database exactly as the migration's `Down()` does — dropped the
+foreign key, the index and the four columns and deleted the `20260831230358_AddIssueLifecycle` row
+from `__EFMigrationsHistory` — and inserted **500 further rows under the old schema**, giving 504
+pre-existing issues. Then ran the **real compose migration step**
+(`docker compose -p qa2e64r2 run --rm migrator`, **exit 0**), which emitted the same
+`ADD COLUMN … NOT NULL DEFAULT` statements as before and **zero `20601` warnings**.
+
+Result, checked in SQL and not only through the API:
+
+- **All 504 rows backfilled `Task` / `Open` / `Normal`, unassigned. Zero rows carry a value the
+  contract does not declare.** No change from the pre-`HasSentinel` behaviour.
+- Every sampled row (`OLD-1`, `OLD-2`, `OLD-3`, `OLD-4`, `OLD-250`, `OLD-504`) reads back 200.
+- **The hole I found in round one stays closed:** pre-existing rows PATCH correctly afterwards —
+  status, type, priority and assignment — and persist on re-read.
+- A new issue filed into the pre-existing project came out `OLD-505` with the declared defaults.
+- Stopping PostgreSQL under the live API still returns **500 `application/problem+json`** with the
+  declared body, `/health` reports `Unhealthy` (503), and the API recovers by itself.
+
+**The generated client still round-trips**, re-checked because `minLength` regenerated it: a live
+response deserialises to `type=Bug status=InProgress priority=High assignee=alice`, an
+`UpdateIssueRequest` serialises to the declared wire values and is accepted 200, and the new rule
+reaches the client's own validator — `AssignmentChange(null)` validates, `AssignmentChange("")` does
+not.
+
+---
+
+### Definition of Done
+
+| # | Item | Verdict |
+| --- | --- | --- |
+| 1 | Implementation complete; nothing out of scope | **Pass** — the fix commit touches only the four findings' files plus the generated output and this ticket |
+| 2 | All acceptance criteria verified independently | **Pass** — all eight, above |
+| 3 | Automated tests exist and pass | **Pass** — 135/135, 0 skipped; smoke 13/13. The three new tests are non-vacuous, proved by M1 and M3 |
+| 4 | No known unrecorded defects | **Pass** — N2 → T-0024 (scope accepts it); G1, G2, G4 recorded here; **G3 recorded here and explicitly not attached to this ticket**, needing its own |
+| 5 | Code quality | **Pass** — three review passes ending in Approve; 0 warnings; format clean; no debug leftovers. See the GIT.md deviation below |
+| 6 | **Documentation updated** | **PASS** — the item this ticket failed on. Both documents describe what exists, the enumerations that went stale three times are gone, and the change is disclosed to the retro |
+| 7 | Work Log complete | **Pass** — resumable, and unusually honest about its own errors, including the two nobody would have found |
+| 8 | State updated | For `complete-ticket` |
+| — | Regression tests | **Pass** — F3's is proved by M3; the enum guard by M1 |
+| — | ADR / Security / Migrations / Deployment | **Pass** — migration re-proved against 504 pre-existing rows; every new input declared in the spec and enforced at the boundary |
+| — | Observability | **Pass** — F2's three warnings per process are gone, measured on both the migrator and the API |
+
+**One deviation must be recorded at completion:** the merge gates ran after the squash commit rather
+than before the merge, contrary to [GIT.md](../../standards/GIT.md). It is disclosed in the Work Log,
+the artefact is green as measured independently here, and it needs PO/human acknowledgement at
+`complete-ticket` rather than another acceptance round. G1–G4 are non-blocking and need no deviation.
+
+**Precedent for passing with a false-mechanism finding open:** [T-0005](T-0005-create-and-read-issues.md)
+was accepted and its false mechanism corrected in `73a1833` before `done`. G1 and G2 are the same
+disposition — worth a commit, not worth a fourth round.
+
+### The MVP question, unchanged
+
+The loop is real and I walked it again end to end with real tokens. The two limits I recorded last
+time still stand and are both out of this ticket's scope: nothing lists issues
+([T-0007](T-0007-list-and-filter-issues.md)), so an issue is reachable only if you already know its
+key; and assignment needs a `users` row seeded by hand until [T-0018](T-0018-user-subject-tokens.md)
+makes tokens carry a subject. **That second limit is now written down where a user will meet it**,
+in the README section F1's fix added, which is a real improvement in the honesty of this deliverable
+even though it was not what I asked for.
+
+- **Did:** Re-ran all six gates on the trunk before touching anything; verified F1 by sweeping for
+  survivors rather than reading the diff; measured the EF sentinel directly instead of inferring it
+  from the overload set; confirmed the 20601 warnings gone on a live migrator and API; ran three
+  mutants and reverted them; re-ran the 504-row populated-migration case with the real compose
+  migrator, including PATCHing pre-existing rows; re-checked the four assignment shapes, the
+  minLength boundary, the dependency-removal path and the generated client; walked the DoD.
+- **Decided:** **PASS.** All eight criteria hold; DoD item 6 is closed; four findings closed, two
+  new ones non-blocking and one belonging to another ticket.
+- **Remaining:** `complete-ticket`, recording the GIT.md gate-ordering deviation. G1 and G2 are one
+  comment and one predicate and are worth taking before `done`, on the `73a1833` precedent; G3 needs
+  a ticket that is not this one; G4 needs nothing.
+- **Open questions / blockers:** none. The technique-naming proposal is the retro's, with the
+  reviewer's sample-size caution attached.
+- **Branch / PR:** n/a — accepted against `2a65db3` on `main` (merge `ee355cb`).
+- **Test state, as I measured it:** `dotnet test` **135/135** exit 0 (20 unit, 115 integration) ·
+  `dotnet build --no-incremental` 0 warnings exit 0 · `dotnet format --verify-no-changes` exit 0
+  (solution) and exit 0 (`GotIssues.SmokeTests.csproj`) · `./tools/check-drift.sh` exit 0 ·
+  `./tools/smoke.sh` 13/13 exit 0 · `python3 tools/validate-project-os/validate.py` exit 0. Three
+  mutants reverted and the suite re-run to 135/135. Stack torn down with
+  `docker compose -p qa2e64r2 down -v`; no containers, volumes or networks left; working tree clean.
