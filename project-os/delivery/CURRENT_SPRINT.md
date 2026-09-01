@@ -41,6 +41,41 @@ one above it, so the order in this table is the order of work, not a ranking.
 
 *(none)*
 
+## Sprint exit report — SPRINT-003 drained (2026-08-31, claude-sm-9d4e)
+
+**The goal is met.** All three committed tickets are `done`, and the MVP works end to end: create a
+project, create issues inside it, read one by key, change its type, status, priority and assignee.
+
+| Ticket | Outcome | Evidence |
+|---|---|---|
+| [T-0004](../product/tickets/T-0004-create-and-list-projects.md) | done | accepted `claude-qa-b81d`; `POST`/`GET /projects` |
+| [T-0005](../product/tickets/T-0005-create-and-read-issues.md) | done | accepted `claude-qa-4f18`; per-project allocator holds at 30-way concurrency |
+| [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md) | done | accepted `claude-qa-2e64` after one FAIL; `PATCH /issues/{issueKey}` |
+
+**Gates on the trunk at `b3242a4`**, run with nothing else touching the repository: `dotnet test`
+exit 0 (**135** — 20 unit, 115 integration, 0 skipped) · `tools/smoke.sh` exit 0 (**13/13**) ·
+build 0 warnings · `dotnet format` exit 0 · `check-drift.sh` exit 0 · `validate.py` exit 0.
+
+**Discovered work, all with homes:** [T-0021](../product/tickets/T-0021-prove-migrations-against-populated-databases.md),
+[T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md),
+[T-0023](../product/tickets/T-0023-integration-tests-retain-a-connection-per-test-database.md),
+[T-0024](../product/tickets/T-0024-spurious-validation-error-on-every-body-taking-endpoint.md),
+[T-0025](../product/tickets/T-0025-documentation-truth-sweep.md). No blockers; nothing dropped;
+nothing returned to `ready`.
+
+**Two process deviations, disclosed rather than waived** — both on T-0006, both in its Work Log:
+the repair commit `b3242a4` reached the trunk unreviewed after this session broke `main`, and the
+gates at T-0006's first merge ran after the squash rather than before it.
+
+**Nothing here requires a decision from the maintainer.** The one open sequencing question of this
+sprint — T-0006 before the layering refactor — was answered by them and is now discharged;
+[T-0022](../product/tickets/T-0022-adopt-clean-architecture-layering.md) sits at backlog position 1
+and is unrefined, which is the natural next thing to look at.
+
+**The retrospective is not run automatically.** Closing a sprint is a human-visible act, and the
+retro input accumulated below is substantial enough that it should not be spent without the
+maintainer deciding to spend it.
+
 ## Notes
 
 **Goal and scope confirmed by the human Product Owner (2026-08-31)**, who asked for an MVP as
@@ -245,3 +280,40 @@ same description before writing a rule from a sample of one ticket.
 Related, and for the same retro: the narrowed mutation mandate (approved 2026-08-31) has now run for
 one ticket. This is the first evidence about it, and it is consistent with the narrowing — the
 mandate did not ask for mutants here, and none of the value came from mutating.
+
+### Retro input — committing a tree nobody looked at, while a gate was rewriting it
+
+T-0006's completion was preceded by this session **breaking the trunk**: an `os:` commit intended to
+carry 32 lines of Work Log also deleted all 62 files of `libs/GotIssues.Client` (9,496 lines),
+because `git add -A` ran while `tools/check-drift.sh` was regenerating `libs/` in a backgrounded
+gate run. Full account in [T-0006](../product/tickets/T-0006-issue-lifecycle-fields.md)'s Work Log.
+
+Two separable findings, and the second is the one no rule currently covers:
+
+1. **`git add -A` stages what is there, not what you meant.** The commit message and the commit
+   disagreed by four orders of magnitude and nothing objected. A `git status` before staging would
+   have caught it; so would staging paths explicitly. Cheap to make a habit, cheap to write down.
+2. **The gates are not read-only, and nothing says so.** `check-drift.sh` deletes and regenerates
+   the working tree by design. Any repository operation running concurrently is therefore unsafe in
+   *both* directions: the commit captures a tree mid-rewrite, and **the gate's own verdict is taken
+   while its subject is moving.** That run's `drift exit=1` may have been an artifact rather than a
+   finding — and a gate result that cannot be trusted in either direction is worse than no gate,
+   because it is read as evidence. This is the same class as the `PIPESTATUS` slip earlier in the
+   ticket: a measurement whose conditions were never checked.
+
+Neither [GIT.md](../standards/GIT.md) nor [TESTING.md](../standards/TESTING.md) says gates must run
+against a quiescent tree, and the skills encourage backgrounding long ones — which is right, and is
+precisely what made this reachable. A candidate rule, for the retro to accept or reject: *while a
+gate is running, the repository is read-only; a gate result is void if the tree changed during it.*
+That is one sentence and it is mechanically checkable (compare `git status` before and after).
+
+**Counter-consideration, so the retro is not handed a one-sided case:** this was one incident, it
+never reached `origin`, and the existing gate caught it within minutes. A rule that forbids
+concurrent work during a ten-minute smoke run has a real cost in a solo workflow that is already
+serialised. The cheaper half is (1), which is a habit rather than a rule.
+
+**A third instance from the same hour, smaller and unrelated to gates:** T-0025's backlog row was
+appended next to T-0024's, which had itself been sitting *below* the Completed table since creation —
+placed by matching a neighbouring row rather than checking which section it was in. `validate.py`
+stayed green, so it does not check that Active rows are inside the Active table. Fixed in `dd95d06`;
+the validator gap belongs with [T-0025](../product/tickets/T-0025-documentation-truth-sweep.md).
