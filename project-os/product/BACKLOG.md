@@ -15,7 +15,7 @@ The ordered index of all work items. **Full ticket content lives in one file per
 | # | ID | Title | Type | Status | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | 1 | [T-0022](tickets/T-0022-adopt-clean-architecture-layering.md) | Adopt Clean Architecture layering, and make the result the paradigm | technical | backlog | T-0004, T-0005 |
-| 2 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | in-progress | T-0005, T-0009 |
+| 2 | [T-0006](tickets/T-0006-issue-lifecycle-fields.md) | Track an issue's lifecycle — type, status, priority, assignee | feature | in-acceptance | T-0005, T-0009 |
 | 3 | [T-0007](tickets/T-0007-list-and-filter-issues.md) | List and filter a project's issues, paginated | feature | ready | T-0006 |
 | 4 | [T-0008](tickets/T-0008-comment-on-an-issue.md) | Comment on an issue | feature | ready | T-0005, T-0009 |
 | 5 | [T-0018](tickets/T-0018-user-subject-tokens.md) | Issue tokens that carry a user subject, so the projection has something to project | technical | ready | T-0010 |

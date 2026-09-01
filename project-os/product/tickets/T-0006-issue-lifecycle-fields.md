@@ -2,10 +2,10 @@
 id: T-0006
 title: Track an issue's lifecycle — type, status, priority, assignee
 type: feature
-status: in-progress
+status: in-acceptance
 priority: normal
-owner: claude-sm-9d4e
-implemented_by: none
+owner: none
+implemented_by: claude-sm-9d4e
 accepted_by: none
 depends_on: [T-0005, T-0009]
 adrs: [ADR-0004, ADR-0010]
