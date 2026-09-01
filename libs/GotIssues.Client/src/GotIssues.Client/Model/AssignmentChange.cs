@@ -83,6 +83,12 @@ namespace GotIssues.Client.Model
                 yield return new ValidationResult("Invalid value for Subject, length must be less than 255.", new [] { "Subject" });
             }
 
+            // Subject (string) minLength
+            if (this.Subject != null && this.Subject.Length < 1)
+            {
+                yield return new ValidationResult("Invalid value for Subject, length must be greater than 1.", new [] { "Subject" });
+            }
+
             if (this.SubjectOption.Value != null) {
                 // Subject (string) pattern
                 Regex regexSubject = new Regex(@"^[^\u0000-\u001F\u007F]+$", RegexOptions.CultureInvariant);

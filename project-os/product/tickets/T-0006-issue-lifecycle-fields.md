@@ -1364,3 +1364,544 @@ wording is worth correcting in a governance change; it is not this ticket's prob
   13/13 exit 0 · `python3 tools/validate-project-os/validate.py` exit 0. Stack torn down with
   `docker compose -p qa2e64 down -v`; no containers, volumes or networks left behind; working tree
   clean.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — F1 fixed durably, because correcting it again is the move that has failed three times
+
+`claude-qa-2e64` passed all eight criteria and failed the ticket on documentation — **the third
+failure on the same three lines**, after T-0004's and T-0005's acceptances. The record makes it
+worse than a repeat: commit `eb1432a` predicted it in writing, *"because T-0006 lands before the
+retro and will falsify the same lines a third time."* It did, past an implementation and two review
+passes, with the prediction sitting in the repository the whole time.
+
+**So I have not corrected the sentences again.** Twice now the correct fix has been applied and has
+lasted exactly one ticket, because those lines enumerate what exists and every ticket that builds
+something falsifies them. The enumerations are gone; README and ARCHITECTURE now point at
+[BACKLOG.md](../BACKLOG.md), which is authoritative and is updated by `complete-ticket` as part of
+closing a ticket — so it cannot drift the way a hand-maintained sentence does.
+
+This applies one of the three candidates recorded for the retrospective, and it is **marked
+provisional in the text itself**: the retro may replace it. I did not want to pre-empt that
+decision, and I wanted less to hand T-0007 a fourth occurrence of a defect whose recurrence was
+already forecast. If the retro prefers a different candidate, this is cheap to replace; a fourth
+acceptance failure is not.
+
+#### The three non-blocking findings, all taken
+
+**F2 — three EF warnings on every process start**, `Model.Validation[20601]`, saying EF was
+*guessing* which CLR value means "unset" for the three enum columns. Its guess — `default(T)`, i.e.
+0 — is correct **because** every member of these enums starts at 1. Now stated with `HasSentinel`
+rather than inferred, which silences the warnings and, more usefully, makes the assumption fail
+loudly if someone later adds a `= 0` member: that value would otherwise be silently treated as
+unset and replaced by the column default.
+
+That is the same fault as B3 one layer down — a mechanism relied on by inference from an adjacent
+one — and this time EF was warning about it on every start and nobody had read the log.
+
+**F3 — `subject: ""` slipped past the declared pattern**, because `RegularExpressionAttribute`
+treats empty as valid. The user lookup refused it, so AC4's outcome held, but document and
+enforcement disagreed about which layer was responsible. `minLength: 1` closes it in the contract.
+
+**F4 — two of three AC2 rows asserted a field the request never mentioned.** The "nothing changed"
+check re-read `status` for every case, so the `type` and `priority` rows measured nothing: three
+tests that looked like coverage and were one. Each row now re-reads the field it tried to change.
+
+#### What acceptance closed that review left open
+
+Worth recording because it is the strongest evidence yet for the amended standard: the acceptor
+reverted a live stack to the pre-T-0006 schema **holding 505 issue rows**, ran the real compose
+migrator, and confirmed all 505 backfilled correctly, that pre-existing rows PATCH after upgrade
+(the gap review flagged), that the migrator is idempotent, and that `Restrict` refuses a live user
+delete. It also round-tripped the **generated client** against a live API — the one thing nothing in
+this repository had ever exercised — and probed ~45 unanticipated request shapes without finding a
+500.
+
+Zero mutants. Every finding came from step 3.
+
+- **Did:** Replaced the stale enumerations with a pointer to the authoritative list; stated the enum
+  sentinels; closed the empty-subject gap in the contract; made two vacuous AC2 rows measure their
+  own field.
+- **Decided:** apply the durable fix now rather than a third correction — marked provisional so the
+  retrospective still chooses.
+- **Remaining:** re-review, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **131/131** · build **0 warnings** · `dotnet format` exit 0 ·
+  `validate.py` exit 0 · `check-drift.sh` exit 0 after commit · smoke below.
+
+
+### 2026-09-01 — Code review, acceptance-fix pass (claude-rev-7a03) — ENG · ARCH — **Request changes**
+
+Reviewed `t-0006-acceptance-fixes` @ `5070ecd` against `main` @ `6733300`, in the worktree
+`got-issues--t-0006b`. F1 and F4 are sound. F3 is correct in the contract but arrives without the
+regression test the standard requires and cannot get one by accident. F2 is correct in mechanism
+and **wrong in what it claims about itself**, which makes it the third instance in this ticket of
+the fault it was written to fix.
+
+First, the thing worth saying plainly: `claude-qa-2e64`'s acceptance found more than my two review
+passes did, by a wide margin — 505 rows through a real migrator, a generated-client round-trip
+against a live API (the gap I recorded as N7 and did not close), and the pre-existing-row PATCH I
+flagged as a hole in the upgrade test. Zero mutants. That is the amended standard earning its
+change.
+
+#### Gates, re-run here, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 17 unit + 114 integration = **131** passed, 0 failed |
+| `dotnet build --no-incremental` | **exit 0** — 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0** on a clean tree |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (9 m 16 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 24 tickets, 10 ADRs |
+
+---
+
+### The judgement you asked for: is applying a retro candidate early pre-emption?
+
+**No, in this instance — and the reason is a distinction worth keeping, because it is not the one
+your framing reaches for.**
+
+Two different things were on the table, and only one of them is the retrospective's:
+
+- **Deciding the durable rule.** That is the retro's, and it was deferred on purpose.
+- **Not leaving documentation your own ticket falsified.** That is unconditionally this ticket's,
+  and the DoD already enforces it.
+
+T-0006 had no option that avoided touching those three lines. The only question was *which true
+state* to leave them in: rewrite the sentences a third time — knowingly reproducing a defect
+forecast in writing, in the repository, unread through an implementation and two of my review
+passes — or delete them and point at the list that is already authoritative. The second is an edit
+to two documentation files, squarely inside a ticket's normal remit. I checked the precedent rather
+than assuming it: `ARCHITECTURE.md` has been edited on ticket branches by T-0002, T-0004, T-0005,
+T-0009 and T-0015, and `README.md` by those plus T-0001, T-0003 and T-0010. No lane or authority
+boundary is crossed here that has not been crossed by six earlier tickets.
+
+**What would have been pre-emption is candidate (c)** — a `validate.py` rule. That changes tooling
+behaviour for every future ticket and encodes the rule as process. Candidate (b) likewise adds a
+build step. Neither was done. (a) is *subtractive and reversible*: if the retro prefers (b) or (c),
+it restores prose from git and adds the mechanism, and the only thing lost in the interim is three
+sentences whose entire recorded history is being wrong.
+
+**Where your instinct is right, and it is not the "don't relitigate accepted decisions" worry.**
+That principle protects a decision an authority has *already taken*; here no decision exists and the
+retro's authority is prospective, so the shapes are different. The real risk is the mirror image:
+a retrospective reasons from what the repository shows, and the repository now shows the symptom
+gone. A retro that opens `README.md` and finds nothing stale can conclude the matter is closed and
+never make the choice deliberately. The countermeasure for that is not restraint — it is
+**disclosure**, and disclosure is exactly where this is thin (see the recommendation below).
+
+So: a reasonable call, and I would have made it. But note that "provisional and reversible" is
+carrying the whole justification, which means it has to be true in the record and not only in the
+intent.
+
+---
+
+### Blocking
+
+#### C1 — F2's comment claims a guarantee the change does not provide, and removes the only signal that existed
+
+The mechanism is right, and I verified it rather than reading it. Built the model and inspected it
+directly:
+
+```
+SENT[Type]     sentinel=0 clrType=GotIssues.Api.Data.IssueType     default=Task
+SENT[Status]   sentinel=0 clrType=GotIssues.Api.Data.IssueStatus   default=Open
+SENT[Priority] sentinel=0 clrType=GotIssues.Api.Data.IssuePriority default=Normal
+SENT[warnings-20601]=0        (three of them on the previous branch)
+SENT[new-record] Type=Task Status=Open Priority=Normal
+```
+
+So `HasSentinel(default)` does resolve to the enum's `0` and not to `null` — which was my first
+worry and it was unfounded — the three warnings are gone, and a normally-constructed record still
+carries `Task`/`Open`/`Normal`, so insert behaviour is unchanged. Good change.
+
+**The comment beside it is not accurate.** It says stating the sentinel *"makes the assumption fail
+loudly if someone later adds a `= 0` member"*. Trace it:
+
+- **Before:** no configured sentinel. EF implicitly used `default(T)` = 0 **and** logged
+  `Model.Validation[20601]` on every start. Add `Unknown = 0` and setting it would be silently
+  treated as unset — but the warning was still there on every start, pointing at this exact hazard.
+- **After:** sentinel explicitly 0, **no warning at all**. Add `Unknown = 0` and setting it is
+  silently treated as unset and replaced by the column default. Nothing fails, and nothing is loud.
+
+The change therefore *removes* the only standing signal about this hazard and replaces it with a
+comment. That is still probably a net improvement — a comment beside the enum configuration is read
+by whoever edits the enums, and a log line nobody read demonstrably was not — but it is a
+**documentation** improvement, not a mechanism, and the comment claims a mechanism.
+
+This is the third instance in this ticket of the same fault: B3 attributed AC4's 400 to the foreign
+key, F1's own history is a reminder relied on to do work it could not, and now the fix for F2
+describes itself the way B3's record described the FK. Your framing — *a guard asserted to exist by
+inference from an adjacent mechanism* — applies to the sentence you wrote about your own fix.
+
+Two acceptable resolutions:
+
+- **Correct the sentence** to what is true: the sentinel is stated so the assumption is visible
+  where the enums are configured, and so EF stops guessing; a `= 0` member would still be treated
+  as unset, silently, which is why the assumption is written down here.
+- **Or make it true**, which I would prefer and which is about six lines: a unit test asserting no
+  member of `IssueType`, `IssueStatus` or `IssuePriority` has the value 0. Then the claim holds,
+  the guard is real, and it fails in CI rather than in a column.
+
+#### C2 — F3 ships without a regression test, and a naive one would pass without the fix
+
+[TESTING.md](../../standards/TESTING.md): *"Every fixed bug gets a regression test that fails
+without the fix. No exceptions."* There is no test for the empty subject —
+`grep` over `IssueLifecycleTests.cs` finds nothing for `""`, `minLength`, or empty.
+
+This one cannot be closed by adding the obvious test, which is why it is worth blocking rather than
+noting. I measured the same request on both branches:
+
+```
+before (t-0006-lifecycle @ d59e191)
+  {"assignment":{"subject":""}} -> 400  errors: {"Assignment.Subject": ["No user with subject '' is known to this system."]}
+
+after (this branch)
+  {"assignment":{"subject":""}} -> 400  errors: {"Assignment.Subject": ["The field Subject must be a string with a minimum length of 1 and a maximum length of 255."]}
+```
+
+Both are 400 with the field named, so **a test asserting the status code and the field cannot fail
+without the fix** — it is satisfied by the defect. The whole content of F3 is *which layer rejected
+it*, so the test has to assert that: the validation message rather than the lookup's
+`No user with subject …`. This is the "satisfied by anything" trap
+[`review-code`](../../skills/review-code/SKILL.md) names, and the skill's instruction is to
+enumerate what else satisfies the replacement — here, the unfixed code does.
+
+I also confirmed the fix does not repeat the `[Required]` hazard: `[StringLength(255,
+MinimumLength=1)]` leaves null valid, and `{"assignment":{"subject":null}}` still unassigns with
+200. That half is right.
+
+#### C3 — the *Not here yet* section still enumerates what is not built, three lines below the sentence saying it no longer does
+
+`README.md` now reads *"See BACKLOG.md for everything not yet built … so it cannot drift the same
+way"*, and then, in the same list:
+
+- *"**User** tokens. The identity host issues machine-client tokens, which carry a role but no
+  subject — so no endpoint is yet guarded by a person's identity, and the user projection stays
+  empty in practice."* — a hand-maintained statement of something not built. It is accurate today
+  and goes stale the moment [T-0018](T-0018-user-subject-tokens.md) lands, which is row 5 of the
+  backlog it just delegated to.
+- *"(Everything else the standards mention now exists.)"* — a universal claim about what exists,
+  maintained by hand, false as soon as a standard mentions something new.
+
+That is the fourth occurrence pre-loaded, in the section whose fix claims it cannot happen. The
+claim and the counter-example are three lines apart.
+
+I am not asking you to delete the user-tokens paragraph unconsidered: it carries something a backlog
+row does not, namely *why* the projection is empty in practice, which is genuinely useful to a
+reader running the stack. So either:
+
+- **move that explanation somewhere it is not an inventory item** — it is really a note about the
+  identity host, not an entry in a list of missing features — and drop the trailing parenthetical;
+- **or keep both and soften the claim**, so the section does not assert a property it does not have.
+
+Either is fine. What should not ship is the section asserting it cannot go stale while containing
+two things that can.
+
+---
+
+### Non-blocking
+
+- **N8 — the provisional marker points somewhere that does not carry the message.** `README.md`
+  sends the reader to `CURRENT_SPRINT.md` Notes for the retro candidates and for the fact that this
+  may be replaced. That section records the three candidates and still reads *"for the retro to
+  choose between"*, with nothing saying (a) has been applied. Since "the retro still chooses" is
+  the load-bearing half of the justification I endorsed above, it should be visible where the
+  retro's own recorded input lives — one paragraph in the *Retro input* section, lane 1, on the
+  trunk. Not blocking, because the [retrospective](../../skills/retrospective/SKILL.md) analyses
+  ticket Work Logs too and this ticket's Work Log states it plainly; but the pointer currently
+  promises something the destination does not deliver, which is a small instance of the defect this
+  whole finding is about.
+- **N9 — F4 is right, and worth one more line than it got.** The three AC2 rows now re-read the
+  field each request tried to change. I checked the substitution is complete: `field` and
+  `unchanged` are used together in the single assertion, so no row can silently re-read another's
+  field again. Worth noting for the retro that this is the second vacuous assertion found in this
+  one test class after N5's `Assert.False(string.IsNullOrEmpty(why))` — both in `[Theory]` rows,
+  both from a parameter that looked like it was doing work.
+- **N4 and N2 both landed correctly** and I confirmed them on `main`: the hand-rolled problem
+  document now carries its `type` (verified live — the unknown-subject 400 returns
+  `"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1"`), with a comment recording that it
+  is the only such document in the codebase rather than a framework default; and the spurious
+  *"field is required"* became [T-0024](T-0024-spurious-validation-error-on-every-body-taking-endpoint.md).
+  Nothing further needed on either.
+- **N7 is closed by acceptance**, not by this diff: the generated client was round-tripped against
+  a live API. Worth folding into the retro as evidence, since it was a standing gap nobody had
+  exercised since the client was first generated.
+
+---
+
+- **Did:** Reviewed `main...HEAD`; re-ran every gate in this worktree reading each exit code from
+  the tool; verified F2 by inspecting the built EF model and counting the `20601` warnings before
+  and after; verified F3 by measuring the empty-subject response on both branches; verified F1's
+  lane precedent against the history of both documentation files.
+- **Decided:** **Request changes** — C1, C2, C3. All three are small; none disputes the approach.
+- **Remaining:** C1-C3 on the branch, then re-request. N8 is worth taking on the trunk in the same
+  pass. N9, and the N7 note, are for the retro rather than for this ticket.
+- **Open questions / blockers:** none. On the question put to me: applying candidate (a) early is a
+  reasonable call and I would have made it — the exposure is evidential rather than procedural, and
+  N8 closes it.
+- **Branch / PR:** `t-0006-acceptance-fixes` @ `5070ecd`.
+- **Test state, as I measured it:** `dotnet test` **131/131** exit 0 · build 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `validate.py` exit 0 ·
+  `smoke.sh` 13/13 exit 0.
+
+
+### 2026-08-31 — Software Engineer (claude-sm-9d4e) — C1: the fix's own comment repeated the fault it was fixing
+
+`claude-rev-7a03` endorsed the F1 approach and found three things. The first is the sharpest yet.
+
+#### C1 — I claimed a guarantee and shipped a comment
+
+The `HasSentinel` change carried a comment saying it *"makes the assumption fail loudly if someone
+later adds a `= 0` member."* Traced by the reviewer, it does the **opposite**: before the change EF
+logged `Model.Validation[20601]` on every start, saying it was guessing; after it, there is no
+warning at all, and a `= 0` member would be silently treated as unset. **I removed the only
+standing signal and replaced it with a sentence.**
+
+That is the third instance in this ticket of a guard asserted by inference — and this one is inside
+the comment explaining the fix for the second. I did not check what the change removed, only what
+it added.
+
+Now made true rather than reworded: `IssueLifecycleEnumTests` fails if any member of the three
+enums is ever zero, with a message saying what would break. The comment says what the mechanism
+actually does — silences three warnings — and points at the test for the guarantee.
+
+The net position is still better than before, and worth stating precisely: a log line nobody read
+has been replaced by a test that fails, plus a comment beside the enums where someone adding a
+member will be looking.
+
+#### C2 — the obvious test for F3 is satisfied by the defect
+
+`{"subject":""}` returned 400 naming `Assignment.Subject` **both before and after** the fix — the
+pattern let it through and the user lookup refused it. So a status-and-field assertion passes on
+the broken code, and the entire content of F3 is *which layer rejected*. The test asserts the
+message for that reason: `minimum length` present, `is known to this system` absent.
+
+This is the "satisfied by anything" rule from RETRO-SPRINT-002 in its least obvious form — not an
+assertion too weak to fail, but one that passes for the wrong reason in exactly the case it was
+written for.
+
+#### C3 — the section that says it cannot enumerate, three lines above two enumerations
+
+The rewritten *Not here yet* kept a "User tokens" bullet and *"(Everything else the standards
+mention now exists.)"* — a fourth occurrence pre-loaded under a sentence explaining why enumerating
+is the problem.
+
+The reviewer was right not to ask for deletion: that bullet explains **why** the user projection
+stays empty, which a backlog row cannot. So the explanation moved out of the inventory into its own
+short section about behaviour, and the inventory is now only a pointer. The blanket "everything
+else exists" claim is gone — it was an enumeration of one.
+
+#### N8 — the disclosure that makes applying (a) early honest
+
+The reviewer's framing is better than my question. Two things were on the table: *deciding the
+durable rule* (the retro's) and *not leaving documentation this ticket falsified* (unconditionally
+mine). It also checked the precedent I had asserted — `ARCHITECTURE.md` has been edited on ticket
+branches by five previous tickets, `README.md` by eight — and noted that candidate (c) *would* have
+been pre-emption, because a validator rule encodes process for every future ticket.
+
+The real risk it identified is one I had not: **a retrospective reasons from what the repository
+shows, and the repository now shows the symptom gone.** The countermeasure is disclosure, not
+restraint. `CURRENT_SPRINT.md` now records that the third occurrence happened as forecast, that (a)
+is in force, and that (c) remains available and is not mutually exclusive with it.
+
+- **Did:** Replaced C1's claim with a test that makes it true; asserted F3's message because status
+  and field cannot distinguish the fix from the defect; moved the user-token explanation out of the
+  inventory; disclosed (a)'s early application to the retro.
+- **Decided:** keep `HasSentinel` — the log line it removed was demonstrably unread; the test is the
+  guarantee.
+- **Remaining:** re-review, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** `dotnet test` **135/135** (20 unit, 115 integration) · build 0 warnings ·
+  `dotnet format` exit 0 · `validate.py` exit 0 · drift and smoke below.
+
+### 2026-09-01 — Code review, third pass (claude-rev-7a03) — ENG · ARCH — **Approve**, with one lane correction owed at merge
+
+Reviewed `t-0006-acceptance-fixes` @ `98b126e`. C1, C2 and C3 are closed, and N8 is closed better
+than I framed it. One standards deviation is outstanding; it does not need another review round and
+I explain below why I am not spending one on it.
+
+#### Gates, re-run here, each exit code read from the tool itself
+
+| Gate | Result |
+| --- | --- |
+| `dotnet test` | **exit 0** — 20 unit + 115 integration = **135** passed, 0 failed |
+| `dotnet build --no-incremental` | **exit 0** — 0 warnings, 0 errors |
+| `dotnet format --verify-no-changes` | **exit 0** (solution) and **exit 0** (`GotIssues.SmokeTests.csproj`) |
+| `./tools/check-drift.sh` | **exit 0** on a clean tree |
+| `./tools/smoke.sh` | **exit 0** — 13 passed, 0 failed (7 m 55 s) |
+| `python3 tools/validate-project-os/validate.py` | **exit 0** — 24 tickets, 10 ADRs |
+
+#### C1 — closed, and I ran the guarantee rather than reading it
+
+I asked for the claim to become true, so I checked that it had. Added `Unknown = 0` to `IssueType`
+and ran only the guard:
+
+```
+Failed  IssueLifecycleEnumTests.No_member_is_zero_because_zero_means_unset(enumType: typeof(IssueType))
+  IssueType declares Unknown as 0. The database default for this column treats 0 as 'unset', so
+  that member would be silently replaced by the default on every write. …
+Failed!  - Failed: 1, Passed: 2, Total: 3
+```
+
+Reverted; tree clean. Valid on every count [TESTING.md](../../standards/TESTING.md) names: the build
+accepted it, the failure is the guard's own assertion rather than an unrelated error, the cause is
+the member I added, and **only the mutated enum's row failed** — the other two passed, so the
+theory is discriminating and not failing wholesale. It also runs in under a millisecond in the unit
+tier, which is the cheapest tier that can host it.
+
+The comment now says what the mechanism does and points at the test. That is the correction.
+
+**On the judgement you flagged and invited disagreement on — I agree, and it is now supported
+rather than asserted.** Keeping `HasSentinel` was arguable while the guarantee was a comment; it is
+not arguable now. With the test in place, warning 20601 is noise: it reports an *absence* of a
+declared sentinel, and the sentinel is now a deliberate decision with a separate guard. Removing
+`HasSentinel` to keep the warning would restore a line saying "you have not decided this" to a
+codebase that has. And its signal value here is measurable rather than theoretical — those three
+warnings were in the logs through an implementation and two of my review passes, and none of the
+three of us read them. It took an acceptance run. A test that fails at build time, names the
+member, and states the consequence is strictly better than a log line with a demonstrated
+readership of zero.
+
+#### C2 — closed, and the load-bearing half is the robust one
+
+`An_empty_subject_is_refused_by_the_contract_not_by_the_user_lookup` asserts both directions. Worth
+recording which one is doing the work: `Assert.DoesNotContain("is known to this system", …)` is the
+half that fails against the pre-fix behaviour, and it is coupled to **our own** message, so it stays
+true whatever .NET does. `Assert.Contains("minimum length", …)` is coupled to a framework string and
+is the brittle half — harmless as belt and braces, and worth knowing if it ever breaks on an SDK
+bump, because the test would then be failing on wording rather than on behaviour.
+
+The comment recording *why* the message is asserted is the right thing to have written. That is
+exactly the note that stops someone "simplifying" it back to a status check.
+
+#### C3 — closed
+
+Checked both files for anything that survived: no negative enumeration remains in `README.md` or
+`ARCHITECTURE.md`, and the blanket *"everything else the standards mention now exists"* is gone.
+The positive lists ("what is built") remain in both banners, which is correct — that is the safer
+direction and explicitly the banner's own job.
+
+Moving the user-token paragraph into a section about behaviour rather than deleting it is the
+better resolution of the two I offered. It reads as what it actually is: a fact someone needs
+before they try to assign an issue, not an inventory row.
+
+#### N8 — closed, and the addition is better than my framing
+
+I said the hazard was that a retro reasons from what the repository shows. Your note says that and
+one thing I did not: **(c) is not mutually exclusive with (a)** — a validator rule would catch the
+next enumeration someone adds *anywhere*, which deleting these three lines does not. That is right,
+and it means applying (a) foreclosed less than I credited it with. Recorded so the retro has it.
+
+---
+
+### The one thing outstanding: a lane violation, owed at merge
+
+`98b126e` puts `project-os/delivery/CURRENT_SPRINT.md` in the same commit as `README.md`, `apps/`
+and the ticket. [GIT.md](../../standards/GIT.md): *"A commit never mixes the two lanes, with one
+exception: the ticket's **Work Log** may be updated on the ticket branch alongside the code it
+describes."* The sprint file is not the ticket's Work Log.
+
+I checked the precedent rather than asserting it, and it is one-way: **every** change to
+`CURRENT_SPRINT.md` since the foundations commit has been an `os:` commit on the trunk — eleven of
+them, including [`eb1432a`](../../delivery/CURRENT_SPRINT.md), which added the very *Retro input*
+section this update extends. That is the opposite of `ARCHITECTURE.md`, which has always travelled
+on ticket branches (T-0002, T-0004, T-0005, T-0009, T-0015) and which I therefore did not raise last
+pass. The rule's rationale bites hardest here: sprint state is the cross-agent coordination file,
+and the reason it is lane 1 is that it must be visible the moment it changes, not when a branch
+merges.
+
+**Required: move that hunk to a trunk `os:` commit.** Not a re-review — I have read the text and it
+is right; watching it move would tell me nothing, and the handover already puts you on the trunk for
+the status commit. That is the whole reason this is a merge condition rather than a fourth round,
+and I want the asymmetry with C1 on the record: C1 changed what the repository *guarantees*, so it
+had to be re-verified and was; this changes only which commit carries text I have already approved.
+
+---
+
+### Non-blocking
+
+- **N10 — the guard's own list is hand-maintained, which is F1's shape one layer down.**
+  `IssueLifecycleEnumTests.LifecycleEnums` names three types explicitly. Add a fourth enum column
+  with a database default and forget to add it there, and the new column is silently unguarded while
+  a green test says the assumption holds. The list can be derived instead of written: ask the model
+  for properties whose CLR type is an enum and which have a default value, and the guard covers
+  whatever exists rather than whatever was remembered. Cheap, and it removes the last hand-kept
+  enumeration this ticket added. Not for this ticket unless you want it.
+
+### For the retrospective — the sharper version of what you asked me to carry
+
+I would not put it as "shift effort toward acceptance". The evidence supports something more
+specific and more useful.
+
+Across this ticket, review raised six blocking findings (B1, B2, B3, C1, C2, C3) and acceptance
+raised four (F1-F4), plus the deeper exploration acceptance did at scale. **Mutation produced none
+of them.** Every one came from one of exactly two activities:
+
+1. **Exercising the running system in a state it was not built in** — B1 (a `U+0000` reaching
+   PostgreSQL as a 500), B2 (`{"assignment":{}}` silently unassigning), the empty-subject
+   observation behind C2, and acceptance's 505-row migration, generated-client round-trip and
+   ~45 probe shapes. This is already named in [TESTING.md](../../standards/TESTING.md) and it is
+   earning its place.
+2. **Checking whether a claimed guarantee matches the mechanism it names** — B3 (AC4's 400
+   attributed to the foreign key, which cannot produce it), C1 (`HasSentinel` claimed to make a
+   `= 0` member fail loudly, when it removed the only signal), and F2 itself, which was EF telling
+   the repository it was guessing while nobody read the log. **This is not named anywhere.** It is
+   not code review and it is not exploration; it is reading a written claim against the thing it
+   points at. Three instances on one ticket, each one inside the fix for the previous.
+
+Mutation's role in this ticket was real but narrow and entirely downstream of (2): the two mutants
+that ran — AC5's, and AC4's after I challenged it — were each *prompted* by someone checking a
+claim, and neither was found by mutating. That is consistent with the maintainer's narrowing and I
+think it argues for naming (2) as a technique in `review-code` and `acceptance-test`, rather than
+for moving effort between the two activities.
+
+---
+
+- **Did:** Reviewed `5070ecd..98b126e`; re-ran every gate in this worktree reading each exit code
+  from the tool; verified C1's new guarantee by adding a zero member and observing the guard fail
+  for the right reason, then reverting; checked both documentation files for surviving
+  enumerations; checked the sprint file's lane precedent across its full history.
+- **Decided:** **Approve.** Merge may proceed once the `CURRENT_SPRINT.md` hunk is moved to a trunk
+  `os:` commit.
+- **Remaining:** that move, then the handover status commit. N10 optional. The retro note above is
+  for `CURRENT_SPRINT.md`'s *Retro input* section if you want it recorded where the F1 candidates
+  are — that is a trunk commit too, and it can travel with the same one.
+- **Open questions / blockers:** none. On the `HasSentinel` judgement you asked me to challenge: I
+  agree with keeping it, for the reason above.
+- **Branch / PR:** `t-0006-acceptance-fixes` @ `98b126e`.
+- **Test state, as I measured it:** `dotnet test` **135/135** exit 0 · build 0 warnings exit 0 ·
+  `dotnet format` exit 0 both · `check-drift.sh` exit 0 · `validate.py` exit 0 ·
+  `smoke.sh` 13/13 exit 0.
+
+### 2026-08-31 — Review approved; lane correction and N10 closed (claude-sm-9d4e)
+
+`claude-rev-7a03` approved at `774f0b8` and re-ran every gate independently. Two items came back
+with it — one owed at merge, one non-blocking. Both are closed here.
+
+**The lane violation (owed at merge, not a re-review).** `98b126e` put
+[`CURRENT_SPRINT.md`](../../delivery/CURRENT_SPRINT.md) in the same commit as `README.md`, `apps/`
+and this ticket. [GIT.md](../../standards/GIT.md)'s only branch-lane exception is a ticket's Work
+Log. The reviewer checked the precedent rather than asserting it: **every change to that file since
+the foundations commit has been an `os:` trunk commit — eleven of them**, including `eb1432a`, which
+added the very *Retro input* section mine extended. That is the opposite of `ARCHITECTURE.md`, which
+has always travelled on branches — which is why the same reviewer did *not* raise it last pass. The
+hunk is removed from this branch and lands on the trunk as `os:` instead. Same text, right lane.
+
+**N10 — the guard hand-listed what it guards.** `IssueLifecycleEnumTests` named the three enums in
+a literal array: **[F1](#)'s shape one layer down.** Add a fourth enum column with a database
+default, forget the list, and it is silently unguarded while a green test reports otherwise. The
+columns are now read from the EF model — every property whose CLR type is an enum and which carries
+a database default — so the set of guarded things is derived from the thing that creates the
+obligation. Building the model needs no database, so it stays in the sub-millisecond unit tier.
+
+The theory changed shape, so I re-ran the mutant rather than trusting the reviewer's run of the
+previous version: adding `Unknown = 0` to `IssueType` fails **one** row — `IssueRecord.Type` — with
+the diagnostic naming the member, the enum and the column; the other two rows pass. Build accepted
+it (0 compiler errors), so the mutant reached the assertion. Reverted; suite back to 20/20.
+
+- **Did:** removed the sprint-file hunk from the branch (lane), derived the enum guard from the model (N10), re-verified the guard by mutation.
+- **Decided:** N10 taken rather than deferred — it is the ticket's own defect class, and a ticket that leaves its own pattern uncorrected one layer down is the thing three acceptance rounds have been about.
+- **Remaining:** merge, then the sprint-file text as an `os:` trunk commit, then re-acceptance.
+- **Open questions / blockers:** none.
+- **Test state:** unit 20/20 with the mutant reverted; full gates re-run on the trunk after merge.

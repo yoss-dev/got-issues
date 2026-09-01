@@ -577,6 +577,7 @@ components:
             people it has seen, and inventing one silently would produce an assignee no
             client could render.
           maxLength: 255
+          minLength: 1
           nullable: true
           pattern: "^[^\\u0000-\\u001F\\u007F]+$"
           type: string

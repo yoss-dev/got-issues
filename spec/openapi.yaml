@@ -569,6 +569,7 @@ components:
       properties:
         subject:
           type: [string, 'null']
+          minLength: 1
           maxLength: 255
           pattern: '^[^\u0000-\u001F\u007F]+$'
           description: |

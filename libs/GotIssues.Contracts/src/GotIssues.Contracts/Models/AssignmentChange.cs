@@ -31,7 +31,7 @@ namespace GotIssues.Contracts.Models
         /// </summary>
         /// <value>The subject of the person to assign, or **null to unassign**.  Control characters are excluded, for the reason every other free-text field in this document excludes them: PostgreSQL cannot store &#x60;U+0000&#x60;, so without this the value reaches the database and fails as an unhandled error rather than as validation. A subject is a token claim and spans one line.  A subject with no user record is rejected with 400: this API assigns to people it has seen, and inventing one silently would produce an assignee no client could render. </value>
         [RegularExpression("^[^\\u0000-\\u001F\\u007F]+$")]
-        [MaxLength(255)]
+        [StringLength(255, MinimumLength=1)]
         [DataMember(Name="subject", EmitDefaultValue=true)]
         public string? Subject { get; set; }
 

@@ -133,10 +133,11 @@ public sealed class IssueLifecycleTests(PostgresContainerFixture postgres) : IAs
     }
 
     [Theory]
-    [InlineData("""{"status":"cancelled"}""", "a status outside the declared set")]
-    [InlineData("""{"type":"epic"}""", "a type outside the declared set")]
-    [InlineData("""{"priority":"critical"}""", "a priority outside the declared set")]
-    public async Task AC2_a_value_outside_the_declared_set_is_rejected(string body, string _)
+    [InlineData("""{"status":"cancelled"}""", "status", "open")]
+    [InlineData("""{"type":"epic"}""", "type", "task")]
+    [InlineData("""{"priority":"critical"}""", "priority", "normal")]
+    public async Task AC2_a_value_outside_the_declared_set_is_rejected(
+        string body, string field, string unchanged)
     {
         var key = await SeedIssueAsync();
         using var client = Member();
@@ -148,8 +149,10 @@ public sealed class IssueLifecycleTests(PostgresContainerFixture postgres) : IAs
             "application/problem+json",
             response.Content.Headers.ContentType?.MediaType);
 
-        // And nothing changed.
-        Assert.Equal("open", (await ReadAsync(client, key)).GetProperty("status").GetString());
+        // And the field the request tried to change is untouched. Re-reading `status`
+        // for every row would assert a field two of these requests never mention —
+        // three tests looking like coverage and two of them measuring nothing.
+        Assert.Equal(unchanged, (await ReadAsync(client, key)).GetProperty(field).GetString());
     }
 
     [Fact]
@@ -273,6 +276,27 @@ public sealed class IssueLifecycleTests(PostgresContainerFixture postgres) : IAs
                 e.Name.Contains("subject", StringComparison.OrdinalIgnoreCase)),
             "The problem document does not name the offending field. Members present: "
             + string.Join(", ", errors.EnumerateObject().Select(e => e.Name)));
+    }
+
+    [Fact]
+    public async Task An_empty_subject_is_refused_by_the_contract_not_by_the_user_lookup()
+    {
+        // The whole content of this fix is *which layer* rejects an empty subject.
+        // Before `minLength`, the pattern let "" through and the user lookup refused it
+        // — also 400, also naming Assignment.Subject. So a test asserting the status and
+        // the field is **satisfied by the defect**, and only the message tells them
+        // apart. Asserted on the message for that reason and no other.
+        var key = await SeedIssueAsync();
+        using var client = Member();
+
+        var response = await client.PatchAsync(
+            new Uri($"/issues/{key}", UriKind.Relative), Json("""{"assignment":{"subject":""}}"""));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("minimum length", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("is known to this system", body, StringComparison.Ordinal);
     }
 
     [Fact]

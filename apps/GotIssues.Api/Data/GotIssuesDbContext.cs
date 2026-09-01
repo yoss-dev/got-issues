@@ -34,12 +34,28 @@ public sealed class GotIssuesDbContext(DbContextOptions<GotIssuesDbContext> opti
             // default lives in the **database**, not only in the CLR initialiser —
             // T-0005 shipped a migration that backfilled existing rows with a value the
             // contract forbade precisely because that distinction was missed.
+            //
+            // The sentinel is stated rather than inferred. A database default means EF
+            // must decide whether a given CLR value counts as "unset", and its guess is
+            // `default(T)` — 0 here, which is not a declared member of any of these
+            // enums. That guess is correct *because* every member starts at 1, and EF
+            // logs Model.Validation[20601] on every start to say it is guessing.
+            //
+            // Stating it silences three warnings per process — and, on its own, that is
+            // all it does. It does **not** make a future `= 0` member fail loudly; it
+            // removes the only standing signal that anything was being assumed. The
+            // guarantee lives in `IssueLifecycleEnumTests`, which fails if any member of
+            // these three enums is ever zero. Review caught the first version of this
+            // comment claiming the mechanism did what the test does.
             entity.Property(e => e.Type)
-                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssueType.Task);
+                .HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(IssueType.Task).HasSentinel(default);
             entity.Property(e => e.Status)
-                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssueStatus.Open);
+                .HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(IssueStatus.Open).HasSentinel(default);
             entity.Property(e => e.Priority)
-                .HasConversion<string>().HasMaxLength(20).HasDefaultValue(IssuePriority.Normal);
+                .HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(IssuePriority.Normal).HasSentinel(default);
 
             entity.Property(e => e.AssigneeSubject).HasMaxLength(255);
 
