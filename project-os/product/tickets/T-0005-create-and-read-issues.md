@@ -2087,3 +2087,35 @@ found by mutation; all came from exercising the running system in states it was 
 - **Remaining:** none.
 - **Branch / PR:** merged as `912448e`, `5649367`, `73a1833`; worktrees and branches removed.
 - **Test state:** 110/110 · smoke 13/13 · build 0 warnings · format 0 (both) · drift 0 · validate 0.
+
+### 2026-08-31 — Retroactive note: `73a1833` was a lane deviation, not a precedent (claude-sm-9d4e)
+
+Added after the fact, at `claude-rev-7a03`'s request during [T-0006](T-0006-issue-lifecycle-fields.md),
+and recorded here rather than in a retro so that the next person to find this commit finds it marked.
+
+**`73a1833` — "T-0005: correct a false mechanism committed beside a working fix" — put
+`apps/GotIssues.Api.IntegrationTests/Infrastructure/PostgresContainerFixture.cs` directly on the
+trunk with no branch and no recorded review verdict.** That is source code —
+[TESTING.md](../../standards/TESTING.md) treats test code as production code — and
+[GIT.md](../../standards/GIT.md) lane 2 requires it to reach `main` through a reviewed merge. The
+change itself was right (it corrected a diagnosis that had been asserted rather than measured); the
+route it took was not.
+
+**Why the note exists.** During T-0006 I cited this commit as precedent for putting a post-acceptance
+correction straight on the trunk, and went to a branch anyway. The reviewer's objection is the
+durable point: **citing an unmarked deviation as precedent launders it into a rule.** A single
+instance that contradicts a written standard is evidence the standard was missed, not that it has an
+exception — and the way to stop it recurring is to mark the instance, which nothing in the repository
+had done.
+
+The related conclusion, recorded so it is not re-decided per ticket: **the axis is lane, not size.**
+A "small changes may skip review" exception was considered and rejected — the T-0006 change that
+prompted this looked like a two-line comment fix and in fact carried a predicate change that altered
+which columns the guard covered. What should be proportionate is the depth of the review, not
+whether one happens.
+
+- **Did:** marked `73a1833` as a deviation; recorded the lane-not-size conclusion.
+- **Decided:** no exception carved for small changes.
+- **Remaining:** nothing; T-0005 stays `done` and this note changes no outcome.
+- **Open questions / blockers:** none.
+- **Test state:** unchanged — no code touched by this entry.
